@@ -7,6 +7,7 @@ import type {
   OrderItem,
   OrderStatus,
   PaymentMode,
+  PaymentStatus,
   Staff,
   StaffPayment,
   StaffPaymentType,
@@ -380,6 +381,21 @@ export function searchCustomers(query: string): Customer[] {
   );
 }
 
+// Phone-only lookup for the New Order flow's phone-first customer entry —
+// narrower than searchCustomers (which also matches name) since the Phone
+// Number field should only ever suggest by phone digits.
+export function searchCustomersByPhone(query: string): Customer[] {
+  const q = query.trim();
+  if (!q) return [];
+  return customers.filter((c) => c.phone.includes(q));
+}
+
+// Exact-phone lookup for the Add/Edit Customer form's duplicate-phone guard —
+// narrower than searchCustomersByPhone's substring match.
+export function getCustomerByPhone(phone: string): Customer | undefined {
+  return customers.find((c) => c.phone === phone);
+}
+
 export function getOrdersForCustomer(customerId: string): Order[] {
   return orders
     .filter((o) => o.customerId === customerId)
@@ -408,7 +424,7 @@ export function createCustomer(data: {
   phone: string;
   address: string;
   area: string;
-  gender: Gender;
+  gender?: Gender;
 }): Customer {
   const nextSeq = customers.length + 1;
   const customer: Customer = {
@@ -427,13 +443,24 @@ export function updateCustomer(
     phone: string;
     address: string;
     area: string;
-    gender: Gender;
+    gender?: Gender;
   }
 ): Customer | undefined {
   const idx = customers.findIndex((c) => c.id === id);
   if (idx < 0) return undefined;
   customers[idx] = { ...customers[idx], ...data };
   return customers[idx];
+}
+
+function computePaymentStatus(
+  totalAmount: number,
+  balance: number,
+  deliveryDate: string
+): PaymentStatus {
+  if (totalAmount === 0) return "Not calculated";
+  if (balance <= 0) return "Paid";
+  const todayIso = new Date().toISOString().slice(0, 10);
+  return deliveryDate && deliveryDate < todayIso ? "Overdue" : "Due";
 }
 
 export function createOrder(data: {
@@ -444,21 +471,31 @@ export function createOrder(data: {
   items: OrderItem[];
   advancePaid: number;
   paymentMode: PaymentMode;
+  status?: OrderStatus;
 }): Order {
   const totalAmount = data.items.reduce((sum, i) => sum + i.amount, 0);
+  const balance = totalAmount - data.advancePaid;
+  const customer = getCustomerById(data.customerId);
+  const now = new Date().toISOString();
   const order: Order = {
     id: `order-${orders.length + 1}`,
     orderNumber: generateNextOrderNumber(),
     customerId: data.customerId,
+    customerSnapshot: customer
+      ? { name: customer.name, phone: customer.phone, area: customer.area }
+      : undefined,
     orderDate: data.orderDate,
     trialDate: data.trialDate,
     deliveryDate: data.deliveryDate,
     items: data.items,
     totalAmount,
     advancePaid: data.advancePaid,
-    balance: totalAmount - data.advancePaid,
+    balance,
     paymentMode: data.paymentMode,
-    status: "In Progress",
+    status: data.status ?? "In Progress",
+    paymentStatus: computePaymentStatus(totalAmount, balance, data.deliveryDate),
+    createdAt: now,
+    updatedAt: now,
   };
   orders.push(order);
   return order;

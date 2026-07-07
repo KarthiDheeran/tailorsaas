@@ -15,3 +15,17 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Customer Receipt / Tailor Job Card print routes (app/orders/[id]/print/**)
+   — A4-friendly page size/margins and a plain white background regardless
+   of the app's default surface color, since these are physical documents,
+   not app screens. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: white;
+  }
+}

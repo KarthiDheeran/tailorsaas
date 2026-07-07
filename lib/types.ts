@@ -7,7 +7,7 @@ export interface Customer {
   phone: string;
   address: string;
   area: string;
-  gender: Gender;
+  gender?: Gender;
 }
 
 // Per-garment-type measurements — a flexible key-value structure keyed by
@@ -55,10 +55,23 @@ export interface OrderItem {
   particular: string;
   size?: string;
   qty: number;
+  // Base rate (catalog base price, or a manual override) — excludes add-ons.
   rate: number;
   addOns?: OrderItemAddOn[];
-  // qty * rate + sum(addOns.amount)
+  // Sum of addOns[].amount — redundant with addOns but kept as an explicit
+  // field so the rate/add-ons/amount relationship doesn't need to be
+  // recomputed by every reader.
+  addOnsTotal?: number;
+  // rate + addOnsTotal — the effective per-unit price actually charged.
+  finalRate?: number;
+  // qty * finalRate
   amount: number;
+  // Snapshot of this item's measurement values as entered at order time
+  // (only set when the shopkeeper actually opened/filled the Measurements
+  // modal for this item — see New Order's Measurements handling). The
+  // customer's own GarmentMeasurement/CustomerMeasurements records remain
+  // the live, editable source; this is just what this particular order used.
+  measurements?: Record<string, string>;
 }
 
 export type PaymentMode =
@@ -152,10 +165,20 @@ export type OrderStatus =
   | "Delivered"
   | "Cancelled";
 
+export type PaymentStatus = "Not calculated" | "Paid" | "Due" | "Overdue";
+
 export interface Order {
   id: string;
   orderNumber: string;
   customerId: string;
+  // Denormalized copy of the customer's name/phone/area as of order
+  // creation. Not used for live display anywhere — every existing view
+  // (OrdersTable, Order Details, Customer profile) reads the customer's
+  // *current* details via getCustomerById(order.customerId), same as
+  // before, so a later name/phone edit still shows correctly everywhere.
+  // This snapshot exists only as a recorded fact about how the order looked
+  // when it was placed.
+  customerSnapshot?: { name: string; phone: string; area: string };
   orderDate: string;
   trialDate: string;
   deliveryDate: string;
@@ -165,4 +188,12 @@ export interface Order {
   balance: number;
   paymentMode: PaymentMode;
   status: OrderStatus;
+  // Paid/Due/Overdue as of order creation — a snapshot, not a live field.
+  // Current status is always computed fresh from balance + deliveryDate at
+  // render time (see BalanceBadge in orders-table.tsx), since a stored
+  // value would go stale the moment the delivery date passes. Nothing reads
+  // this field for display; it exists only as a recorded fact.
+  paymentStatus?: PaymentStatus;
+  createdAt?: string;
+  updatedAt?: string;
 }

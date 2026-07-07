@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, Plus, Pencil, Inbox } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
@@ -6,6 +9,8 @@ import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import type { CustomerListRow } from "@/lib/customers";
 
 export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
+  const router = useRouter();
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
@@ -49,12 +54,17 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
             }) => (
               <tr
                 key={customer.id}
-                className="border-t border-border-soft transition-colors hover:bg-surface"
+                onClick={() => router.push(`/customers/${customer.id}`)}
+                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-surface"
               >
                 <td className="whitespace-nowrap px-5 py-3">
-                  <div className="font-semibold text-ink">
+                  <Link
+                    href={`/customers/${customer.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-semibold text-ink hover:text-primary hover:underline"
+                  >
                     {customer.name}
-                  </div>
+                  </Link>
                   <div className="text-xs text-ink-muted">
                     {customer.customerNumber}
                   </div>
@@ -79,11 +89,14 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                 <td className="whitespace-nowrap px-5 py-3">
                   <CustomerStatusBadge status={status} />
                 </td>
-                <td className="whitespace-nowrap px-5 py-3">
+                <td
+                  className="whitespace-nowrap px-5 py-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="flex items-center justify-end gap-1.5">
                     <Link
                       href={`/customers/${customer.id}`}
-                      title="View"
+                      title="View Customer"
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -101,7 +114,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                     />
                     <Link
                       href={`/customers/${customer.id}/edit`}
-                      title="Edit"
+                      title="Edit Customer"
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                     >
                       <Pencil className="h-3.5 w-3.5" />

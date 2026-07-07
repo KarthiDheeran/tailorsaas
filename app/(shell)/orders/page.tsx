@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import {
   getAllOrders,
   getCustomerById,
+  getOrderById,
   getOrdersForCustomer,
 } from "@/lib/data/stub-data";
 import type { Customer, Order } from "@/lib/types";
@@ -54,6 +55,27 @@ export default function OrdersPage() {
   const [, setRefreshTick] = useState(0);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [showCreatedToast, setShowCreatedToast] = useState(false);
+
+  // New Order redirects here with ?created=1 (and optionally &orderId=... if
+  // "View Order" was clicked from the success modal) on success. Read via
+  // the browser URL (not useSearchParams) so this page doesn't need a
+  // Suspense boundary just for a one-off toast; params are stripped
+  // immediately so refreshing doesn't re-show/re-open anything.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const created = params.get("created") === "1";
+    const orderId = params.get("orderId");
+    if (!created) return;
+    setShowCreatedToast(true);
+    if (orderId) {
+      const order = getOrderById(orderId);
+      if (order) setDetailsOrder(order);
+    }
+    window.history.replaceState({}, "", "/orders");
+    const timer = setTimeout(() => setShowCreatedToast(false), 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   function handleStatusChanged() {
     setRefreshTick((t) => t + 1);
@@ -196,6 +218,22 @@ export default function OrdersPage() {
 
   return (
     <div className="mx-auto max-w-7xl p-8">
+      {showCreatedToast && (
+        <div className="fixed right-8 top-6 z-50 flex items-center gap-2 rounded-lg border border-border-soft bg-white px-4 py-3 shadow-soft">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+          <span className="text-sm font-medium text-ink">
+            Order created successfully
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowCreatedToast(false)}
+            aria-label="Dismiss"
+            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-surface hover:text-ink"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Orders</h1>

@@ -1,0 +1,675 @@
+"use client";
+
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { CheckCircle2, ChevronLeft } from "lucide-react";
+import {
+  createCustomer,
+  createOrder,
+  generateNextOrderNumber,
+  getCustomerById,
+  getCustomers,
+  orderStatuses,
+  paymentModes,
+  saveCustomerMeasurements,
+  saveGarmentMeasurement,
+  searchCustomersByPhone,
+  updateCustomer,
+} from "@/lib/data/stub-data";
+import { getGarmentById } from "@/lib/catalog";
+import { pickBodyMeasurements } from "@/lib/garment-catalog";
+import type { Customer, Gender, Order, OrderStatus, PaymentMode } from "@/lib/types";
+import { BalanceBadge } from "@/components/orders/orders-table";
+import { countFilledFields } from "@/components/orders/garment-measurement-modal";
+import {
+  NewOrderItemsCard,
+  blankDraftItem,
+  computeOrderItems,
+  orderItemToDraftItem,
+  type DraftItem,
+} from "@/components/orders/new-order-items-card";
+import { NewOrderSummaryPanel } from "@/components/orders/new-order-summary-panel";
+import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const inputClass =
+  "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
+
+function NewOrderPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillCustomerId = searchParams.get("customerId");
+  const prefillCustomer = prefillCustomerId
+    ? getCustomerById(prefillCustomerId) ?? null
+    : null;
+
+  // Non-mutating peek at the next order number, frozen for this session —
+  // the real number is (re)computed by createOrder itself at save time.
+  const [orderNumberPreview] = useState(() => generateNextOrderNumber());
+  const [status, setStatus] = useState<OrderStatus>("In Progress");
+
+  const [phone, setPhone] = useState(prefillCustomer?.phone ?? "");
+  const [name, setName] = useState(prefillCustomer?.name ?? "");
+  const [area, setArea] = useState(prefillCustomer?.area ?? "");
+  const [address, setAddress] = useState(prefillCustomer?.address ?? "");
+  const [gender, setGender] = useState<Gender>(prefillCustomer?.gender ?? "Male");
+  const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(
+    prefillCustomer
+  );
+
+  const [orderDate, setOrderDate] = useState(todayIso());
+  const [trialDate, setTrialDate] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+
+  const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
+
+  const [advancePaid, setAdvancePaid] = useState(0);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
+
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [savedOrder, setSavedOrder] = useState<Order | null>(null);
+
+  const { computedItems, totalAmount } = computeOrderItems(items);
+  const balance = totalAmount - advancePaid;
+
+  const trimmedPhone = phone.trim();
+  const trimmedName = name.trim();
+  const anyGarmentSelected = items.some((it) => it.garmentTypeId);
+  const hasInvalidQtyOrRate = items.some(
+    (it) => it.garmentTypeId && (it.qty <= 0 || it.rate < 0)
+  );
+  const hasValidItem = computedItems.some(
+    (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
+  );
+  let itemsError: string | undefined;
+  if (!anyGarmentSelected) {
+    itemsError = "Select a garment type for at least one item";
+  } else if (hasInvalidQtyOrRate) {
+    itemsError = "Quantity must be greater than 0 and rate cannot be negative";
+  } else if (!hasValidItem) {
+    itemsError = "Add at least one valid item";
+  }
+  const errors = {
+    phone: !trimmedPhone ? "Phone number is required" : undefined,
+    name: !trimmedName ? "Customer name is required" : undefined,
+    deliveryDate: !deliveryDate ? "Delivery date is required" : undefined,
+    items: itemsError,
+    advancePaid:
+      advancePaid < 0
+        ? "Paid amount cannot be negative"
+        : advancePaid > totalAmount
+          ? "Paid amount cannot exceed total"
+          : undefined,
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+
+  const phoneSuggestions =
+    !matchedCustomer && phone.trim() ? searchCustomersByPhone(phone) : [];
+
+  function handleSelectCustomer(c: Customer) {
+    setMatchedCustomer(c);
+    setPhone(c.phone);
+    setName(c.name);
+    setArea(c.area);
+    setAddress(c.address);
+    setGender(c.gender ?? "Male");
+  }
+
+  function handlePhoneBlur() {
+    if (matchedCustomer) return;
+    const exact = getCustomers().find((c) => c.phone === phone.trim());
+    if (exact) handleSelectCustomer(exact);
+  }
+
+  function handleChangeCustomer() {
+    setMatchedCustomer(null);
+    setPhone("");
+    setName("");
+    setArea("");
+    setAddress("");
+    setGender("Male");
+  }
+
+  function handleRepeatOrder(order: Order) {
+    setItems(order.items.map(orderItemToDraftItem));
+    setOrderDate(todayIso());
+    setDeliveryDate("");
+    setTrialDate("");
+    setStatus("In Progress");
+    setAdvancePaid(0);
+  }
+
+  const initialPhone = prefillCustomer?.phone ?? "";
+  const initialName = prefillCustomer?.name ?? "";
+  const initialArea = prefillCustomer?.area ?? "";
+  const initialAddress = prefillCustomer?.address ?? "";
+  const isDirty =
+    phone !== initialPhone ||
+    name !== initialName ||
+    area !== initialArea ||
+    address !== initialAddress ||
+    deliveryDate !== "" ||
+    trialDate !== "" ||
+    advancePaid !== 0 ||
+    items.some(
+      (it) =>
+        it.garmentTypeId !== "" ||
+        it.qty !== 1 ||
+        it.rate !== 0 ||
+        it.addOnIds.length > 0 ||
+        it.measurement !== null
+    );
+
+  function handleCancel() {
+    if (isDirty && !window.confirm("Discard unsaved changes?")) return;
+    router.push("/orders");
+  }
+
+  function handleSave() {
+    setSubmitAttempted(true);
+    if (hasErrors) return;
+
+    const validItems = computedItems.filter(
+      (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
+    );
+
+    // Resolve the customer, preventing an accidental duplicate: if this
+    // phone number already belongs to a *different* customer than the one
+    // the form was seeded from (e.g. the shopkeeper never blurred the Phone
+    // field to trigger the usual auto-match), reuse that existing record
+    // instead of creating a new one. That found record is used as-is rather
+    // than overwritten with this form's values, since the shopkeeper was
+    // never actually editing it.
+    const existingByPhone = getCustomers().find((c) => c.phone === trimmedPhone);
+    let customer: Customer;
+    if (existingByPhone && existingByPhone.id !== matchedCustomer?.id) {
+      customer = existingByPhone;
+    } else if (matchedCustomer) {
+      const fieldsChanged =
+        trimmedName !== matchedCustomer.name ||
+        trimmedPhone !== matchedCustomer.phone ||
+        area.trim() !== matchedCustomer.area ||
+        address.trim() !== matchedCustomer.address ||
+        gender !== matchedCustomer.gender;
+      customer = fieldsChanged
+        ? updateCustomer(matchedCustomer.id, {
+            name: trimmedName,
+            phone: trimmedPhone,
+            address: address.trim(),
+            area: area.trim(),
+            gender,
+          }) ?? matchedCustomer
+        : matchedCustomer;
+    } else {
+      customer = createCustomer({
+        name: trimmedName,
+        phone: trimmedPhone,
+        address: address.trim(),
+        area: area.trim(),
+        gender,
+      });
+    }
+
+    // Persist any measurement edits: the per-garment-type record (reused for
+    // this customer's future orders of the same garment type) and a merge
+    // into the customer's general body-measurement baseline.
+    items.forEach((it) => {
+      const garment = getGarmentById(it.garmentTypeId);
+      if (!garment || !it.measurement) return;
+      if (countFilledFields(it.measurement) === 0) return;
+      saveGarmentMeasurement({
+        customerId: customer.id,
+        garmentType: garment.name,
+        values: it.measurement.values,
+        fitNotes: it.measurement.fitNotes,
+        notes: it.measurement.notes,
+      });
+      const bodyMeasurements = pickBodyMeasurements(it.measurement.values);
+      if (Object.keys(bodyMeasurements).length > 0) {
+        saveCustomerMeasurements({
+          customerId: customer.id,
+          values: bodyMeasurements,
+        });
+      }
+    });
+
+    const created = createOrder({
+      customerId: customer.id,
+      orderDate,
+      trialDate,
+      deliveryDate,
+      items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
+      advancePaid,
+      paymentMode,
+      status,
+    });
+
+    // Show the success state with print options rather than redirecting
+    // immediately — the shopkeeper's very next step is usually printing the
+    // receipt/job card, so don't force them back to the list first.
+    setSavedOrder(created);
+  }
+
+  function handleViewOrder() {
+    if (!savedOrder) return;
+    router.push(`/orders?created=1&orderId=${savedOrder.id}`);
+  }
+
+  function handleBackToOrders() {
+    router.push("/orders?created=1");
+  }
+
+  // A draft view of the order for BalanceBadge's paid/due/overdue logic, so
+  // Payment Status reuses the exact same computation as the rest of the app
+  // instead of a second copy of the rules. An empty deliveryDate sorts as
+  // "before" any real date string, which would make BalanceBadge report
+  // "overdue" before the shopkeeper has even picked a delivery date — so an
+  // unset date is treated as far in the future here instead.
+  const draftOrderForBadge: Order = {
+    id: "draft",
+    orderNumber: orderNumberPreview,
+    customerId: matchedCustomer?.id ?? "",
+    orderDate,
+    trialDate,
+    deliveryDate: deliveryDate || "9999-12-31",
+    items: computedItems,
+    totalAmount,
+    advancePaid,
+    balance,
+    paymentMode,
+    status,
+  };
+
+  return (
+    <div className="pb-28">
+      <div className="mx-auto max-w-7xl p-8">
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back to Orders
+        </button>
+
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-[26px] font-semibold text-ink">New Order</h1>
+            <p className="text-sm text-ink-muted">{orderNumberPreview}</p>
+          </div>
+          <label className="flex items-center gap-2">
+            <span className="text-[13px] font-medium text-ink-muted">Status</span>
+            <Select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as OrderStatus)}
+              className="w-auto min-w-[150px] font-semibold"
+            >
+              {orderStatuses.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+          <div className="min-w-0 space-y-5">
+            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-[17px] font-semibold text-ink">
+                  Customer Details
+                </h3>
+                {matchedCustomer && (
+                  <button
+                    type="button"
+                    onClick={handleChangeCustomer}
+                    className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                  >
+                    Change Customer
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="relative flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Phone Number
+                  </span>
+                  <input
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    onBlur={handlePhoneBlur}
+                    placeholder="10-digit phone number"
+                    className={cn(
+                      inputClass,
+                      submitAttempted && errors.phone && "border-chip-red-fg"
+                    )}
+                  />
+                  {phoneSuggestions.length > 0 && (
+                    <ul className="absolute left-0 top-full z-10 mt-1 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
+                      {phoneSuggestions.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            onMouseDown={() => handleSelectCustomer(c)}
+                            className="block w-full px-4 py-3 text-left text-sm hover:bg-surface"
+                          >
+                            <span className="font-medium text-ink">{c.name}</span>
+                            <span className="text-ink-muted"> — {c.phone}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {submitAttempted && errors.phone && (
+                    <p className="text-xs text-chip-red-fg">{errors.phone}</p>
+                  )}
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Customer Name
+                  </span>
+                  <input
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className={cn(
+                      inputClass,
+                      submitAttempted && errors.name && "border-chip-red-fg"
+                    )}
+                  />
+                  {submitAttempted && errors.name && (
+                    <p className="text-xs text-chip-red-fg">{errors.name}</p>
+                  )}
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Area / Locality
+                  </span>
+                  <input
+                    value={area}
+                    onChange={(e) => setArea(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Address
+                  </span>
+                  <input
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Gender
+                  </span>
+                  <div className="flex gap-2">
+                    {(["Male", "Female"] as Gender[]).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setGender(g)}
+                        className={cn(
+                          "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
+                          gender === g
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-white text-ink hover:bg-surface"
+                        )}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+              <h3 className="mb-4 text-[17px] font-semibold text-ink">
+                Order Dates
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Order Date
+                  </span>
+                  <input
+                    type="date"
+                    required
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Delivery Date <span className="text-chip-red-fg">*</span>
+                  </span>
+                  <input
+                    type="date"
+                    required
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    className={cn(
+                      inputClass,
+                      submitAttempted &&
+                        errors.deliveryDate &&
+                        "border-chip-red-fg"
+                    )}
+                  />
+                  {submitAttempted && errors.deliveryDate && (
+                    <p className="text-xs text-chip-red-fg">
+                      {errors.deliveryDate}
+                    </p>
+                  )}
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-faint">
+                    Trial Date <span className="font-normal">(optional)</span>
+                  </span>
+                  <input
+                    type="date"
+                    value={trialDate}
+                    onChange={(e) => setTrialDate(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {submitAttempted && errors.items && (
+              <p className="text-xs font-medium text-chip-red-fg">
+                {errors.items}
+              </p>
+            )}
+            <NewOrderItemsCard
+              customerId={matchedCustomer?.id ?? null}
+              items={items}
+              onItemsChange={setItems}
+            />
+
+            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+              <h3 className="mb-4 text-[17px] font-semibold text-ink">
+                Payment Summary
+              </h3>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Total
+                  </span>
+                  <div className="flex h-11 items-center text-sm font-semibold text-ink">
+                    ₹{totalAmount.toLocaleString("en-IN")}
+                  </div>
+                </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Paid / Advance
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={totalAmount}
+                    value={advancePaid}
+                    onChange={(e) => setAdvancePaid(Number(e.target.value))}
+                    className={cn(
+                      inputClass,
+                      submitAttempted &&
+                        errors.advancePaid &&
+                        "border-chip-red-fg"
+                    )}
+                  />
+                  {submitAttempted && errors.advancePaid && (
+                    <p className="text-xs text-chip-red-fg">
+                      {errors.advancePaid}
+                    </p>
+                  )}
+                </label>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Balance
+                  </span>
+                  <div className="flex h-11 items-center text-sm font-semibold text-ink">
+                    ₹{balance.toLocaleString("en-IN")}
+                  </div>
+                </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Payment Mode
+                  </span>
+                  <Select
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
+                  >
+                    {paymentModes.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border-soft pt-4">
+                <span className="text-sm text-ink-muted">Payment Status</span>
+                {totalAmount === 0 ? (
+                  <span className="inline-block rounded-full bg-chip-info px-3 py-1 text-xs font-semibold text-chip-info-fg">
+                    Not calculated
+                  </span>
+                ) : (
+                  <BalanceBadge order={draftOrderForBadge} todayIso={todayIso()} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <NewOrderSummaryPanel
+              customer={matchedCustomer}
+              onRepeatOrder={handleRepeatOrder}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft md:left-[250px]">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-8">
+          <div className="flex items-center gap-2 text-sm text-ink-muted">
+            <span>
+              Total: <span className="font-semibold text-ink">₹{totalAmount.toLocaleString("en-IN")}</span>
+            </span>
+            <span className="text-border">|</span>
+            <span>
+              Paid: <span className="font-semibold text-ink">₹{advancePaid.toLocaleString("en-IN")}</span>
+            </span>
+            <span className="text-border">|</span>
+            <span>
+              Balance: <span className="font-semibold text-ink">₹{balance.toLocaleString("en-IN")}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              Save Order
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {savedOrder && (
+        <>
+          {/* z-[80]/[90], above the Measurements modal's z-[60]/[70] — the
+              success modal must always win if that modal's overlay hasn't
+              fully unmounted yet. */}
+          <div className="fixed inset-0 z-[80] bg-black/40" />
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="w-full max-w-sm rounded-xl border border-border-soft bg-white p-6 text-center shadow-soft">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-chip-mint">
+                <CheckCircle2 className="h-6 w-6 text-chip-mint-fg" />
+              </div>
+              <h3 className="text-[17px] font-semibold text-ink">
+                Order created successfully
+              </h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                {savedOrder.orderNumber}
+              </p>
+              <div className="mt-5 space-y-2">
+                <Link
+                  href={`/orders/${savedOrder.id}/print/customer`}
+                  className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                >
+                  Print Customer Receipt
+                </Link>
+                <Link
+                  href={`/orders/${savedOrder.id}/print/job-card`}
+                  className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                >
+                  Print Tailor Job Card
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleViewOrder}
+                  className="block w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                >
+                  View Order
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBackToOrders}
+                  className="block w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface"
+                >
+                  Back to Orders
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function NewOrderPage() {
+  return (
+    <Suspense>
+      <NewOrderPageContent />
+    </Suspense>
+  );
+}

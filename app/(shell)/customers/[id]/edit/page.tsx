@@ -36,6 +36,7 @@ export default function EditCustomerPage({
       <div className="max-w-2xl">
         <NewCustomerForm
           onSubmit={handleSubmit}
+          excludeCustomerId={params.id}
           initialValues={{
             name: customer!.name,
             phone: customer!.phone,

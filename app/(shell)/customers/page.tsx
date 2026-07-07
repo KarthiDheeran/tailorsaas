@@ -11,12 +11,10 @@ import {
 } from "@/components/customers/customer-filters";
 
 const EMPTY_FILTERS: CustomerFilterState = {
-  phoneQuery: "",
-  nameQuery: "",
+  query: "",
   area: "",
-  hasBalance: false,
-  recentOnly: false,
-  inactiveOnly: false,
+  balance: "all",
+  activity: "all",
 };
 
 export default function CustomersPage() {
@@ -29,16 +27,23 @@ export default function CustomersPage() {
   const areas = getCustomerAreas();
 
   const rows = allRows.filter((row) => {
-    const phoneQuery = filters.phoneQuery.trim();
-    const nameQuery = filters.nameQuery.trim().toLowerCase();
-    if (phoneQuery && !row.customer.phone.includes(phoneQuery)) return false;
-    if (nameQuery && !row.customer.name.toLowerCase().includes(nameQuery)) {
-      return false;
+    const query = filters.query.trim();
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      const matchesName = row.customer.name.toLowerCase().includes(lowerQuery);
+      const matchesPhone = row.customer.phone.includes(query);
+      const matchesNumber = row.customer.customerNumber
+        .toLowerCase()
+        .includes(lowerQuery);
+      if (!matchesName && !matchesPhone && !matchesNumber) return false;
     }
     if (filters.area && row.customer.area !== filters.area) return false;
-    if (filters.hasBalance && row.outstandingBalance <= 0) return false;
-    if (filters.recentOnly && row.status !== "Active") return false;
-    if (filters.inactiveOnly && row.status !== "Inactive") return false;
+    if (filters.balance === "has" && row.outstandingBalance <= 0) return false;
+    if (filters.balance === "none" && row.outstandingBalance > 0) return false;
+    if (filters.activity === "recent" && row.status !== "Active") return false;
+    if (filters.activity === "inactive" && row.status !== "Inactive") {
+      return false;
+    }
     return true;
   });
 

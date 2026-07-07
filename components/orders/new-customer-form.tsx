@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { Gender } from "@/lib/types";
+import { getCustomerByPhone } from "@/lib/data/stub-data";
 import { cn } from "@/lib/utils";
 
 export interface NewCustomerFormValues {
@@ -9,21 +11,40 @@ export interface NewCustomerFormValues {
   phone: string;
   address: string;
   area: string;
-  gender: Gender;
+  gender?: Gender;
 }
+
+const GENDER_OPTIONS: Gender[] = ["Male", "Female"];
+
+const inputClass =
+  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
 export function NewCustomerForm({
   onSubmit,
+  onCancel,
+  secondaryAction,
   initialPhone,
   initialName,
   initialValues,
+  excludeCustomerId,
   title = "New Customer",
   submitLabel = "Continue to Measurements",
 }: {
   onSubmit: (values: NewCustomerFormValues) => void;
+  // When provided, a Cancel button renders alongside the submit button(s).
+  onCancel?: () => void;
+  // An alternate save action (e.g. "Save & New Order") — runs the same
+  // validation as the primary submit, then calls its own handler instead.
+  secondaryAction?: {
+    label: string;
+    onSubmit: (values: NewCustomerFormValues) => void;
+  };
   initialPhone?: string;
   initialName?: string;
   initialValues?: NewCustomerFormValues;
+  // Excludes this customer's own id from the duplicate-phone check, so
+  // editing a customer without changing their phone doesn't flag itself.
+  excludeCustomerId?: string;
   title?: string;
   submitLabel?: string;
 }) {
@@ -33,23 +54,66 @@ export function NewCustomerForm({
   );
   const [address, setAddress] = useState(initialValues?.address ?? "");
   const [area, setArea] = useState(initialValues?.area ?? "");
-  const [gender, setGender] = useState<Gender>(initialValues?.gender ?? "Male");
+  const [gender, setGender] = useState<Gender | undefined>(
+    initialValues?.gender
+  );
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
+  const [duplicateCustomer, setDuplicateCustomer] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
-    onSubmit({
-      name: name.trim(),
-      phone: phone.trim(),
+  function buildValidatedValues(): NewCustomerFormValues | null {
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+    const nextErrors: { name?: string; phone?: string } = {};
+    if (!trimmedName) nextErrors.name = "Name is required.";
+    if (!trimmedPhone) {
+      nextErrors.phone = "Phone number is required.";
+    } else if (!/^\d{10}$/.test(trimmedPhone)) {
+      nextErrors.phone = "Phone number must be exactly 10 digits.";
+    }
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      setDuplicateCustomer(null);
+      return null;
+    }
+
+    const existing = getCustomerByPhone(trimmedPhone);
+    if (existing && existing.id !== excludeCustomerId) {
+      setDuplicateCustomer({ id: existing.id, name: existing.name });
+      return null;
+    }
+    setDuplicateCustomer(null);
+
+    return {
+      name: trimmedName,
+      phone: trimmedPhone,
       address: address.trim(),
       area: area.trim(),
       gender,
-    });
+    };
+  }
+
+  function handlePhoneChange(value: string) {
+    setPhone(value.replace(/\D/g, "").slice(0, 10));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const values = buildValidatedValues();
+    if (values) onSubmit(values);
+  }
+
+  function handleSecondarySubmit() {
+    const values = buildValidatedValues();
+    if (values) secondaryAction?.onSubmit(values);
   }
 
   return (
     <form
       onSubmit={handleSubmit}
+      noValidate
       className="rounded-xl border border-border-soft bg-white p-5 shadow-soft"
     >
       <h3 className="mb-4 text-[17px] font-semibold text-ink">{title}</h3>
@@ -57,22 +121,48 @@ export function NewCustomerForm({
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">Name</span>
           <input
-            required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            className={cn(
+              inputClass,
+              errors.name && "border-chip-red-fg focus:border-chip-red-fg"
+            )}
           />
+          {errors.name && (
+            <span className="text-xs font-medium text-chip-red-fg">
+              {errors.name}
+            </span>
+          )}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
             Phone Number
           </span>
           <input
-            required
+            inputMode="numeric"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            onChange={(e) => handlePhoneChange(e.target.value)}
+            className={cn(
+              inputClass,
+              errors.phone && "border-chip-red-fg focus:border-chip-red-fg"
+            )}
           />
+          {errors.phone && (
+            <span className="text-xs font-medium text-chip-red-fg">
+              {errors.phone}
+            </span>
+          )}
+          {duplicateCustomer && (
+            <div className="mt-1 rounded-lg bg-chip-red px-3.5 py-2.5 text-xs font-medium text-chip-red-fg">
+              Customer with this phone number already exists.{" "}
+              <Link
+                href={`/customers/${duplicateCustomer.id}`}
+                className="font-semibold underline hover:no-underline"
+              >
+                View existing customer
+              </Link>
+            </div>
+          )}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
@@ -81,7 +171,7 @@ export function NewCustomerForm({
           <input
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            className={inputClass}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -91,7 +181,7 @@ export function NewCustomerForm({
           <input
             value={area}
             onChange={(e) => setArea(e.target.value)}
-            className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            className={inputClass}
           />
         </label>
         <div className="flex flex-col gap-1.5">
@@ -99,7 +189,7 @@ export function NewCustomerForm({
             Gender
           </span>
           <div className="flex gap-2">
-            {(["Male", "Female"] as Gender[]).map((g) => (
+            {GENDER_OPTIONS.map((g) => (
               <button
                 key={g}
                 type="button"
@@ -117,12 +207,44 @@ export function NewCustomerForm({
           </div>
         </div>
       </div>
-      <button
-        type="submit"
-        className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-      >
-        {submitLabel}
-      </button>
+
+      {onCancel || secondaryAction ? (
+        <div className="mt-5 flex items-center gap-3">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            >
+              Cancel
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {secondaryAction && (
+              <button
+                type="button"
+                onClick={handleSecondarySubmit}
+                className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              >
+                {secondaryAction.label}
+              </button>
+            )}
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              {submitLabel}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="submit"
+          className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+        >
+          {submitLabel}
+        </button>
+      )}
     </form>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { X, Pencil } from "lucide-react";
+import { X, Pencil, Printer } from "lucide-react";
 import type { Order } from "@/lib/types";
 import { getCustomerById } from "@/lib/data/stub-data";
 import {
@@ -10,6 +11,54 @@ import {
   BalanceBadge,
 } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
+
+// Print routes are opened in the SAME tab (client-side <Link> navigation),
+// not a new tab, deliberately: stub-data's in-memory orders/customers arrays
+// only live in this browser tab's JS session (see lib/data/stub-data.ts) —
+// a genuinely new tab would re-run from seed data and could show "order not
+// found" for any order created this session. Same-tab Link navigation keeps
+// the existing in-memory state intact.
+function PrintMenu({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+      >
+        <Printer className="h-3.5 w-3.5" />
+        Print
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <ul className="absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
+            <li>
+              <Link
+                href={`/orders/${orderId}/print/customer`}
+                className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+              >
+                Customer Receipt
+              </Link>
+            </li>
+            <li>
+              <Link
+                href={`/orders/${orderId}/print/job-card`}
+                className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+              >
+                Tailor Job Card
+              </Link>
+            </li>
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function OrderDetailsDrawer({
   order,
@@ -177,6 +226,7 @@ export function OrderDetailsDrawer({
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Order
               </button>
+              <PrintMenu orderId={order.id} />
               {customer && (
                 <ContactActions
                   phone={customer.phone}
