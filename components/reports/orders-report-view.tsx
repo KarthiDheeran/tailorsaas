@@ -1,0 +1,143 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { AlertTriangle, CalendarClock, Receipt, Wallet } from "lucide-react";
+import { OrdersTable } from "@/components/orders/orders-table";
+import { DateRangeFilter } from "@/components/reports/date-range-filter";
+import { ReportActions } from "@/components/reports/report-actions";
+import { ReportStatCard } from "@/components/reports/report-stat-card";
+import { downloadCsv } from "@/lib/csv";
+import { getCustomerById } from "@/lib/data/stub-data";
+import {
+  getDateRangeForPreset,
+  getGarmentTypes,
+  getOrdersReport,
+  type DateRange,
+  type DateRangePreset,
+  type OrderBalanceFilter,
+  type OrderDeliveryFilter,
+} from "@/lib/reports";
+
+export function OrdersReportView({ todayIso }: { todayIso: string }) {
+  const [preset, setPreset] = useState<DateRangePreset>("all");
+  const [customRange, setCustomRange] = useState<DateRange>({
+    from: todayIso,
+    to: todayIso,
+  });
+  const [balanceStatus, setBalanceStatus] = useState<OrderBalanceFilter>("all");
+  const [deliveryStatus, setDeliveryStatus] = useState<OrderDeliveryFilter>("all");
+  const [garmentType, setGarmentType] = useState("");
+  const [customerQuery, setCustomerQuery] = useState("");
+
+  const garmentTypes = useMemo(() => getGarmentTypes(), []);
+  const range = getDateRangeForPreset(preset, todayIso, customRange);
+  const report = useMemo(
+    () =>
+      getOrdersReport(
+        {
+          range,
+          balanceStatus,
+          deliveryStatus,
+          garmentType: garmentType || undefined,
+          customerQuery,
+        },
+        todayIso
+      ),
+    [range.from, range.to, balanceStatus, deliveryStatus, garmentType, customerQuery, todayIso]
+  );
+
+  function handleExport() {
+    downloadCsv(
+      `orders-report-${todayIso}.csv`,
+      ["Order No", "Customer", "Order Date", "Delivery Date", "Items", "Total", "Balance"],
+      report.orders.map((o) => [
+        o.orderNumber,
+        getCustomerById(o.customerId)?.name ?? "Unknown",
+        o.orderDate,
+        o.deliveryDate,
+        o.items.map((i) => `${i.particular} x${i.qty}`).join("; "),
+        o.totalAmount,
+        o.balance,
+      ])
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRangeFilter
+            preset={preset}
+            custom={customRange}
+            onPresetChange={setPreset}
+            onCustomChange={setCustomRange}
+          />
+          <select
+            value={balanceStatus}
+            onChange={(e) => setBalanceStatus(e.target.value as OrderBalanceFilter)}
+            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
+          >
+            <option value="all">All Balance Status</option>
+            <option value="paid">Paid</option>
+            <option value="balanceDue">Balance Due</option>
+            <option value="overdue">Overdue</option>
+          </select>
+          <select
+            value={deliveryStatus}
+            onChange={(e) => setDeliveryStatus(e.target.value as OrderDeliveryFilter)}
+            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
+          >
+            <option value="all">All Deliveries</option>
+            <option value="overdue">Delivery Overdue</option>
+            <option value="dueSoon">Due in 7 Days</option>
+          </select>
+          <select
+            value={garmentType}
+            onChange={(e) => setGarmentType(e.target.value)}
+            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
+          >
+            <option value="">All Garments</option>
+            {garmentTypes.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+          <input
+            value={customerQuery}
+            onChange={(e) => setCustomerQuery(e.target.value)}
+            placeholder="Search customer..."
+            className="h-9 w-48 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
+          />
+        </div>
+        <ReportActions onExport={handleExport} />
+      </div>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <ReportStatCard
+          label="Total Orders"
+          value={String(report.summary.totalOrders)}
+          icon={Receipt}
+        />
+        <ReportStatCard
+          label="Balance Due"
+          value={String(report.summary.balanceDueOrders)}
+          icon={Wallet}
+        />
+        <ReportStatCard
+          label="Overdue"
+          value={String(report.summary.overdueOrders)}
+          icon={AlertTriangle}
+          tone={report.summary.overdueOrders > 0 ? "warning" : "default"}
+        />
+        <ReportStatCard
+          label="Due in 7 Days"
+          value={String(report.summary.dueSoonDeliveries)}
+          icon={CalendarClock}
+        />
+      </div>
+
+      <OrdersTable orders={report.orders} />
+    </div>
+  );
+}

@@ -1,0 +1,340 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import {
+  getAllOrders,
+  getCustomerById,
+  getOrdersForCustomer,
+} from "@/lib/data/stub-data";
+import type { Customer, Order } from "@/lib/types";
+
+import {
+  OrderListFilters,
+  type BalanceFilter,
+  type DeliveryCustomRange,
+  type DeliveryFilter,
+  type StatusFilter,
+} from "@/components/orders/order-list-filters";
+import {
+  OrdersTable,
+  type OrdersSortDir,
+  type OrdersSortKey,
+} from "@/components/orders/orders-table";
+import { OrderDetailsDrawer } from "@/components/orders/order-details-drawer";
+import { EditOrderDrawer } from "@/components/orders/edit-order-drawer";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Same plain YYYY-MM-DD string date-math convention as lib/dashboard.ts
+// (never Date/Intl formatting) so server/client rendering stays consistent.
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) + days * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export default function OrdersPage() {
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+    null
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
+  const [deliveryCustomRange, setDeliveryCustomRange] =
+    useState<DeliveryCustomRange>({ from: "", to: "" });
+  const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<OrdersSortKey>("orderDate");
+  const [sortDir, setSortDir] = useState<OrdersSortDir>("desc");
+  const [, setRefreshTick] = useState(0);
+  const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  function handleStatusChanged() {
+    setRefreshTick((t) => t + 1);
+  }
+
+  function handleEditOrder(order: Order) {
+    setDetailsOrder(null);
+    setEditingOrder(order);
+  }
+
+  function handleOrderSaved(updatedOrder: Order) {
+    setEditingOrder(null);
+    setDetailsOrder(updatedOrder);
+    setRefreshTick((t) => t + 1);
+  }
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  function handleSort(key: OrdersSortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+    setPage(1);
+  }
+
+  function handleQueryChange(query: string) {
+    setSearchQuery(query);
+    setPage(1);
+  }
+
+  function handleBalanceFilterChange(filter: BalanceFilter) {
+    setBalanceFilter(filter);
+    setPage(1);
+  }
+
+  function handleStatusFilterChange(filter: StatusFilter) {
+    setStatusFilter(filter);
+    setPage(1);
+  }
+
+  function handleDeliveryFilterChange(filter: DeliveryFilter) {
+    setDeliveryFilter(filter);
+    setPage(1);
+  }
+
+  function handleDeliveryCustomRangeChange(range: DeliveryCustomRange) {
+    setDeliveryCustomRange(range);
+    setPage(1);
+  }
+
+  function handleClearFilters() {
+    setSearchQuery("");
+    setBalanceFilter("all");
+    setStatusFilter("all");
+    setDeliveryFilter("all");
+    setDeliveryCustomRange({ from: "", to: "" });
+    setPage(1);
+  }
+
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const filteredOrders = getAllOrders().filter((order) => {
+    if (trimmedQuery) {
+      const customer = getCustomerById(order.customerId);
+      const matchesQuery =
+        order.orderNumber.toLowerCase().includes(trimmedQuery) ||
+        customer?.name.toLowerCase().includes(trimmedQuery) ||
+        customer?.phone.includes(searchQuery.trim());
+      if (!matchesQuery) return false;
+    }
+    if (balanceFilter === "paid" && order.balance > 0) return false;
+    if (
+      balanceFilter === "due" &&
+      !(order.balance > 0 && order.deliveryDate >= todayIso)
+    )
+      return false;
+    if (
+      balanceFilter === "overdue" &&
+      !(order.balance > 0 && order.deliveryDate < todayIso)
+    )
+      return false;
+    if (statusFilter !== "all" && order.status !== statusFilter) return false;
+    if (deliveryFilter === "dueToday" && order.deliveryDate !== todayIso)
+      return false;
+    if (
+      deliveryFilter === "dueTomorrow" &&
+      order.deliveryDate !== addDaysIso(todayIso, 1)
+    )
+      return false;
+    if (
+      deliveryFilter === "dueWeek" &&
+      !(
+        order.deliveryDate >= todayIso &&
+        order.deliveryDate <= addDaysIso(todayIso, 7)
+      )
+    )
+      return false;
+    if (deliveryFilter === "overdue" && !(order.deliveryDate < todayIso))
+      return false;
+    if (deliveryFilter === "custom") {
+      if (deliveryCustomRange.from && order.deliveryDate < deliveryCustomRange.from)
+        return false;
+      if (deliveryCustomRange.to && order.deliveryDate > deliveryCustomRange.to)
+        return false;
+    }
+    return true;
+  });
+
+  const allOrders = [...filteredOrders].sort((a, b) => {
+    const cmp = a[sortKey] < b[sortKey] ? -1 : a[sortKey] > b[sortKey] ? 1 : 0;
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+  const totalPages = Math.max(1, Math.ceil(allOrders.length / PAGE_SIZE));
+  const pagedOrders = allOrders.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
+  const rangeStart = allOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, allOrders.length);
+
+  const customerOrders = selectedCustomer
+    ? getOrdersForCustomer(selectedCustomer.id)
+    : [];
+
+  function handleSelectCustomer(customer: Customer) {
+    setSelectedCustomer(customer);
+  }
+
+  function clearSelection() {
+    setSelectedCustomer(null);
+    setSearchQuery("");
+    setBalanceFilter("all");
+    setStatusFilter("all");
+    setDeliveryFilter("all");
+    setDeliveryCustomRange({ from: "", to: "" });
+    setPage(1);
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl p-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold text-ink">Orders</h1>
+          <p className="text-sm text-ink-muted">
+            Manage and track all customer orders
+          </p>
+        </div>
+        <Link
+          href="/orders/new"
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+        >
+          <Plus className="h-4 w-4" />
+          New Order
+        </Link>
+      </div>
+
+      {!selectedCustomer && (
+        <OrderListFilters
+          query={searchQuery}
+          onQueryChange={handleQueryChange}
+          balanceFilter={balanceFilter}
+          onBalanceFilterChange={handleBalanceFilterChange}
+          statusFilter={statusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
+          deliveryFilter={deliveryFilter}
+          onDeliveryFilterChange={handleDeliveryFilterChange}
+          deliveryCustomRange={deliveryCustomRange}
+          onDeliveryCustomRangeChange={handleDeliveryCustomRangeChange}
+          onClearFilters={handleClearFilters}
+          onSelectCustomer={handleSelectCustomer}
+        />
+      )}
+
+      {selectedCustomer ? (
+        <div>
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+            <div>
+              <p className="font-medium text-ink">{selectedCustomer.name}</p>
+              <p className="text-sm text-ink-muted">
+                {selectedCustomer.phone} · {selectedCustomer.area} ·{" "}
+                {selectedCustomer.gender}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/orders/new?customerId=${selectedCustomer.id}`}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" />
+                New Order
+              </Link>
+              <button
+                onClick={clearSelection}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              >
+                Back to all orders
+              </button>
+            </div>
+          </div>
+          <h2 className="mb-3 px-1 text-sm font-medium text-ink-muted">
+            Orders for {selectedCustomer.name}
+          </h2>
+          <OrdersTable
+            orders={customerOrders}
+            editableStatus
+            onStatusChange={handleStatusChanged}
+            onRowClick={setDetailsOrder}
+          />
+        </div>
+      ) : (
+        <>
+          <OrdersTable
+            orders={pagedOrders}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+            editableStatus
+            onStatusChange={handleStatusChanged}
+            onRowClick={setDetailsOrder}
+          />
+          {allOrders.length > 0 && (
+            <div className="mt-5 flex items-center justify-between text-sm">
+              <span className="text-ink-muted">
+                Showing {rangeStart} to {rangeEnd} of {allOrders.length} orders
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (n) => (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
+                        n === page
+                          ? "border-primary bg-primary text-white"
+                          : "border-border bg-white text-ink hover:bg-surface"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <OrderDetailsDrawer
+        order={detailsOrder}
+        onClose={() => setDetailsOrder(null)}
+        onStatusChange={handleStatusChanged}
+        onEdit={handleEditOrder}
+      />
+      <EditOrderDrawer
+        key={editingOrder?.id ?? "none"}
+        order={editingOrder}
+        customer={
+          editingOrder ? getCustomerById(editingOrder.customerId) : undefined
+        }
+        onCancel={() => setEditingOrder(null)}
+        onSaved={handleOrderSaved}
+      />
+    </div>
+  );
+}
