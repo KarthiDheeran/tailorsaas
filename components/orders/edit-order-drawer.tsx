@@ -11,19 +11,25 @@ import type {
 } from "@/lib/types";
 import {
   getGarmentMeasurement,
-  orderStatuses,
   saveGarmentMeasurement,
   updateCustomer,
   updateOrder,
 } from "@/lib/data/stub-data";
 import { getMeasurementFields } from "@/lib/garment-catalog";
-import { BalanceBadge, formatDate } from "@/components/orders/orders-table";
+import {
+  BalanceBadge,
+  formatDate,
+  getAvailableOrderStatuses,
+  ORDER_STATUS_LABEL_KEYS,
+} from "@/components/orders/orders-table";
 import {
   GarmentMeasurementModal,
   blankGarmentDraft,
   countFilledFields,
   type GarmentMeasurementDraft,
 } from "@/components/orders/garment-measurement-modal";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 // size/addOns aren't editable in this drawer (no garment-type dropdown here
 // yet — particular stays free text), but are carried through untouched so
@@ -69,6 +75,11 @@ export function EditOrderDrawer({
   onCancel: () => void;
   onSaved: (order: Order) => void;
 }) {
+  const { hasPermission, effectivePermissions } = useCurrentUser();
+  const { t } = useLanguage();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const availableStatuses = getAvailableOrderStatuses(effectivePermissions);
+
   // Re-keyed by order.id from the parent (see app/orders/page.tsx) so this
   // local state resets to fresh initial values whenever a different order is
   // opened for editing, without needing a useEffect sync.
@@ -192,7 +203,7 @@ export function EditOrderDrawer({
   }
 
   function handleClose() {
-    if (isDirty && !window.confirm("Discard unsaved changes?")) return;
+    if (isDirty && !window.confirm(t("orders.discardChanges"))) return;
     onCancel();
   }
 
@@ -247,7 +258,7 @@ export function EditOrderDrawer({
       <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-y-auto bg-white shadow-soft sm:w-[600px] md:w-[760px]">
         <div className="flex items-start justify-between border-b border-border-soft px-6 py-5">
           <div>
-            <p className="text-[17px] font-semibold text-ink">Edit Order</p>
+            <p className="text-[17px] font-semibold text-ink">{t("orders.editOrder")}</p>
             <p className="text-sm text-ink-muted">{order.orderNumber}</p>
           </div>
           <div className="flex items-center gap-3">
@@ -256,16 +267,22 @@ export function EditOrderDrawer({
               onChange={(e) => setStatus(e.target.value as OrderStatus)}
               className={`${inputClass} h-9 py-0 text-xs font-semibold`}
             >
-              {orderStatuses.map((s) => (
+              {/* order.status may not be in availableStatuses (e.g. Cancelled
+                  without orders.cancel) — always include it so the select
+                  doesn't silently jump to a different value. */}
+              {(availableStatuses.includes(status)
+                ? availableStatuses
+                : [status, ...availableStatuses]
+              ).map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {t(ORDER_STATUS_LABEL_KEYS[s])}
                 </option>
               ))}
             </select>
             <button
               type="button"
               onClick={handleClose}
-              aria-label="Close"
+              aria-label={t("common.close")}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
             >
               <X className="h-4 w-4" />
@@ -280,12 +297,12 @@ export function EditOrderDrawer({
           <div className="space-y-5 px-6 py-5">
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                Customer
+                {t("orders.customer")}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Customer Name
+                    {t("customers.customerName")}
                   </span>
                   <input
                     required
@@ -296,7 +313,7 @@ export function EditOrderDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Phone
+                    {t("common.phone")}
                   </span>
                   <input
                     required
@@ -307,7 +324,7 @@ export function EditOrderDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Address
+                    {t("common.address")}
                   </span>
                   <input
                     value={address}
@@ -317,7 +334,7 @@ export function EditOrderDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Area / Locality
+                    {t("common.area")}
                   </span>
                   <input
                     value={area}
@@ -330,12 +347,12 @@ export function EditOrderDrawer({
 
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                Dates
+                {t("orders.dates")}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Order Date
+                    {t("orders.orderDate")}
                   </span>
                   <input
                     type="date"
@@ -347,7 +364,7 @@ export function EditOrderDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Delivery Date
+                    {t("orders.deliveryDate")}
                   </span>
                   <input
                     type="date"
@@ -362,13 +379,13 @@ export function EditOrderDrawer({
 
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-[17px] font-semibold text-ink">Items</h3>
+                <h3 className="text-[17px] font-semibold text-ink">{t("orders.items")}</h3>
                 <button
                   type="button"
                   onClick={addItem}
                   className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface"
                 >
-                  <Plus className="h-4 w-4" /> Add Item
+                  <Plus className="h-4 w-4" /> {t("orders.addItem")}
                 </button>
               </div>
               <div className="space-y-3">
@@ -380,7 +397,7 @@ export function EditOrderDrawer({
                     <label className="flex min-w-0 flex-col gap-1.5">
                       {i === 0 && (
                         <span className="text-[13px] font-medium text-ink-muted">
-                          Particular
+                          {t("orders.particular")}
                         </span>
                       )}
                       <input
@@ -395,7 +412,7 @@ export function EditOrderDrawer({
                     <label className="flex min-w-0 flex-col gap-1.5">
                       {i === 0 && (
                         <span className="text-[13px] font-medium text-ink-muted">
-                          Qty
+                          {t("common.qty")}
                         </span>
                       )}
                       <input
@@ -411,7 +428,7 @@ export function EditOrderDrawer({
                     <label className="flex min-w-0 flex-col gap-1.5">
                       {i === 0 && (
                         <span className="text-[13px] font-medium text-ink-muted">
-                          Rate
+                          {t("common.rate")}
                         </span>
                       )}
                       <input
@@ -427,7 +444,7 @@ export function EditOrderDrawer({
                     <div className="flex min-w-0 flex-col gap-1.5">
                       {i === 0 && (
                         <span className="text-[13px] font-medium text-ink-muted">
-                          Amount
+                          {t("common.amount")}
                         </span>
                       )}
                       <div className="flex h-11 items-center text-sm font-semibold text-ink">
@@ -440,11 +457,11 @@ export function EditOrderDrawer({
                       disabled={!it.particular.trim()}
                       title={
                         it.particular.trim()
-                          ? "Measurement"
-                          : "Enter a particular first"
+                          ? t("orders.measurementBtnTitle")
+                          : t("orders.enterParticularFirst")
                       }
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-primary-tint hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-                      aria-label="Measurement"
+                      aria-label={t("orders.measurementBtnTitle")}
                     >
                       <Ruler className="h-4 w-4" />
                     </button>
@@ -453,7 +470,7 @@ export function EditOrderDrawer({
                       onClick={() => removeItem(i)}
                       disabled={items.length === 1}
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-30"
-                      aria-label="Remove item"
+                      aria-label={t("orders.removeItem")}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -465,7 +482,7 @@ export function EditOrderDrawer({
             {distinctGarments.length > 0 && (
               <div className="rounded-lg bg-surface p-4">
                 <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                  Measurements
+                  {t("orders.measurements")}
                 </p>
                 <ul className="space-y-1">
                   {distinctGarments.map((garmentType) => {
@@ -478,16 +495,18 @@ export function EditOrderDrawer({
                     const count = countFilledFields(draft);
                     let statusText: string;
                     if (count === 0) {
-                      statusText = "No measurements saved yet";
+                      statusText = t("orders.noMeasurementsSavedYet");
                     } else if (
                       pending &&
                       JSON.stringify(pending) !==
                         JSON.stringify(persistedDraftFor(garmentType))
                     ) {
-                      statusText = `${count} field${count === 1 ? "" : "s"} saved, unsaved changes`;
+                      statusText = `${count} ${t("orders.fieldsSaved")}, ${t("orders.unsavedChanges")}`;
                     } else {
-                      statusText = `${count} field${count === 1 ? "" : "s"} saved${
-                        persisted ? `, updated ${formatDate(persisted.updatedAt)}` : ""
+                      statusText = `${count} ${t("orders.fieldsSaved")}${
+                        persisted
+                          ? `, ${t("orders.updated")} ${formatDate(persisted.updatedAt)}`
+                          : ""
                       }`;
                     }
                     return (
@@ -506,33 +525,35 @@ export function EditOrderDrawer({
               </div>
             )}
 
-            <div className="rounded-lg bg-surface p-4">
-              <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                Payment Summary
-              </p>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-ink-muted">Total</span>
-                <span className="text-sm font-semibold text-ink">
-                  ₹{totalAmount.toLocaleString("en-IN")}
-                </span>
+            {canViewPayments && (
+              <div className="rounded-lg bg-surface p-4">
+                <p className="mb-2 text-[13px] font-medium text-ink-muted">
+                  {t("orders.paymentSummary")}
+                </p>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-ink-muted">{t("common.total")}</span>
+                  <span className="text-sm font-semibold text-ink">
+                    ₹{totalAmount.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-ink-muted">{t("common.paid")}</span>
+                  <span className="text-sm font-semibold text-ink">
+                    ₹{order.advancePaid.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-ink-muted">{t("common.balance")}</span>
+                  <span className="text-sm font-semibold text-ink">
+                    ₹{balance.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-ink-muted">{t("orders.paymentStatus")}</span>
+                  <BalanceBadge order={draftOrder} todayIso={todayIso} />
+                </div>
               </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-ink-muted">Paid</span>
-                <span className="text-sm font-semibold text-ink">
-                  ₹{order.advancePaid.toLocaleString("en-IN")}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-ink-muted">Balance</span>
-                <span className="text-sm font-semibold text-ink">
-                  ₹{balance.toLocaleString("en-IN")}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-ink-muted">Payment Status</span>
-                <BalanceBadge order={draftOrder} todayIso={todayIso} />
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
@@ -540,14 +561,14 @@ export function EditOrderDrawer({
               type="submit"
               className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
-              Save Changes
+              {t("common.saveChanges")}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>

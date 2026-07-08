@@ -19,6 +19,7 @@ import {
   type GarmentMeasurementDraft,
 } from "@/components/orders/garment-measurement-modal";
 import { Select } from "@/components/ui/select";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 // Global measurement field id -> label, built once from Catalog's field
 // library so a garment's linked measurementFieldIds can be rendered with
@@ -157,6 +158,7 @@ function AddOnsPicker({
   onToggle: (id: string) => void;
   garmentSelected: boolean;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -168,8 +170,8 @@ function AddOnsPicker({
   // mismatch against Rate alone.
   const label =
     selected.length > 0
-      ? `Add-ons: ${selected.length} · ₹${selectedTotal.toLocaleString("en-IN")}`
-      : "Add-ons";
+      ? `${t("common.addOns")}: ${selected.length} · ₹${selectedTotal.toLocaleString("en-IN")}`
+      : t("common.addOns");
 
   // Popover is positioned `fixed` (computed from the trigger button's own
   // viewport rect) rather than `absolute`, so it isn't clipped by any
@@ -189,10 +191,10 @@ function AddOnsPicker({
         onClick={() => (open ? setOpen(false) : openPicker())}
         title={
           !garmentSelected
-            ? "Select a garment first"
+            ? t("orders.selectGarmentFirst")
             : addOns.length === 0
-              ? "No add-ons configured"
-              : "Select add-ons"
+              ? t("orders.noAddOnsConfigured")
+              : t("orders.selectAddOns")
         }
         className={`flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${
           disabled
@@ -245,6 +247,7 @@ export function NewOrderItemsCard({
   items: DraftItem[];
   onItemsChange: (items: DraftItem[]) => void;
 }) {
+  const { t } = useLanguage();
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
   const activeGarments = getActiveGarmentTypes();
 
@@ -315,13 +318,13 @@ export function NewOrderItemsCard({
   return (
     <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[17px] font-semibold text-ink">Order Items</h3>
+        <h3 className="text-[17px] font-semibold text-ink">{t("orders.orderItems")}</h3>
         <button
           type="button"
           onClick={addItem}
           className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface"
         >
-          <Plus className="h-4 w-4" /> Add Item
+          <Plus className="h-4 w-4" /> {t("orders.addItem")}
         </button>
       </div>
       <div className="space-y-3">
@@ -337,7 +340,7 @@ export function NewOrderItemsCard({
               <div className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr] items-end gap-3">
                 <label className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Garment Type
+                    {t("orders.garmentType")}
                   </span>
                   <Select
                     required
@@ -345,7 +348,7 @@ export function NewOrderItemsCard({
                     onChange={(e) => handleGarmentTypeChange(i, e.target.value)}
                   >
                     <option value="" disabled>
-                      Select...
+                      {t("common.selectEllipsis")}
                     </option>
                     {activeGarments.map((g) => (
                       <option key={g.id} value={g.id}>
@@ -356,7 +359,7 @@ export function NewOrderItemsCard({
                 </label>
                 <label className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Qty
+                    {t("common.qty")}
                   </span>
                   <input
                     type="number"
@@ -368,7 +371,7 @@ export function NewOrderItemsCard({
                 </label>
                 <label className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Rate
+                    {t("common.rate")}
                   </span>
                   <input
                     type="number"
@@ -380,7 +383,7 @@ export function NewOrderItemsCard({
                 </label>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Amount
+                    {t("common.amount")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
                     ₹{amount.toLocaleString("en-IN")}
@@ -400,9 +403,9 @@ export function NewOrderItemsCard({
                   disabled={measurementsDisabled}
                   title={
                     !it.garmentTypeId
-                      ? "Select a garment first"
+                      ? t("orders.selectGarmentFirst")
                       : !hasMeasurementFields
-                        ? "No measurement fields configured"
+                        ? t("orders.noMeasurementFieldsConfigured")
                         : undefined
                   }
                   className={`flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${
@@ -414,17 +417,17 @@ export function NewOrderItemsCard({
                   }`}
                 >
                   <Ruler className="h-3.5 w-3.5 shrink-0" />
-                  {measurementsFilled ? "Measurements added" : "Measurements"}
+                  {measurementsFilled ? t("orders.measurementsAdded") : t("orders.measurements")}
                 </button>
                 <button
                   type="button"
                   onClick={() => removeItem(i)}
                   disabled={items.length === 1}
-                  title="Remove item"
+                  title={t("orders.removeItem")}
                   className="ml-auto flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  Delete
+                  {t("orders.deleteItem")}
                 </button>
               </div>
             </div>

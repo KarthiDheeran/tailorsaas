@@ -26,6 +26,9 @@ import {
 import { OrderDetailsDrawer } from "@/components/orders/order-details-drawer";
 import { EditOrderDrawer } from "@/components/orders/edit-order-drawer";
 import { cn } from "@/lib/utils";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,7 +42,10 @@ function addDaysIso(iso: string, days: number): string {
     .slice(0, 10);
 }
 
-export default function OrdersPage() {
+function OrdersPageContent() {
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+  const canCreate = hasPermission("orders.create");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null
   );
@@ -222,12 +228,12 @@ export default function OrdersPage() {
         <div className="fixed right-8 top-6 z-50 flex items-center gap-2 rounded-lg border border-border-soft bg-white px-4 py-3 shadow-soft">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
           <span className="text-sm font-medium text-ink">
-            Order created successfully
+            {t("orders.orderCreatedSuccess")}
           </span>
           <button
             type="button"
             onClick={() => setShowCreatedToast(false)}
-            aria-label="Dismiss"
+            aria-label={t("orders.dismiss")}
             className="ml-1 flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-surface hover:text-ink"
           >
             <X className="h-3.5 w-3.5" />
@@ -236,18 +242,20 @@ export default function OrdersPage() {
       )}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Orders</h1>
+          <h1 className="text-[26px] font-semibold text-ink">{t("orders.title")}</h1>
           <p className="text-sm text-ink-muted">
-            Manage and track all customer orders
+            {t("orders.subtitle")}
           </p>
         </div>
-        <Link
-          href="/orders/new"
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-        >
-          <Plus className="h-4 w-4" />
-          New Order
-        </Link>
+        {canCreate && (
+          <Link
+            href="/orders/new"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+          >
+            <Plus className="h-4 w-4" />
+            {t("orders.newOrder")}
+          </Link>
+        )}
       </div>
 
       {!selectedCustomer && (
@@ -278,23 +286,25 @@ export default function OrdersPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link
-                href={`/orders/new?customerId=${selectedCustomer.id}`}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-              >
-                <Plus className="h-4 w-4" />
-                New Order
-              </Link>
+              {canCreate && (
+                <Link
+                  href={`/orders/new?customerId=${selectedCustomer.id}`}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t("orders.newOrder")}
+                </Link>
+              )}
               <button
                 onClick={clearSelection}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
               >
-                Back to all orders
+                {t("orders.backToAllOrders")}
               </button>
             </div>
           </div>
           <h2 className="mb-3 px-1 text-sm font-medium text-ink-muted">
-            Orders for {selectedCustomer.name}
+            {t("orders.ordersFor")} {selectedCustomer.name}
           </h2>
           <OrdersTable
             orders={customerOrders}
@@ -317,7 +327,8 @@ export default function OrdersPage() {
           {allOrders.length > 0 && (
             <div className="mt-5 flex items-center justify-between text-sm">
               <span className="text-ink-muted">
-                Showing {rangeStart} to {rangeEnd} of {allOrders.length} orders
+                {t("common.showing")} {rangeStart} {t("common.to")} {rangeEnd}{" "}
+                {t("common.of")} {allOrders.length} {t("orders.ordersLabel")}
               </span>
               <div className="flex items-center gap-1.5">
                 <button
@@ -374,5 +385,13 @@ export default function OrdersPage() {
         onSaved={handleOrderSaved}
       />
     </div>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <RequirePermission permission="orders.view">
+      <OrdersPageContent />
+    </RequirePermission>
   );
 }

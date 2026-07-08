@@ -7,13 +7,12 @@ import {
   NewCustomerForm,
   type NewCustomerFormValues,
 } from "@/components/orders/new-customer-form";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useLanguage } from "@/components/i18n/language-provider";
 
-export default function EditCustomerPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+function EditCustomerPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { t } = useLanguage();
   const customer = getCustomerById(params.id);
 
   if (!customer) {
@@ -28,9 +27,11 @@ export default function EditCustomerPage({
   return (
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6">
-        <h1 className="text-[26px] font-semibold text-ink">Edit Customer</h1>
+        <h1 className="text-[26px] font-semibold text-ink">
+          {t("customers.editCustomer")}
+        </h1>
         <p className="text-sm text-ink-muted">
-          Update {customer!.name}&apos;s details
+          {t("customers.editCustomerSubtitle")}
         </p>
       </div>
       <div className="max-w-2xl">
@@ -44,10 +45,22 @@ export default function EditCustomerPage({
             area: customer!.area,
             gender: customer!.gender,
           }}
-          title="Customer Details"
-          submitLabel="Save Changes"
+          title={t("customers.customerDetailsSection")}
+          submitLabel={t("common.saveChanges")}
         />
       </div>
     </div>
+  );
+}
+
+export default function EditCustomerPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  return (
+    <RequirePermission permission="customers.edit">
+      <EditCustomerPageContent params={params} />
+    </RequirePermission>
   );
 }

@@ -9,13 +9,12 @@ import {
   saveCustomerMeasurements,
 } from "@/lib/data/stub-data";
 import { CustomerMeasurementsForm } from "@/components/customers/customer-measurements-form";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useLanguage } from "@/components/i18n/language-provider";
 
-export default function EditMeasurementsPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { t } = useLanguage();
   const customer = getCustomerById(params.id);
 
   if (!customer) {
@@ -40,16 +39,14 @@ export default function EditMeasurementsPage({
         className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
       >
         <ChevronLeft className="h-4 w-4" />
-        Back to {customer!.name}
+        {t("customers.backTo")} {customer!.name}
       </button>
 
       <h1 className="mb-1 text-[26px] font-semibold text-ink">
-        Edit Measurements
+        {t("customers.editMeasurementsTitle")}
       </h1>
       <p className="mb-6 text-sm text-ink-muted">
-        This is {customer!.name}&apos;s reusable measurement baseline —
-        updating overwrites these fields and applies to future orders. Fields
-        left blank are fine.
+        {t("customers.editMeasurementsDesc")}
       </p>
 
       <div className="max-w-3xl space-y-4">
@@ -65,9 +62,21 @@ export default function EditMeasurementsPage({
           onClick={handleSave}
           className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
         >
-          Save Measurements
+          {t("customers.saveMeasurements")}
         </button>
       </div>
     </div>
+  );
+}
+
+export default function EditMeasurementsPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  return (
+    <RequirePermission permission="customers.editMeasurements">
+      <EditMeasurementsPageContent params={params} />
+    </RequirePermission>
   );
 }

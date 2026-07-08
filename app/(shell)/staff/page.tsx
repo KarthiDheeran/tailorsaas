@@ -11,6 +11,9 @@ import {
   StaffFilters,
   type StaffFilterState,
 } from "@/components/staff/staff-filters";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const EMPTY_FILTERS: StaffFilterState = {
   nameQuery: "",
@@ -18,7 +21,10 @@ const EMPTY_FILTERS: StaffFilterState = {
   status: "",
 };
 
-export default function StaffPage() {
+function StaffPageContent() {
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+  const canManage = hasPermission("staff.manage");
   const [tab, setTab] = useState<StaffTab>("list");
   const [filters, setFilters] = useState<StaffFilterState>(EMPTY_FILTERS);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -61,18 +67,18 @@ export default function StaffPage() {
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Staff</h1>
+          <h1 className="text-[26px] font-semibold text-ink">{t("staff.title")}</h1>
           <p className="text-sm text-ink-muted">
-            {allRows.length} staff on record
+            {allRows.length} {t("staff.onRecord")}
           </p>
         </div>
-        {tab === "list" && (
+        {tab === "list" && canManage && (
           <Link
             href="/staff/new"
             className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
           >
             <UserPlus className="h-4 w-4" />
-            Add Staff
+            {t("staff.addStaff")}
           </Link>
         )}
       </div>
@@ -82,14 +88,14 @@ export default function StaffPage() {
       {tab === "list" && (
         <>
           <StaffFilters filters={filters} onChange={setFilters} />
-          <StaffTable rows={rows} onDeactivate={handleDeactivate} />
+          <StaffTable rows={rows} canManage={canManage} onDeactivate={handleDeactivate} />
         </>
       )}
 
       {tab === "work-queue" && (
         <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
           <p className="text-sm text-ink-muted">
-            Work Queue is coming in a later chunk.
+            {t("staff.workQueueComingSoon")}
           </p>
         </div>
       )}
@@ -97,10 +103,18 @@ export default function StaffPage() {
       {tab === "payments" && (
         <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
           <p className="text-sm text-ink-muted">
-            Staff Payments is coming in a later chunk.
+            {t("staff.paymentsComingSoon")}
           </p>
         </div>
       )}
     </div>
+  );
+}
+
+export default function StaffPage() {
+  return (
+    <RequirePermission permission="staff.view">
+      <StaffPageContent />
+    </RequirePermission>
   );
 }

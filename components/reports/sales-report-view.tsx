@@ -15,12 +15,14 @@ import {
 } from "@/lib/reports";
 import { paymentModes } from "@/lib/data/stub-data";
 import type { PaymentMode } from "@/lib/types";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
 export function SalesReportView({ todayIso }: { todayIso: string }) {
+  const { t } = useLanguage();
   const [preset, setPreset] = useState<DateRangePreset>("thisMonth");
   const [customRange, setCustomRange] = useState<DateRange>({
     from: todayIso,
@@ -63,7 +65,7 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
             onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
           >
-            <option value="">All Payment Modes</option>
+            <option value="">{t("reports.allPaymentModes")}</option>
             {paymentModes.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -76,24 +78,24 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportStatCard
-          label="Total Sales"
+          label={t("reports.totalSales")}
           value={money(report.totalSales)}
-          sublabel="Order value created"
+          sublabel={t("reports.orderValueCreated")}
           icon={ShoppingBag}
         />
         <ReportStatCard
-          label="Revenue Collected"
+          label={t("reports.revenueCollected")}
           value={money(report.revenueCollected)}
-          sublabel="Money actually received"
+          sublabel={t("reports.moneyActuallyReceived")}
           icon={IndianRupee}
         />
         <ReportStatCard
-          label="Total Orders"
+          label={t("reports.totalOrders")}
           value={String(report.totalOrders)}
           icon={Receipt}
         />
         <ReportStatCard
-          label="Average Order Value"
+          label={t("reports.averageOrderValue")}
           value={money(Math.round(report.avgOrderValue))}
           icon={TrendingUp}
         />
@@ -101,18 +103,18 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
 
       {report.rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
-          <p className="text-sm text-ink-muted">No sales in this range.</p>
+          <p className="text-sm text-ink-muted">{t("reports.noSalesInRange")}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
           <table className="w-full text-left">
             <thead className="text-[13px] font-semibold text-ink-muted">
               <tr className="border-b border-border-soft">
-                <th className="whitespace-nowrap px-5 py-3">Date</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Orders</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Gross Sales</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Amount Collected</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Balance Pending</th>
+                <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.orders")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.grossSales")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.amountCollected")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.balancePending")}</th>
               </tr>
             </thead>
             <tbody className="text-[13px]">

@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { TASK_TYPES } from "@/lib/staff";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export interface StaffFormValues {
   name: string;
@@ -70,6 +71,7 @@ export function StaffForm({
       Object.entries(initialValues?.pieceRates ?? {}).map(([k, v]) => [k, String(v)])
     )
   );
+  const { t } = useLanguage();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,7 +106,7 @@ export function StaffForm({
       <h3 className="mb-4 text-[17px] font-semibold text-ink">{title}</h3>
       <div className="grid grid-cols-2 gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Name</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("common.name")}</span>
           <input
             required
             value={name}
@@ -113,7 +115,7 @@ export function StaffForm({
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Phone Number</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("common.phoneNumber")}</span>
           <input
             required
             value={phone}
@@ -122,7 +124,7 @@ export function StaffForm({
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Role</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("staff.role")}</span>
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as StaffRole)}
@@ -136,7 +138,7 @@ export function StaffForm({
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Joining Date</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("staff.joiningDate")}</span>
           <input
             required
             type="date"
@@ -146,7 +148,7 @@ export function StaffForm({
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Address</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("common.address")}</span>
           <input
             value={address}
             onChange={(e) => setAddress(e.target.value)}
@@ -155,7 +157,7 @@ export function StaffForm({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Emergency Contact
+            {t("staff.emergencyContact")}
           </span>
           <input
             value={emergencyContact}
@@ -164,7 +166,7 @@ export function StaffForm({
           />
         </label>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Status</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("common.status")}</span>
           <div className="flex gap-2">
             {STATUSES.map((s) => (
               <button
@@ -178,27 +180,27 @@ export function StaffForm({
                     : "border-border bg-white text-ink hover:bg-surface"
                 )}
               >
-                {s}
+                {s === "Active" ? t("common.active") : s === "Inactive" ? t("common.inactive") : s}
               </button>
             ))}
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Payment Type</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("staff.paymentType")}</span>
           <div className="flex gap-2">
-            {(["Salary", "Per Piece"] as StaffPaymentType[]).map((t) => (
+            {(["Salary", "Per Piece"] as StaffPaymentType[]).map((payType) => (
               <button
-                key={t}
+                key={payType}
                 type="button"
-                onClick={() => setPaymentType(t)}
+                onClick={() => setPaymentType(payType)}
                 className={cn(
                   "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
-                  paymentType === t
+                  paymentType === payType
                     ? "border-primary bg-primary text-white"
                     : "border-border bg-white text-ink hover:bg-surface"
                 )}
               >
-                {t === "Salary" ? "Monthly Salary" : "Per Piece / Task"}
+                {payType === "Salary" ? t("staff.monthlySalary") : t("staff.perPieceTask")}
               </button>
             ))}
           </div>
@@ -208,7 +210,7 @@ export function StaffForm({
       {paymentType === "Salary" ? (
         <label className="mt-4 flex max-w-xs flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Base Salary (₹/month)
+            {t("staff.baseSalary")}
           </span>
           <input
             type="number"
@@ -221,18 +223,18 @@ export function StaffForm({
       ) : (
         <div className="mt-4">
           <span className="text-[13px] font-medium text-ink-muted">
-            Per-Task Rates (₹, leave blank for tasks not applicable)
+            {t("staff.perTaskRates")}
           </span>
           <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {TASK_TYPES.map((t) => (
-              <label key={t} className="flex flex-col gap-1.5">
-                <span className="text-xs text-ink-faint">{t}</span>
+            {TASK_TYPES.map((taskType) => (
+              <label key={taskType} className="flex flex-col gap-1.5">
+                <span className="text-xs text-ink-faint">{taskType}</span>
                 <input
                   type="number"
                   min={0}
-                  value={pieceRates[t] ?? ""}
+                  value={pieceRates[taskType] ?? ""}
                   onChange={(e) =>
-                    setPieceRates((prev) => ({ ...prev, [t]: e.target.value }))
+                    setPieceRates((prev) => ({ ...prev, [taskType]: e.target.value }))
                   }
                   className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 />
@@ -243,7 +245,7 @@ export function StaffForm({
       )}
 
       <label className="mt-4 flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-ink-muted">Notes</span>
+        <span className="text-[13px] font-medium text-ink-muted">{t("common.notes")}</span>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

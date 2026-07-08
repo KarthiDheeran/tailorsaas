@@ -10,6 +10,8 @@ import {
 import { getCustomerDetail } from "@/lib/customers";
 import { BalanceBadge, OrderStatusChip, formatDate } from "@/components/orders/orders-table";
 import { countFilledFields } from "@/components/orders/garment-measurement-modal";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 function Card({
   title,
@@ -33,12 +35,15 @@ export function NewOrderSummaryPanel({
   customer: Customer | null;
   onRepeatOrder: (order: Order) => void;
 }) {
+  const { hasPermission } = useCurrentUser();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const { t } = useLanguage();
+
   if (!customer) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-dashed border-border-soft bg-white p-5 text-sm text-ink-muted">
         <User className="h-4 w-4 shrink-0 text-ink-faint" />
-        Enter a phone number to look up or create a customer — their summary,
-        saved measurements, and previous orders will appear here.
+        {t("orders.enterPhoneToLookup")}
       </div>
     );
   }
@@ -56,34 +61,36 @@ export function NewOrderSummaryPanel({
 
   return (
     <div className="space-y-5">
-      <Card title="Customer Summary">
+      <Card title={t("orders.customerSummary")}>
         <div className="space-y-1.5 text-sm">
           <p className="font-semibold text-ink">{customer.name}</p>
           <p className="text-ink-muted">{customer.phone}</p>
           <p className="text-ink-muted">{customer.area || "—"}</p>
           <div className="flex items-center justify-between pt-2">
-            <span className="text-ink-muted">Total Orders</span>
+            <span className="text-ink-muted">{t("orders.totalOrders")}</span>
             <span className="font-medium text-ink">{detail.orders.length}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-ink-muted">Last Order</span>
+            <span className="text-ink-muted">{t("orders.lastOrder")}</span>
             <span className="font-medium text-ink">
               {detail.lastOrderDate ? formatDate(detail.lastOrderDate) : "—"}
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-ink-muted">Outstanding Balance</span>
-            <span className="font-medium text-ink">
-              ₹{detail.outstandingBalance.toLocaleString("en-IN")}
-            </span>
-          </div>
+          {canViewPayments && (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-muted">{t("orders.outstandingBalance")}</span>
+              <span className="font-medium text-ink">
+                ₹{detail.outstandingBalance.toLocaleString("en-IN")}
+              </span>
+            </div>
+          )}
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Link
             href={`/customers/${customer.id}`}
             className="rounded-lg border border-border bg-white px-3 py-2 text-center text-sm font-medium text-ink transition-colors hover:bg-surface"
           >
-            View Profile
+            {t("common.viewProfile")}
           </Link>
           {detail.orders.length > 0 && (
             <button
@@ -92,13 +99,13 @@ export function NewOrderSummaryPanel({
               className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface"
             >
               <Repeat className="h-3.5 w-3.5" />
-              Repeat Last Order
+              {t("orders.repeatLastOrder")}
             </button>
           )}
         </div>
       </Card>
 
-      <Card title="Saved Measurements">
+      <Card title={t("orders.savedMeasurements")}>
         {garmentMeasurements.length > 0 ? (
           <ul className="space-y-1.5 text-sm">
             {garmentMeasurements.map((gm) => {
@@ -115,7 +122,7 @@ export function NewOrderSummaryPanel({
                 >
                   <span className="font-medium text-ink">{gm.garmentType}</span>
                   <span className="text-ink-muted">
-                    {count} field{count === 1 ? "" : "s"} saved
+                    {count} {t("orders.fieldsSaved")}
                   </span>
                 </li>
               );
@@ -123,16 +130,15 @@ export function NewOrderSummaryPanel({
           </ul>
         ) : filledMeasurementCount > 0 ? (
           <p className="text-sm text-ink-muted">
-            Customer baseline: {filledMeasurementCount} field
-            {filledMeasurementCount === 1 ? "" : "s"} saved
+            {filledMeasurementCount} {t("orders.fieldsSaved")}
           </p>
         ) : (
-          <p className="text-sm text-ink-muted">No saved measurements yet.</p>
+          <p className="text-sm text-ink-muted">{t("orders.noSavedMeasurements")}</p>
         )}
       </Card>
 
       {detail.orders.length > 0 && (
-        <Card title="Previous Orders">
+        <Card title={t("orders.previousOrders")}>
           <div className="space-y-3">
             {detail.orders.map((o) => (
               <div
@@ -148,15 +154,19 @@ export function NewOrderSummaryPanel({
                 <p className="break-words text-ink-muted">
                   {o.items.map((i) => `${i.particular} x${i.qty}`).join(", ")}
                 </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-ink-muted">Total</span>
-                  <span className="font-medium text-ink">
-                    ₹{o.totalAmount.toLocaleString("en-IN")}
-                  </span>
-                </div>
+                {canViewPayments && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Total</span>
+                    <span className="font-medium text-ink">
+                      ₹{o.totalAmount.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <OrderStatusChip status={o.status} />
-                  <BalanceBadge order={o} todayIso={todayIso} />
+                  {canViewPayments && (
+                    <BalanceBadge order={o} todayIso={todayIso} />
+                  )}
                 </div>
                 <button
                   type="button"

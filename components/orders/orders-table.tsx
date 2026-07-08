@@ -9,6 +9,31 @@ import {
   orderStatuses,
   updateOrderStatus,
 } from "@/lib/data/stub-data";
+import { hasPermission, type Permission } from "@/lib/permissions";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
+import type { TranslationKey } from "@/lib/i18n/translations";
+
+// Status options an editor should offer, filtered by the current user's
+// permissions: full range needs orders.edit; orders.changeStatus alone
+// (Staff-like access) is restricted to In Progress/Ready; Cancelled is only
+// ever offered with orders.cancel, regardless of the other two.
+export function getAvailableOrderStatuses(
+  permissions: Permission[]
+): OrderStatus[] {
+  let base: OrderStatus[];
+  if (hasPermission(permissions, "orders.edit")) {
+    base = [...orderStatuses];
+  } else if (hasPermission(permissions, "orders.changeStatus")) {
+    base = ["In Progress", "Ready"];
+  } else {
+    base = [];
+  }
+  if (!hasPermission(permissions, "orders.cancel")) {
+    base = base.filter((s) => s !== "Cancelled");
+  }
+  return base;
+}
 
 export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; fg: string }> = {
   "In Progress": { bg: "bg-chip-blue", fg: "text-chip-blue-fg" },
@@ -18,13 +43,25 @@ export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; fg: string }
   Cancelled: { bg: "bg-chip-info", fg: "text-chip-info-fg" },
 };
 
+// OrderStatus values are also used as data (stored/compared as-is) — this
+// map is purely for display, translating the label without touching the
+// underlying status string.
+export const ORDER_STATUS_LABEL_KEYS: Record<OrderStatus, TranslationKey> = {
+  "In Progress": "orders.inProgress",
+  Ready: "orders.ready",
+  Delivered: "orders.delivered",
+  Delayed: "orders.delayed",
+  Cancelled: "orders.cancelled",
+};
+
 export function OrderStatusChip({ status }: { status: OrderStatus }) {
+  const { t } = useLanguage();
   const style = ORDER_STATUS_STYLES[status];
   return (
     <span
       className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.fg}`}
     >
-      {status}
+      {t(ORDER_STATUS_LABEL_KEYS[status])}
     </span>
   );
 }
@@ -37,7 +74,16 @@ export function OrderStatusEditor({
   onStatusChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { effectivePermissions } = useCurrentUser();
+  const { t } = useLanguage();
   const style = ORDER_STATUS_STYLES[order.status];
+  const availableStatuses = getAvailableOrderStatuses(effectivePermissions);
+
+  // No status this user is allowed to set — fall back to a read-only chip
+  // rather than an editor with an empty menu.
+  if (availableStatuses.length === 0) {
+    return <OrderStatusChip status={order.status} />;
+  }
 
   function handleSelect(status: OrderStatus, e: MouseEvent) {
     e.stopPropagation();
@@ -56,7 +102,7 @@ export function OrderStatusEditor({
         }}
         className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.fg}`}
       >
-        {order.status}
+        {t(ORDER_STATUS_LABEL_KEYS[order.status])}
       </button>
       {open && (
         <>
@@ -68,14 +114,14 @@ export function OrderStatusEditor({
             }}
           />
           <ul className="absolute left-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
-            {orderStatuses.map((s) => (
+            {availableStatuses.map((s) => (
               <li key={s}>
                 <button
                   type="button"
                   onClick={(e) => handleSelect(s, e)}
                   className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
                 >
-                  {s}
+                  {t(ORDER_STATUS_LABEL_KEYS[s])}
                 </button>
               </li>
             ))}
@@ -100,10 +146,11 @@ export function formatDate(iso: string) {
 }
 
 export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: string }) {
+  const { t } = useLanguage();
   if (order.balance <= 0) {
     return (
       <span className="inline-block rounded-full bg-chip-mint px-3 py-1 text-xs font-semibold text-chip-mint-fg">
-        Paid
+        {t("common.paid")}
       </span>
     );
   }
@@ -112,13 +159,13 @@ export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: stri
   if (isOverdue) {
     return (
       <span className="inline-block rounded-full bg-chip-red px-3 py-1 text-xs font-semibold text-chip-red-fg">
-        {amount} overdue
+        {amount} {t("orders.overdue")}
       </span>
     );
   }
   return (
     <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
-      {amount} due
+      {amount} {t("orders.due")}
     </span>
   );
 }
@@ -180,12 +227,15 @@ export function OrdersTable({
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see formatDate's hydration-mismatch note).
   const todayIso = new Date().toISOString().slice(0, 10);
+  const { hasPermission } = useCurrentUser();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const { t } = useLanguage();
 
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
         <Inbox className="mb-1 h-6 w-6 text-ink-faint" />
-        <p className="text-sm text-ink-muted">No orders yet.</p>
+        <p className="text-sm text-ink-muted">{t("orders.noOrdersYet")}</p>
       </div>
     );
   }
@@ -195,38 +245,42 @@ export function OrdersTable({
       <table className="w-full text-left">
         <thead className="text-[13px] font-semibold text-ink-muted">
           <tr className="border-b border-border-soft">
-            <th className="whitespace-nowrap px-5 py-3">Order No</th>
-            <th className="whitespace-nowrap px-5 py-3">Customer</th>
+            <th className="whitespace-nowrap px-5 py-3">{t("orders.orderNo")}</th>
+            <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
             <th className="whitespace-nowrap px-5 py-3">
               {sortKey && onSort ? (
                 <SortableHeader
-                  label="Order Date"
+                  label={t("orders.orderDate")}
                   sortKey="orderDate"
                   activeKey={sortKey}
                   dir={sortDir ?? "desc"}
                   onSort={onSort}
                 />
               ) : (
-                "Order Date"
+                t("orders.orderDate")
               )}
             </th>
             <th className="whitespace-nowrap px-5 py-3">
               {sortKey && onSort ? (
                 <SortableHeader
-                  label="Delivery Date"
+                  label={t("orders.deliveryDate")}
                   sortKey="deliveryDate"
                   activeKey={sortKey}
                   dir={sortDir ?? "desc"}
                   onSort={onSort}
                 />
               ) : (
-                "Delivery Date"
+                t("orders.deliveryDate")
               )}
             </th>
-            <th className="px-5 py-3">Items</th>
-            <th className="whitespace-nowrap px-5 py-3">Order Status</th>
-            <th className="whitespace-nowrap px-5 py-3 text-right">Total</th>
-            <th className="whitespace-nowrap px-5 py-3 text-right">Balance</th>
+            <th className="px-5 py-3">{t("orders.items")}</th>
+            <th className="whitespace-nowrap px-5 py-3">{t("orders.orderStatus")}</th>
+            {canViewPayments && (
+              <>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("orders.total")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("orders.balance")}</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody className="text-[13px]">
@@ -254,7 +308,7 @@ export function OrdersTable({
                       {customer.name}
                     </Link>
                   ) : (
-                    <div className="text-ink">Unknown</div>
+                    <div className="text-ink">{t("common.unknown")}</div>
                   )}
                   {customer && (
                     <div className="text-xs text-ink-muted">{customer.phone}</div>
@@ -277,12 +331,16 @@ export function OrdersTable({
                     <OrderStatusChip status={order.status} />
                   )}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                  ₹{order.totalAmount.toLocaleString("en-IN")}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3 text-right">
-                  <BalanceBadge order={order} todayIso={todayIso} />
-                </td>
+                {canViewPayments && (
+                  <>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                      ₹{order.totalAmount.toLocaleString("en-IN")}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right">
+                      <BalanceBadge order={order} todayIso={todayIso} />
+                    </td>
+                  </>
+                )}
               </tr>
             );
           })}

@@ -17,8 +17,10 @@ import {
   type OrderBalanceFilter,
   type OrderDeliveryFilter,
 } from "@/lib/reports";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export function OrdersReportView({ todayIso }: { todayIso: string }) {
+  const { t } = useLanguage();
   const [preset, setPreset] = useState<DateRangePreset>("all");
   const [customRange, setCustomRange] = useState<DateRange>({
     from: todayIso,
@@ -77,26 +79,26 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
             onChange={(e) => setBalanceStatus(e.target.value as OrderBalanceFilter)}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           >
-            <option value="all">All Balance Status</option>
-            <option value="paid">Paid</option>
-            <option value="balanceDue">Balance Due</option>
-            <option value="overdue">Overdue</option>
+            <option value="all">{t("reports.allBalanceStatus")}</option>
+            <option value="paid">{t("common.paid")}</option>
+            <option value="balanceDue">{t("reports.balanceDue")}</option>
+            <option value="overdue">{t("reports.overdue")}</option>
           </select>
           <select
             value={deliveryStatus}
             onChange={(e) => setDeliveryStatus(e.target.value as OrderDeliveryFilter)}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           >
-            <option value="all">All Deliveries</option>
-            <option value="overdue">Delivery Overdue</option>
-            <option value="dueSoon">Due in 7 Days</option>
+            <option value="all">{t("reports.allDeliveries")}</option>
+            <option value="overdue">{t("reports.deliveryOverdue")}</option>
+            <option value="dueSoon">{t("reports.dueIn7Days")}</option>
           </select>
           <select
             value={garmentType}
             onChange={(e) => setGarmentType(e.target.value)}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           >
-            <option value="">All Garments</option>
+            <option value="">{t("reports.allGarments")}</option>
             {garmentTypes.map((g) => (
               <option key={g} value={g}>
                 {g}
@@ -106,7 +108,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
           <input
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}
-            placeholder="Search customer..."
+            placeholder={t("reports.searchCustomer")}
             className="h-9 w-48 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           />
         </div>
@@ -115,23 +117,23 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportStatCard
-          label="Total Orders"
+          label={t("reports.totalOrders")}
           value={String(report.summary.totalOrders)}
           icon={Receipt}
         />
         <ReportStatCard
-          label="Balance Due"
+          label={t("reports.balanceDue")}
           value={String(report.summary.balanceDueOrders)}
           icon={Wallet}
         />
         <ReportStatCard
-          label="Overdue"
+          label={t("reports.overdue")}
           value={String(report.summary.overdueOrders)}
           icon={AlertTriangle}
           tone={report.summary.overdueOrders > 0 ? "warning" : "default"}
         />
         <ReportStatCard
-          label="Due in 7 Days"
+          label={t("reports.dueIn7Days")}
           value={String(report.summary.dueSoonDeliveries)}
           icon={CalendarClock}
         />

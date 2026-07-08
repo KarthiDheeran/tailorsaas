@@ -9,6 +9,9 @@ import {
   CustomerFilters,
   type CustomerFilterState,
 } from "@/components/customers/customer-filters";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const EMPTY_FILTERS: CustomerFilterState = {
   query: "",
@@ -17,7 +20,9 @@ const EMPTY_FILTERS: CustomerFilterState = {
   activity: "all",
 };
 
-export default function CustomersPage() {
+function CustomersPageContent() {
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
   const [filters, setFilters] = useState<CustomerFilterState>(EMPTY_FILTERS);
 
   // ISO (UTC) date string — consistent between server and client renders,
@@ -51,23 +56,35 @@ export default function CustomersPage() {
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Customers</h1>
+          <h1 className="text-[26px] font-semibold text-ink">
+            {t("customers.title")}
+          </h1>
           <p className="text-sm text-ink-muted">
-            {allRows.length} customers on record
+            {allRows.length} {t("customers.onRecord")}
           </p>
         </div>
-        <Link
-          href="/customers/new"
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-        >
-          <UserPlus className="h-4 w-4" />
-          Add Customer
-        </Link>
+        {hasPermission("customers.create") && (
+          <Link
+            href="/customers/new"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+          >
+            <UserPlus className="h-4 w-4" />
+            {t("customers.addCustomer")}
+          </Link>
+        )}
       </div>
 
       <CustomerFilters filters={filters} areas={areas} onChange={setFilters} />
 
       <CustomersTable rows={rows} />
     </div>
+  );
+}
+
+export default function CustomersPage() {
+  return (
+    <RequirePermission permission="customers.view">
+      <CustomersPageContent />
+    </RequirePermission>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { MEASUREMENT_FIELD_GROUPS, measurementFieldLabel } from "@/lib/catalog";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -23,6 +24,7 @@ export function CustomerMeasurementsForm({
   onValueChange: (key: string, value: string) => void;
   onNotesChange: (notes: string) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="space-y-5">
       {FIELD_GROUPS.map((group) => (
@@ -53,11 +55,11 @@ export function CustomerMeasurementsForm({
       ))}
 
       <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-        <h3 className="mb-4 text-[17px] font-semibold text-ink">Notes</h3>
+        <h3 className="mb-4 text-[17px] font-semibold text-ink">{t("common.notes")}</h3>
         <div className="space-y-4">
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-ink-muted">
-              Fit Notes
+              {t("common.fitNotes")}
             </span>
             <textarea
               value={values.fitNotes ?? ""}
@@ -69,7 +71,7 @@ export function CustomerMeasurementsForm({
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-ink-muted">
-              General Notes
+              {t("customers.generalNotes")}
             </span>
             <textarea
               value={notes}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { MeasurementFieldDef } from "@/lib/garment-catalog";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export interface GarmentMeasurementDraft {
   garmentType: string;
@@ -45,6 +46,7 @@ export function GarmentMeasurementModal({
   onCancel: () => void;
   onSave: (draft: GarmentMeasurementDraft) => void;
 }) {
+  const { t } = useLanguage();
   const [values, setValues] = useState<Record<string, string>>(initial.values);
   const [fitNotes, setFitNotes] = useState(initial.fitNotes);
   const [notes, setNotes] = useState(initial.notes);
@@ -65,7 +67,7 @@ export function GarmentMeasurementModal({
           <div className="mb-4 flex items-start justify-between">
             <div>
               <p className="text-[13px] font-medium text-ink-muted">
-                Measurement
+                {t("orders.measurementBtnTitle")}
               </p>
               <h3 className="text-[17px] font-semibold text-ink">
                 {initial.garmentType || "Untitled Garment"}
@@ -74,7 +76,7 @@ export function GarmentMeasurementModal({
             <button
               type="button"
               onClick={onCancel}
-              aria-label="Close"
+              aria-label={t("common.close")}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
             >
               <X className="h-4 w-4" />
@@ -110,7 +112,7 @@ export function GarmentMeasurementModal({
 
             <label className="mt-4 flex flex-col gap-1.5">
               <span className="text-[13px] font-medium text-ink-muted">
-                Fit Notes
+                {t("common.fitNotes")}
               </span>
               <textarea
                 value={fitNotes}
@@ -123,7 +125,7 @@ export function GarmentMeasurementModal({
 
             <label className="mt-4 flex flex-col gap-1.5">
               <span className="text-[13px] font-medium text-ink-muted">
-                Notes
+                {t("common.notes")}
               </span>
               <textarea
                 value={notes}
@@ -138,14 +140,14 @@ export function GarmentMeasurementModal({
                 type="submit"
                 className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
-                Save Measurement
+                {t("customers.saveMeasurements")}
               </button>
               <button
                 type="button"
                 onClick={onCancel}
                 className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </form>

@@ -11,6 +11,8 @@ import {
   BalanceBadge,
 } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 // Print routes are opened in the SAME tab (client-side <Link> navigation),
 // not a new tab, deliberately: stub-data's in-memory orders/customers arrays
@@ -20,6 +22,13 @@ import { ContactActions } from "@/components/dashboard/contact-actions";
 // the existing in-memory state intact.
 function PrintMenu({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+  const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
+  const canPrintJobCard = hasPermission("orders.printJobCard");
+
+  if (!canPrintReceipt && !canPrintJobCard) return null;
+
   return (
     <div className="relative">
       <button
@@ -31,28 +40,32 @@ function PrintMenu({ orderId }: { orderId: string }) {
         className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
       >
         <Printer className="h-3.5 w-3.5" />
-        Print
+        {t("orders.print")}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <ul className="absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
-            <li>
-              <Link
-                href={`/orders/${orderId}/print/customer`}
-                className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
-              >
-                Customer Receipt
-              </Link>
-            </li>
-            <li>
-              <Link
-                href={`/orders/${orderId}/print/job-card`}
-                className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
-              >
-                Tailor Job Card
-              </Link>
-            </li>
+            {canPrintReceipt && (
+              <li>
+                <Link
+                  href={`/orders/${orderId}/print/customer`}
+                  className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+                >
+                  {t("orders.customerReceipt")}
+                </Link>
+              </li>
+            )}
+            {canPrintJobCard && (
+              <li>
+                <Link
+                  href={`/orders/${orderId}/print/job-card`}
+                  className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+                >
+                  {t("orders.tailorJobCard")}
+                </Link>
+              </li>
+            )}
           </ul>
         </>
       )}
@@ -73,6 +86,10 @@ export function OrderDetailsDrawer({
 }) {
   const customer = order ? getCustomerById(order.customerId) : undefined;
   const todayIso = new Date().toISOString().slice(0, 10);
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const canEdit = hasPermission("orders.edit");
 
   return (
     <>
@@ -104,7 +121,7 @@ export function OrderDetailsDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={t("common.close")}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
               >
                 <X className="h-4 w-4" />
@@ -114,7 +131,7 @@ export function OrderDetailsDrawer({
             <div className="flex-1 space-y-6 px-6 py-5">
               <div>
                 <p className="text-[13px] font-medium text-ink-muted">
-                  Customer
+                  {t("orders.customer")}
                 </p>
                 {customer ? (
                   <Link
@@ -124,7 +141,7 @@ export function OrderDetailsDrawer({
                     {customer.name}
                   </Link>
                 ) : (
-                  <p className="mt-1 text-sm font-semibold text-ink">Unknown</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">{t("common.unknown")}</p>
                 )}
                 {customer && (
                   <p className="text-sm text-ink-muted">{customer.phone}</p>
@@ -134,7 +151,7 @@ export function OrderDetailsDrawer({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[13px] font-medium text-ink-muted">
-                    Order Date
+                    {t("orders.orderDate")}
                   </p>
                   <p className="mt-1 text-sm text-ink">
                     {formatDate(order.orderDate)}
@@ -142,7 +159,7 @@ export function OrderDetailsDrawer({
                 </div>
                 <div>
                   <p className="text-[13px] font-medium text-ink-muted">
-                    Delivery Date
+                    {t("orders.deliveryDate")}
                   </p>
                   <p className="mt-1 text-sm text-ink">
                     {formatDate(order.deliveryDate)}
@@ -152,16 +169,20 @@ export function OrderDetailsDrawer({
 
               <div>
                 <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                  Items
+                  {t("orders.items")}
                 </p>
                 <div className="overflow-hidden rounded-lg border border-border-soft">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-surface text-[12px] font-semibold text-ink-muted">
                       <tr>
-                        <th className="px-3 py-2">Particular</th>
-                        <th className="px-3 py-2 text-right">Qty</th>
-                        <th className="px-3 py-2 text-right">Rate</th>
-                        <th className="px-3 py-2 text-right">Amount</th>
+                        <th className="px-3 py-2">{t("orders.particular")}</th>
+                        <th className="px-3 py-2 text-right">{t("common.qty")}</th>
+                        {canViewPayments && (
+                          <>
+                            <th className="px-3 py-2 text-right">{t("common.rate")}</th>
+                            <th className="px-3 py-2 text-right">{t("common.amount")}</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -176,12 +197,16 @@ export function OrderDetailsDrawer({
                           <td className="px-3 py-2 text-right text-ink-muted">
                             {item.qty}
                           </td>
-                          <td className="px-3 py-2 text-right text-ink-muted">
-                            ₹{item.rate.toLocaleString("en-IN")}
-                          </td>
-                          <td className="px-3 py-2 text-right text-ink">
-                            ₹{item.amount.toLocaleString("en-IN")}
-                          </td>
+                          {canViewPayments && (
+                            <>
+                              <td className="px-3 py-2 text-right text-ink-muted">
+                                ₹{item.rate.toLocaleString("en-IN")}
+                              </td>
+                              <td className="px-3 py-2 text-right text-ink">
+                                ₹{item.amount.toLocaleString("en-IN")}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -189,43 +214,47 @@ export function OrderDetailsDrawer({
                 </div>
               </div>
 
-              <div className="rounded-lg bg-surface p-4">
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-ink-muted">Total</span>
-                  <span className="text-sm font-semibold text-ink">
-                    ₹{order.totalAmount.toLocaleString("en-IN")}
-                  </span>
+              {canViewPayments && (
+                <div className="rounded-lg bg-surface p-4">
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-ink-muted">{t("common.total")}</span>
+                    <span className="text-sm font-semibold text-ink">
+                      ₹{order.totalAmount.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-ink-muted">{t("common.paid")}</span>
+                    <span className="text-sm font-semibold text-ink">
+                      ₹{order.advancePaid.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-ink-muted">{t("common.balance")}</span>
+                    <span className="text-sm font-semibold text-ink">
+                      ₹{order.balance.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-ink-muted">
+                      {t("orders.paymentStatus")}
+                    </span>
+                    <BalanceBadge order={order} todayIso={todayIso} />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-ink-muted">Paid</span>
-                  <span className="text-sm font-semibold text-ink">
-                    ₹{order.advancePaid.toLocaleString("en-IN")}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-ink-muted">Balance</span>
-                  <span className="text-sm font-semibold text-ink">
-                    ₹{order.balance.toLocaleString("en-IN")}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-ink-muted">
-                    Payment Status
-                  </span>
-                  <BalanceBadge order={order} todayIso={todayIso} />
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
-              <button
-                type="button"
-                onClick={() => onEdit(order)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit Order
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(order)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {t("orders.editOrder")}
+                </button>
+              )}
               <PrintMenu orderId={order.id} />
               {customer && (
                 <ContactActions

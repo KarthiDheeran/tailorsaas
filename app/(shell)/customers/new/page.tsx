@@ -8,9 +8,12 @@ import {
   NewCustomerForm,
   type NewCustomerFormValues,
 } from "@/components/orders/new-customer-form";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useLanguage } from "@/components/i18n/language-provider";
 
-export default function AddCustomerPage() {
+function AddCustomerPageContent() {
   const router = useRouter();
+  const { t } = useLanguage();
 
   function handleSaveCustomer(values: NewCustomerFormValues) {
     const customer = createCustomer(values);
@@ -29,12 +32,14 @@ export default function AddCustomerPage() {
         className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
       >
         <ChevronLeft className="h-4 w-4" />
-        Back to Customers
+        {t("customers.backToCustomers")}
       </Link>
       <div className="mb-6">
-        <h1 className="text-[26px] font-semibold text-ink">Add Customer</h1>
+        <h1 className="text-[26px] font-semibold text-ink">
+          {t("customers.addCustomer")}
+        </h1>
         <p className="text-sm text-ink-muted">
-          Create a new customer record
+          {t("customers.addCustomerSubtitle")}
         </p>
       </div>
       <div className="max-w-2xl">
@@ -42,13 +47,21 @@ export default function AddCustomerPage() {
           onSubmit={handleSaveCustomer}
           onCancel={() => router.push("/customers")}
           secondaryAction={{
-            label: "Save & New Order",
+            label: t("customers.saveAndNewOrder"),
             onSubmit: handleSaveAndNewOrder,
           }}
-          title="Customer Details"
-          submitLabel="Save Customer"
+          title={t("customers.customerDetailsSection")}
+          submitLabel={t("customers.saveCustomer")}
         />
       </div>
     </div>
+  );
+}
+
+export default function AddCustomerPage() {
+  return (
+    <RequirePermission permission="customers.create">
+      <AddCustomerPageContent />
+    </RequirePermission>
   );
 }

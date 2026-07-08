@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,22 +10,87 @@ import {
   Users2,
   BarChart3,
   Shirt,
-  Store,
   Layers,
+  UserCog,
+  ChevronsUpDown,
+  Check,
+  Languages,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
+import type { Permission } from "@/lib/permissions";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { LogoutButton } from "@/components/auth/logout-button";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { LOCALES, LOCALE_LABELS } from "@/lib/i18n/types";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/orders", label: "Orders", icon: ClipboardList },
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/catalog", label: "Catalog", icon: Layers },
-  { href: "/staff", label: "Staff", icon: Users2 },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+const navItems: {
+  href: string;
+  labelKey: TranslationKey;
+  icon: LucideIcon;
+  permission: Permission;
+}[] = [
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
+  { href: "/customers", labelKey: "nav.customers", icon: Users, permission: "customers.view" },
+  { href: "/catalog", labelKey: "nav.catalog", icon: Layers, permission: "catalog.view" },
+  { href: "/staff", labelKey: "nav.staff", icon: Users2, permission: "staff.view" },
+  { href: "/reports", labelKey: "nav.reports", icon: BarChart3, permission: "reports.view" },
+  { href: "/users-access", labelKey: "nav.usersAccess", icon: UserCog, permission: "settings.view" },
 ];
+
+// Small language selector, styled like the mock-user switcher just below it.
+// English / தமிழ் — persisted to localStorage by LanguageProvider itself.
+function LanguageSwitcher() {
+  const { locale, setLocale } = useLanguage();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white px-3 py-2.5 text-left transition-colors hover:bg-surface"
+      >
+        <Languages className="h-4 w-4 shrink-0 text-ink-faint" />
+        <span className="flex-1 text-sm font-medium text-ink">
+          {LOCALE_LABELS[locale]}
+        </span>
+        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <ul className="absolute bottom-full left-0 z-20 mb-1.5 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
+            {LOCALES.map((l) => (
+              <li key={l}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocale(l);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface"
+                >
+                  <span className="font-medium text-ink">{LOCALE_LABELS[l]}</span>
+                  {l === locale && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { currentUser, currentRole, hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+
+  const visibleNavItems = navItems.filter((item) => hasPermission(item.permission));
 
   return (
     <aside className="flex h-screen w-[250px] flex-col bg-white px-4 py-6 print:hidden">
@@ -40,7 +106,7 @@ export function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 space-y-1.5">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {visibleNavItems.map(({ href, labelKey, icon: Icon }) => {
           const isActive =
             pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -55,22 +121,32 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-[18px] w-[18px]" />
-              {label}
+              <span className="break-words">{t(labelKey)}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="flex items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-tint text-primary">
-          <Store className="h-[18px] w-[18px]" />
+
+      <LanguageSwitcher />
+
+      {/* Real logged-in identity (Phase 3) — replaces the earlier dev-only
+          mock-user switcher popover; no longer switchable, since this is
+          the actual Supabase-authenticated account. */}
+      <div className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-tint text-sm font-semibold text-primary">
+          {(currentUser?.full_name ?? "?").charAt(0)}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-ink">
-            Shop Account
+            {currentUser?.full_name ?? "Unknown user"}
           </div>
-          <div className="truncate text-[11px] text-ink-faint">Owner</div>
+          <div className="truncate text-[11px] text-ink-faint">
+            {currentRole?.name ?? "—"}
+          </div>
         </div>
       </div>
+
+      <LogoutButton />
     </aside>
   );
 }

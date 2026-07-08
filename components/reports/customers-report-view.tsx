@@ -16,12 +16,17 @@ import {
   type DateRangePreset,
 } from "@/lib/reports";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
 export function CustomersReportView({ todayIso }: { todayIso: string }) {
+  const { hasPermission } = useCurrentUser();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const { t } = useLanguage();
   const [preset, setPreset] = useState<DateRangePreset>("all");
   const [customRange, setCustomRange] = useState<DateRange>({
     from: todayIso,
@@ -69,9 +74,9 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
   }
 
   const toggles: { key: string; label: string; value: boolean; set: (v: boolean) => void }[] = [
-    { key: "hasBalance", label: "Has Balance", value: hasBalanceOnly, set: setHasBalanceOnly },
-    { key: "repeat", label: "Repeat Customers", value: repeatOnly, set: setRepeatOnly },
-    { key: "inactive", label: "Inactive", value: inactiveOnly, set: setInactiveOnly },
+    { key: "hasBalance", label: t("customers.hasBalance"), value: hasBalanceOnly, set: setHasBalanceOnly },
+    { key: "repeat", label: t("reports.repeatCustomers"), value: repeatOnly, set: setRepeatOnly },
+    { key: "inactive", label: t("reports.inactive"), value: inactiveOnly, set: setInactiveOnly },
   ];
 
   return (
@@ -89,7 +94,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
             onChange={(e) => setArea(e.target.value)}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           >
-            <option value="">All Areas</option>
+            <option value="">{t("reports.allAreas")}</option>
             {areas.map((a) => (
               <option key={a} value={a}>
                 {a}
@@ -99,22 +104,22 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
           <input
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}
-            placeholder="Search name or phone..."
+            placeholder={t("reports.searchNameOrPhone")}
             className="h-9 w-48 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
           />
-          {toggles.map((t) => (
+          {toggles.map((toggle) => (
             <button
-              key={t.key}
+              key={toggle.key}
               type="button"
-              onClick={() => t.set(!t.value)}
+              onClick={() => toggle.set(!toggle.value)}
               className={cn(
                 "h-9 rounded-lg border px-3 text-sm font-medium transition-colors print:hidden",
-                t.value
+                toggle.value
                   ? "border-primary bg-primary-tint text-primary"
                   : "border-border bg-white text-ink-muted hover:bg-surface"
               )}
             >
-              {t.label}
+              {toggle.label}
             </button>
           ))}
         </div>
@@ -123,45 +128,53 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportStatCard
-          label="New Customers"
+          label={t("reports.newCustomers")}
           value={String(report.summary.newCustomers)}
-          sublabel="First order in range"
+          sublabel={t("reports.firstOrderInRange")}
           icon={UserPlus}
         />
         <ReportStatCard
-          label="Repeat Customers"
+          label={t("reports.repeatCustomers")}
           value={String(report.summary.repeatCustomers)}
           icon={Repeat}
         />
-        <ReportStatCard
-          label="Customers with Balance"
-          value={String(report.summary.customersWithBalance)}
-          icon={Wallet}
-        />
-        <ReportStatCard
-          label="Avg. Lifetime Value"
-          value={money(Math.round(report.summary.avgLifetimeValue))}
-          icon={IndianRupee}
-        />
+        {canViewPayments && (
+          <ReportStatCard
+            label={t("reports.customersWithBalance")}
+            value={String(report.summary.customersWithBalance)}
+            icon={Wallet}
+          />
+        )}
+        {canViewPayments && (
+          <ReportStatCard
+            label={t("reports.avgLifetimeValue")}
+            value={money(Math.round(report.summary.avgLifetimeValue))}
+            icon={IndianRupee}
+          />
+        )}
       </div>
 
       {report.rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
-          <p className="text-sm text-ink-muted">No customers match these filters.</p>
+          <p className="text-sm text-ink-muted">{t("reports.noCustomersMatch")}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
           <table className="w-full text-left">
             <thead className="text-[13px] font-semibold text-ink-muted">
               <tr className="border-b border-border-soft">
-                <th className="whitespace-nowrap px-5 py-3">Customer</th>
-                <th className="whitespace-nowrap px-5 py-3">Phone</th>
-                <th className="whitespace-nowrap px-5 py-3">Area</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Total Orders</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Total Spent</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">Outstanding Balance</th>
-                <th className="whitespace-nowrap px-5 py-3">Last Order Date</th>
-                <th className="whitespace-nowrap px-5 py-3">Status</th>
+                <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
+                <th className="whitespace-nowrap px-5 py-3">{t("common.phone")}</th>
+                <th className="whitespace-nowrap px-5 py-3">{t("common.area")}</th>
+                <th className="whitespace-nowrap px-5 py-3 text-right">{t("customers.totalOrders")}</th>
+                {canViewPayments && (
+                  <>
+                    <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.totalSpent")}</th>
+                    <th className="whitespace-nowrap px-5 py-3 text-right">{t("customers.outstandingBalance")}</th>
+                  </>
+                )}
+                <th className="whitespace-nowrap px-5 py-3">{t("reports.lastOrderDate")}</th>
+                <th className="whitespace-nowrap px-5 py-3">{t("common.status")}</th>
               </tr>
             </thead>
             <tbody className="text-[13px]">
@@ -180,12 +193,16 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
                   <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
                     {row.totalOrders}
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
-                    {money(row.totalSpent)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
-                    {money(row.outstandingBalance)}
-                  </td>
+                  {canViewPayments && (
+                    <>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
+                        {money(row.totalSpent)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                        {money(row.outstandingBalance)}
+                      </td>
+                    </>
+                  )}
                   <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                     {row.lastOrderDate ? formatDate(row.lastOrderDate) : "—"}
                   </td>

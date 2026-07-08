@@ -32,6 +32,10 @@ import {
 import { NewOrderSummaryPanel } from "@/components/orders/new-order-summary-panel";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { ORDER_STATUS_LABEL_KEYS } from "@/components/orders/orders-table";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -42,6 +46,11 @@ const inputClass =
 
 function NewOrderPageContent() {
   const router = useRouter();
+  const { hasPermission } = useCurrentUser();
+  const canViewPayments = hasPermission("orders.viewPayments");
+  const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
+  const canPrintJobCard = hasPermission("orders.printJobCard");
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customerId");
   const prefillCustomer = prefillCustomerId
@@ -88,22 +97,22 @@ function NewOrderPageContent() {
   );
   let itemsError: string | undefined;
   if (!anyGarmentSelected) {
-    itemsError = "Select a garment type for at least one item";
+    itemsError = t("validation.selectGarmentForItem");
   } else if (hasInvalidQtyOrRate) {
-    itemsError = "Quantity must be greater than 0 and rate cannot be negative";
+    itemsError = t("validation.qtyRateInvalid");
   } else if (!hasValidItem) {
-    itemsError = "Add at least one valid item";
+    itemsError = t("validation.itemRequired");
   }
   const errors = {
-    phone: !trimmedPhone ? "Phone number is required" : undefined,
-    name: !trimmedName ? "Customer name is required" : undefined,
-    deliveryDate: !deliveryDate ? "Delivery date is required" : undefined,
+    phone: !trimmedPhone ? t("validation.phoneRequired") : undefined,
+    name: !trimmedName ? t("validation.customerNameRequired") : undefined,
+    deliveryDate: !deliveryDate ? t("validation.deliveryDateRequired") : undefined,
     items: itemsError,
     advancePaid:
       advancePaid < 0
-        ? "Paid amount cannot be negative"
+        ? t("validation.paidCannotBeNegative")
         : advancePaid > totalAmount
-          ? "Paid amount cannot exceed total"
+          ? t("validation.paidCannotExceedTotal")
           : undefined,
   };
   const hasErrors = Object.values(errors).some(Boolean);
@@ -166,7 +175,7 @@ function NewOrderPageContent() {
     );
 
   function handleCancel() {
-    if (isDirty && !window.confirm("Discard unsaved changes?")) return;
+    if (isDirty && !window.confirm(t("orders.discardChanges"))) return;
     router.push("/orders");
   }
 
@@ -294,16 +303,16 @@ function NewOrderPageContent() {
           className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
         >
           <ChevronLeft className="h-4 w-4" />
-          Back to Orders
+          {t("orders.backToOrders")}
         </button>
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-[26px] font-semibold text-ink">New Order</h1>
+            <h1 className="text-[26px] font-semibold text-ink">{t("orders.newOrder")}</h1>
             <p className="text-sm text-ink-muted">{orderNumberPreview}</p>
           </div>
           <label className="flex items-center gap-2">
-            <span className="text-[13px] font-medium text-ink-muted">Status</span>
+            <span className="text-[13px] font-medium text-ink-muted">{t("common.status")}</span>
             <Select
               value={status}
               onChange={(e) => setStatus(e.target.value as OrderStatus)}
@@ -311,7 +320,7 @@ function NewOrderPageContent() {
             >
               {orderStatuses.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {t(ORDER_STATUS_LABEL_KEYS[s])}
                 </option>
               ))}
             </Select>
@@ -323,7 +332,7 @@ function NewOrderPageContent() {
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-[17px] font-semibold text-ink">
-                  Customer Details
+                  {t("orders.customerDetails")}
                 </h3>
                 {matchedCustomer && (
                   <button
@@ -331,14 +340,14 @@ function NewOrderPageContent() {
                     onClick={handleChangeCustomer}
                     className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                   >
-                    Change Customer
+                    {t("orders.changeCustomer")}
                   </button>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <label className="relative flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Phone Number
+                    {t("common.phoneNumber")}
                   </span>
                   <input
                     required
@@ -373,7 +382,7 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Customer Name
+                    {t("customers.customerName")}
                   </span>
                   <input
                     required
@@ -390,7 +399,7 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Area / Locality
+                    {t("common.area")}
                   </span>
                   <input
                     value={area}
@@ -400,7 +409,7 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Address
+                    {t("common.address")}
                   </span>
                   <input
                     value={address}
@@ -410,7 +419,7 @@ function NewOrderPageContent() {
                 </label>
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Gender
+                    {t("common.gender")}
                   </span>
                   <div className="flex gap-2">
                     {(["Male", "Female"] as Gender[]).map((g) => (
@@ -425,7 +434,7 @@ function NewOrderPageContent() {
                             : "border-border bg-white text-ink hover:bg-surface"
                         )}
                       >
-                        {g}
+                        {g === "Male" ? t("common.male") : t("common.female")}
                       </button>
                     ))}
                   </div>
@@ -435,12 +444,12 @@ function NewOrderPageContent() {
 
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                Order Dates
+                {t("orders.orderDates")}
               </h3>
               <div className="grid grid-cols-3 gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Order Date
+                    {t("orders.orderDate")}
                   </span>
                   <input
                     type="date"
@@ -452,7 +461,7 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Delivery Date <span className="text-chip-red-fg">*</span>
+                    {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
                   </span>
                   <input
                     type="date"
@@ -474,7 +483,7 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-faint">
-                    Trial Date <span className="font-normal">(optional)</span>
+                    {t("orders.trialDate")} <span className="font-normal">({t("common.optional")})</span>
                   </span>
                   <input
                     type="date"
@@ -497,14 +506,15 @@ function NewOrderPageContent() {
               onItemsChange={setItems}
             />
 
+            {canViewPayments && (
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                Payment Summary
+                {t("orders.paymentSummary")}
               </h3>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Total
+                    {t("common.total")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
                     ₹{totalAmount.toLocaleString("en-IN")}
@@ -512,7 +522,7 @@ function NewOrderPageContent() {
                 </div>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Paid / Advance
+                    {t("orders.paidAdvance")}
                   </span>
                   <input
                     type="number"
@@ -535,7 +545,7 @@ function NewOrderPageContent() {
                 </label>
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Balance
+                    {t("common.balance")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
                     ₹{balance.toLocaleString("en-IN")}
@@ -543,7 +553,7 @@ function NewOrderPageContent() {
                 </div>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Payment Mode
+                    {t("orders.paymentMode")}
                   </span>
                   <Select
                     value={paymentMode}
@@ -558,16 +568,17 @@ function NewOrderPageContent() {
                 </label>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-border-soft pt-4">
-                <span className="text-sm text-ink-muted">Payment Status</span>
+                <span className="text-sm text-ink-muted">{t("orders.paymentStatus")}</span>
                 {totalAmount === 0 ? (
                   <span className="inline-block rounded-full bg-chip-info px-3 py-1 text-xs font-semibold text-chip-info-fg">
-                    Not calculated
+                    {t("orders.notCalculated")}
                   </span>
                 ) : (
                   <BalanceBadge order={draftOrderForBadge} todayIso={todayIso()} />
                 )}
               </div>
             </div>
+            )}
           </div>
 
           <div className="min-w-0">
@@ -582,17 +593,25 @@ function NewOrderPageContent() {
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft md:left-[250px]">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-8">
           <div className="flex items-center gap-2 text-sm text-ink-muted">
-            <span>
-              Total: <span className="font-semibold text-ink">₹{totalAmount.toLocaleString("en-IN")}</span>
-            </span>
-            <span className="text-border">|</span>
-            <span>
-              Paid: <span className="font-semibold text-ink">₹{advancePaid.toLocaleString("en-IN")}</span>
-            </span>
-            <span className="text-border">|</span>
-            <span>
-              Balance: <span className="font-semibold text-ink">₹{balance.toLocaleString("en-IN")}</span>
-            </span>
+            {canViewPayments ? (
+              <>
+                <span>
+                  {t("common.total")}: <span className="font-semibold text-ink">₹{totalAmount.toLocaleString("en-IN")}</span>
+                </span>
+                <span className="text-border">|</span>
+                <span>
+                  {t("common.paid")}: <span className="font-semibold text-ink">₹{advancePaid.toLocaleString("en-IN")}</span>
+                </span>
+                <span className="text-border">|</span>
+                <span>
+                  {t("common.balance")}: <span className="font-semibold text-ink">₹{balance.toLocaleString("en-IN")}</span>
+                </span>
+              </>
+            ) : (
+              <span>
+                {computedItems.length} item{computedItems.length === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -600,14 +619,14 @@ function NewOrderPageContent() {
               onClick={handleCancel}
               className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="button"
               onClick={handleSave}
               className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
-              Save Order
+              {t("orders.saveOrder")}
             </button>
           </div>
         </div>
@@ -625,37 +644,41 @@ function NewOrderPageContent() {
                 <CheckCircle2 className="h-6 w-6 text-chip-mint-fg" />
               </div>
               <h3 className="text-[17px] font-semibold text-ink">
-                Order created successfully
+                {t("orders.orderCreatedSuccess")}
               </h3>
               <p className="mt-1 text-sm text-ink-muted">
                 {savedOrder.orderNumber}
               </p>
               <div className="mt-5 space-y-2">
-                <Link
-                  href={`/orders/${savedOrder.id}/print/customer`}
-                  className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-                >
-                  Print Customer Receipt
-                </Link>
-                <Link
-                  href={`/orders/${savedOrder.id}/print/job-card`}
-                  className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-                >
-                  Print Tailor Job Card
-                </Link>
+                {canPrintReceipt && (
+                  <Link
+                    href={`/orders/${savedOrder.id}/print/customer`}
+                    className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                  >
+                    {t("orders.printCustomerReceipt")}
+                  </Link>
+                )}
+                {canPrintJobCard && (
+                  <Link
+                    href={`/orders/${savedOrder.id}/print/job-card`}
+                    className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                  >
+                    {t("orders.printTailorJobCard")}
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={handleViewOrder}
                   className="block w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
                 >
-                  View Order
+                  {t("orders.viewOrder")}
                 </button>
                 <button
                   type="button"
                   onClick={handleBackToOrders}
                   className="block w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface"
                 >
-                  Back to Orders
+                  {t("orders.backToOrders")}
                 </button>
               </div>
             </div>
@@ -668,8 +691,10 @@ function NewOrderPageContent() {
 
 export default function NewOrderPage() {
   return (
-    <Suspense>
-      <NewOrderPageContent />
-    </Suspense>
+    <RequirePermission permission="orders.create">
+      <Suspense>
+        <NewOrderPageContent />
+      </Suspense>
+    </RequirePermission>
   );
 }

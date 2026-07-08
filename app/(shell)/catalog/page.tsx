@@ -21,8 +21,14 @@ import { CatalogTable } from "@/components/catalog/catalog-table";
 import { GarmentTypeDrawer } from "@/components/catalog/garment-type-drawer";
 import { AddOnTable } from "@/components/catalog/addon-table";
 import { AddOnDrawer } from "@/components/catalog/addon-drawer";
+import { RequirePermission } from "@/components/auth/require-permission";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { useLanguage } from "@/components/i18n/language-provider";
 
-export default function CatalogPage() {
+function CatalogPageContent() {
+  const { hasPermission } = useCurrentUser();
+  const { t } = useLanguage();
+  const canManage = hasPermission("catalog.manage");
   const [tab, setTab] = useState<CatalogTab>("garment-types");
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -76,30 +82,31 @@ export default function CatalogPage() {
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Catalog</h1>
-          <p className="text-sm text-ink-muted">
-            Manage garment types, pricing, measurements, and add-ons.
-          </p>
+          <h1 className="text-[26px] font-semibold text-ink">
+            {t("catalog.title")}
+          </h1>
+          <p className="text-sm text-ink-muted">{t("catalog.subtitle")}</p>
         </div>
-        {tab === "garment-types" ? (
-          <button
-            type="button"
-            onClick={() => setIsAddingGarment(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-          >
-            <Plus className="h-4 w-4" />
-            Add Garment Type
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setIsAddingAddOn(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-          >
-            <Plus className="h-4 w-4" />
-            Add Add-on
-          </button>
-        )}
+        {canManage &&
+          (tab === "garment-types" ? (
+            <button
+              type="button"
+              onClick={() => setIsAddingGarment(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              <Plus className="h-4 w-4" />
+              {t("catalog.addGarmentType")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsAddingAddOn(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              <Plus className="h-4 w-4" />
+              {t("catalog.addAddOn")}
+            </button>
+          ))}
       </div>
 
       <CatalogTabs active={tab} onChange={setTab} />
@@ -107,18 +114,20 @@ export default function CatalogPage() {
       {tab === "garment-types" ? (
         <CatalogTable
           garmentTypes={garmentTypes}
+          canManage={canManage}
           onEdit={setEditingGarment}
           onToggleActive={handleToggleGarmentActive}
         />
       ) : (
         <AddOnTable
           addOns={addOns}
+          canManage={canManage}
           onEdit={setEditingAddOn}
           onToggleActive={handleToggleAddOnActive}
         />
       )}
 
-      {garmentDrawerOpen && (
+      {canManage && garmentDrawerOpen && (
         <GarmentTypeDrawer
           garment={editingGarment}
           onCancel={() => {
@@ -129,7 +138,7 @@ export default function CatalogPage() {
         />
       )}
 
-      {addOnDrawerOpen && (
+      {canManage && addOnDrawerOpen && (
         <AddOnDrawer
           addOn={editingAddOn}
           onCancel={() => {
@@ -140,5 +149,13 @@ export default function CatalogPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <RequirePermission permission="catalog.view">
+      <CatalogPageContent />
+    </RequirePermission>
   );
 }

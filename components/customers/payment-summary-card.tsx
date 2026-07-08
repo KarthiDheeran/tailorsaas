@@ -1,24 +1,28 @@
+"use client";
+
 import { formatDate } from "@/components/orders/orders-table";
 import type { CustomerDetail } from "@/lib/customers";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 function money(amount: number) {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
 export function PaymentSummaryCard({ detail }: { detail: CustomerDetail }) {
+  const { t } = useLanguage();
   const { totalOrdersValue, totalPaid, outstandingBalance, lastPaymentDate } =
     detail;
 
   const rows: { label: string; value: string; emphasis?: boolean }[] = [
-    { label: "Total Orders Value", value: money(totalOrdersValue) },
-    { label: "Total Paid", value: money(totalPaid) },
+    { label: t("customers.totalOrdersValue"), value: money(totalOrdersValue) },
+    { label: t("customers.totalPaid"), value: money(totalPaid) },
     {
-      label: "Outstanding Balance",
+      label: t("customers.outstandingBalance"),
       value: money(outstandingBalance),
       emphasis: outstandingBalance > 0,
     },
     {
-      label: "Last Payment Date",
+      label: t("customers.lastPaymentDate"),
       value: lastPaymentDate ? formatDate(lastPaymentDate) : "—",
     },
   ];
@@ -26,7 +30,7 @@ export function PaymentSummaryCard({ detail }: { detail: CustomerDetail }) {
   return (
     <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
       <h3 className="mb-4 text-[17px] font-semibold text-ink">
-        Payment Summary
+        {t("customers.paymentSummary")}
       </h3>
       <dl className="space-y-3">
         {rows.map(({ label, value, emphasis }) => (

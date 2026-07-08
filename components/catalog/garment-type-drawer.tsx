@@ -9,6 +9,7 @@ import {
   type CatalogGarmentType,
   type GarmentTypeInput,
 } from "@/lib/catalog";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -26,6 +27,7 @@ export function GarmentTypeDrawer({
   onCancel: () => void;
   onSaved: (data: GarmentTypeInput) => void;
 }) {
+  const { t } = useLanguage();
   const isEdit = garment !== null;
   const [name, setName] = useState(garment?.name ?? "");
   const [basePrice, setBasePrice] = useState<number>(garment?.basePrice ?? 0);
@@ -62,11 +64,11 @@ export function GarmentTypeDrawer({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Garment name is required.");
+      setError(t("catalog.garmentNameRequired"));
       return;
     }
     if (!Number.isFinite(basePrice) || basePrice < 0) {
-      setError("Base price is required and must be 0 or more.");
+      setError(t("catalog.basePriceRequired"));
       return;
     }
 
@@ -89,16 +91,18 @@ export function GarmentTypeDrawer({
         <div className="flex items-start justify-between border-b border-border-soft px-6 py-5">
           <div>
             <p className="text-[17px] font-semibold text-ink">
-              {isEdit ? "Edit Garment Type" : "Add Garment Type"}
+              {isEdit
+                ? t("catalog.editGarmentType")
+                : t("catalog.addGarmentTypeTitle")}
             </p>
             <p className="text-sm text-ink-muted">
-              Base price, required measurements, and add-ons for this garment.
+              {t("catalog.garmentDrawerSubtitle")}
             </p>
           </div>
           <button
             type="button"
             onClick={onCancel}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
           >
             <X className="h-4 w-4" />

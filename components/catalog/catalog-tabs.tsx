@@ -1,11 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/i18n/language-provider";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
 const TABS = [
-  { key: "garment-types", label: "Garment Types" },
-  { key: "addons", label: "Add-ons / Extras" },
-] as const;
+  { key: "garment-types", labelKey: "catalog.garmentTypes" },
+  { key: "addons", labelKey: "catalog.addOnsExtras" },
+] as const satisfies { key: string; labelKey: TranslationKey }[];
 
 export type CatalogTab = (typeof TABS)[number]["key"];
 
@@ -16,21 +18,23 @@ export function CatalogTabs({
   active: CatalogTab;
   onChange: (tab: CatalogTab) => void;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
-      {TABS.map((t) => (
+      {TABS.map((tab) => (
         <button
-          key={t.key}
+          key={tab.key}
           type="button"
-          onClick={() => onChange(t.key)}
+          onClick={() => onChange(tab.key)}
           className={cn(
             "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
-            active === t.key
+            active === tab.key
               ? "border-primary text-primary"
               : "border-transparent text-ink-muted hover:text-ink"
           )}
         >
-          {t.label}
+          {t(tab.labelKey)}
         </button>
       ))}
     </div>

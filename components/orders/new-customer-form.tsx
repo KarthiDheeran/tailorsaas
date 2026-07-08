@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Gender } from "@/lib/types";
 import { getCustomerByPhone } from "@/lib/data/stub-data";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export interface NewCustomerFormValues {
   name: string;
@@ -48,6 +49,7 @@ export function NewCustomerForm({
   title?: string;
   submitLabel?: string;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(initialValues?.name ?? initialName ?? "");
   const [phone, setPhone] = useState(
     initialValues?.phone ?? initialPhone ?? ""
@@ -119,7 +121,7 @@ export function NewCustomerForm({
       <h3 className="mb-4 text-[17px] font-semibold text-ink">{title}</h3>
       <div className="grid grid-cols-2 gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-muted">Name</span>
+          <span className="text-[13px] font-medium text-ink-muted">{t("common.name")}</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -136,7 +138,7 @@ export function NewCustomerForm({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Phone Number
+            {t("common.phoneNumber")}
           </span>
           <input
             inputMode="numeric"
@@ -154,19 +156,19 @@ export function NewCustomerForm({
           )}
           {duplicateCustomer && (
             <div className="mt-1 rounded-lg bg-chip-red px-3.5 py-2.5 text-xs font-medium text-chip-red-fg">
-              Customer with this phone number already exists.{" "}
+              {t("customers.phoneExists")}{" "}
               <Link
                 href={`/customers/${duplicateCustomer.id}`}
                 className="font-semibold underline hover:no-underline"
               >
-                View existing customer
+                {t("customers.viewExistingCustomer")}
               </Link>
             </div>
           )}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Address
+            {t("common.address")}
           </span>
           <input
             value={address}
@@ -176,7 +178,7 @@ export function NewCustomerForm({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Area / Locality
+            {t("common.area")}
           </span>
           <input
             value={area}
@@ -186,7 +188,7 @@ export function NewCustomerForm({
         </label>
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
-            Gender
+            {t("common.gender")}
           </span>
           <div className="flex gap-2">
             {GENDER_OPTIONS.map((g) => (
@@ -201,7 +203,7 @@ export function NewCustomerForm({
                     : "border-border bg-white text-ink hover:bg-surface"
                 )}
               >
-                {g}
+                {g === "Male" ? t("common.male") : t("common.female")}
               </button>
             ))}
           </div>
@@ -216,7 +218,7 @@ export function NewCustomerForm({
               onClick={onCancel}
               className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           )}
           <div className="ml-auto flex items-center gap-3">

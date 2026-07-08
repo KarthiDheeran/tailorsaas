@@ -7,6 +7,9 @@ import {
   FilterDropdown,
   FILTER_CONTROL_CLASS as CONTROL_CLASS,
 } from "@/components/ui/filter-dropdown";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { ORDER_STATUS_LABEL_KEYS } from "@/components/orders/orders-table";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
 export type BalanceFilter = "all" | "paid" | "due" | "overdue";
 export type StatusFilter = "all" | OrderStatus;
@@ -23,26 +26,35 @@ export interface DeliveryCustomRange {
   to: string;
 }
 
-const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  ...orderStatuses.map((s) => ({ value: s as StatusFilter, label: s })),
+// Option label lookups are built inside the component (via t()) rather than
+// as module-scope constants, so switching language re-renders them — only
+// the value lists are fixed here.
+const STATUS_FILTER_VALUES: StatusFilter[] = ["all", ...orderStatuses];
+const BALANCE_FILTER_VALUES: BalanceFilter[] = ["all", "paid", "due", "overdue"];
+const DELIVERY_FILTER_VALUES: DeliveryFilter[] = [
+  "all",
+  "dueToday",
+  "dueTomorrow",
+  "dueWeek",
+  "overdue",
+  "custom",
 ];
 
-const BALANCE_FILTER_OPTIONS: { value: BalanceFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "paid", label: "Paid" },
-  { value: "due", label: "Due" },
-  { value: "overdue", label: "Overdue" },
-];
+const BALANCE_FILTER_LABEL_KEYS: Record<BalanceFilter, TranslationKey> = {
+  all: "common.all",
+  paid: "common.paid",
+  due: "orders.due",
+  overdue: "orders.overdue",
+};
 
-const DELIVERY_FILTER_OPTIONS: { value: DeliveryFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "dueToday", label: "Due Today" },
-  { value: "dueTomorrow", label: "Due Tomorrow" },
-  { value: "dueWeek", label: "Due This Week" },
-  { value: "overdue", label: "Overdue" },
-  { value: "custom", label: "Custom Range" },
-];
+const DELIVERY_FILTER_LABEL_KEYS: Record<DeliveryFilter, TranslationKey> = {
+  all: "common.all",
+  dueToday: "orders.dueToday",
+  dueTomorrow: "orders.dueTomorrow",
+  dueWeek: "orders.dueWeek",
+  overdue: "orders.overdue",
+  custom: "orders.customRange",
+};
 
 export function OrderListFilters({
   query,
@@ -71,6 +83,19 @@ export function OrderListFilters({
   onClearFilters: () => void;
   onSelectCustomer: (customer: Customer) => void;
 }) {
+  const { t } = useLanguage();
+  const statusOptions = STATUS_FILTER_VALUES.map((s) => ({
+    value: s,
+    label: s === "all" ? t("common.all") : t(ORDER_STATUS_LABEL_KEYS[s]),
+  }));
+  const balanceOptions = BALANCE_FILTER_VALUES.map((v) => ({
+    value: v,
+    label: t(BALANCE_FILTER_LABEL_KEYS[v]),
+  }));
+  const deliveryOptions = DELIVERY_FILTER_VALUES.map((v) => ({
+    value: v,
+    label: t(DELIVERY_FILTER_LABEL_KEYS[v]),
+  }));
   const customerSuggestions = searchCustomers(query);
   const hasActiveFilters =
     query.trim() !== "" ||
@@ -91,7 +116,7 @@ export function OrderListFilters({
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search by order no, phone, or customer..."
+          placeholder={t("orders.searchPlaceholder")}
           className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
         />
         {query.trim() && customerSuggestions.length > 0 && (
@@ -113,25 +138,25 @@ export function OrderListFilters({
       </div>
 
       <FilterDropdown
-        prefix="Status"
+        prefix={t("orders.filterStatus")}
         value={statusFilter}
-        options={STATUS_FILTER_OPTIONS}
+        options={statusOptions}
         onChange={onStatusFilterChange}
         minWidthClass="min-w-[190px]"
       />
 
       <FilterDropdown
-        prefix="Payment"
+        prefix={t("orders.filterPayment")}
         value={balanceFilter}
-        options={BALANCE_FILTER_OPTIONS}
+        options={balanceOptions}
         onChange={onBalanceFilterChange}
         minWidthClass="min-w-[170px]"
       />
 
       <FilterDropdown
-        prefix="Delivery"
+        prefix={t("orders.filterDelivery")}
         value={deliveryFilter}
-        options={DELIVERY_FILTER_OPTIONS}
+        options={deliveryOptions}
         onChange={onDeliveryFilterChange}
         minWidthClass="min-w-[170px]"
       />
@@ -149,7 +174,7 @@ export function OrderListFilters({
             }
             className={`${CONTROL_CLASS} px-3`}
           />
-          <span className="text-sm text-ink-faint">to</span>
+          <span className="text-sm text-ink-faint">{t("common.to")}</span>
           <input
             type="date"
             value={deliveryCustomRange.to}
@@ -170,7 +195,7 @@ export function OrderListFilters({
           onClick={onClearFilters}
           className="flex h-11 items-center px-1 text-sm font-medium text-primary hover:text-primary-dark hover:underline"
         >
-          Clear filters
+          {t("common.clearFilters")}
         </button>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import { Search } from "lucide-react";
 import type { StaffRole, StaffStatus } from "@/lib/types";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export interface StaffFilterState {
   nameQuery: string;
@@ -30,6 +31,7 @@ export function StaffFilters({
   filters: StaffFilterState;
   onChange: (next: StaffFilterState) => void;
 }) {
+  const { t } = useLanguage();
   function set<K extends keyof StaffFilterState>(key: K, value: StaffFilterState[K]) {
     onChange({ ...filters, [key]: value });
   }
@@ -41,7 +43,7 @@ export function StaffFilters({
         <input
           value={filters.nameQuery}
           onChange={(e) => set("nameQuery", e.target.value)}
-          placeholder="Search by name..."
+          placeholder={t("staff.searchByName")}
           className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
         />
       </div>
@@ -50,7 +52,7 @@ export function StaffFilters({
         onChange={(e) => set("role", e.target.value as StaffRole | "")}
         className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
       >
-        <option value="">All Roles</option>
+        <option value="">{t("staff.allRoles")}</option>
         {ROLES.map((r) => (
           <option key={r} value={r}>
             {r}
@@ -62,7 +64,7 @@ export function StaffFilters({
         onChange={(e) => set("status", e.target.value as StaffStatus | "")}
         className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
       >
-        <option value="">All Statuses</option>
+        <option value="">{t("staff.allStatuses")}</option>
         {STATUSES.map((s) => (
           <option key={s} value={s}>
             {s}

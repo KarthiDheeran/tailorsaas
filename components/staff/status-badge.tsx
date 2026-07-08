@@ -1,5 +1,8 @@
+"use client";
+
 import type { StaffStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const STYLES: Record<StaffStatus, string> = {
   Active: "bg-chip-mint text-chip-mint-fg",
@@ -7,7 +10,17 @@ const STYLES: Record<StaffStatus, string> = {
   Inactive: "bg-chip-info text-chip-info-fg",
 };
 
+// "On Leave" has no matching translation key yet — rendered as-is in both
+// languages until one is added.
+const STATUS_LABELS: Record<StaffStatus, string | null> = {
+  Active: "common.active",
+  "On Leave": null,
+  Inactive: "common.inactive",
+};
+
 export function StaffStatusBadge({ status }: { status: StaffStatus }) {
+  const { t } = useLanguage();
+  const key = STATUS_LABELS[status];
   return (
     <span
       className={cn(
@@ -15,7 +28,7 @@ export function StaffStatusBadge({ status }: { status: StaffStatus }) {
         STYLES[status]
       )}
     >
-      {status}
+      {key ? t(key as Parameters<typeof t>[0]) : status}
     </span>
   );
 }

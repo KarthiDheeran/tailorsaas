@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { AddOnInput, CatalogAddOn } from "@/lib/catalog";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -16,6 +17,7 @@ export function AddOnDrawer({
   onCancel: () => void;
   onSaved: (data: AddOnInput) => void;
 }) {
+  const { t } = useLanguage();
   const isEdit = addOn !== null;
   const [name, setName] = useState(addOn?.name ?? "");
   const [defaultPrice, setDefaultPrice] = useState<number>(
@@ -30,11 +32,11 @@ export function AddOnDrawer({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Add-on name is required.");
+      setError(t("catalog.addOnNameRequired"));
       return;
     }
     if (!Number.isFinite(defaultPrice) || defaultPrice < 0) {
-      setError("Default price is required and must be 0 or more.");
+      setError(t("catalog.defaultPriceRequired"));
       return;
     }
 
@@ -51,16 +53,16 @@ export function AddOnDrawer({
         <div className="flex items-start justify-between border-b border-border-soft px-6 py-5">
           <div>
             <p className="text-[17px] font-semibold text-ink">
-              {isEdit ? "Edit Add-on" : "Add Add-on"}
+              {isEdit ? t("catalog.editAddOn") : t("catalog.addAddOnTitle")}
             </p>
             <p className="text-sm text-ink-muted">
-              Reusable extras garment types can link to.
+              {t("catalog.addOnDrawerSubtitle")}
             </p>
           </div>
           <button
             type="button"
             onClick={onCancel}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
           >
             <X className="h-4 w-4" />
@@ -82,7 +84,7 @@ export function AddOnDrawer({
               <div className="flex flex-col gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Add-on Name
+                    {t("catalog.addOnName")}
                   </span>
                   <input
                     required
@@ -94,7 +96,7 @@ export function AddOnDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Default Price (₹)
+                    {t("catalog.defaultPriceLabel")}
                   </span>
                   <input
                     type="number"
@@ -107,15 +109,15 @@ export function AddOnDrawer({
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    Status
+                    {t("common.status")}
                   </span>
                   <select
                     value={isActive ? "Active" : "Inactive"}
                     onChange={(e) => setIsActive(e.target.value === "Active")}
                     className={inputClass}
                   >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
+                    <option value="Active">{t("common.active")}</option>
+                    <option value="Inactive">{t("common.inactive")}</option>
                   </select>
                 </label>
               </div>
@@ -127,14 +129,14 @@ export function AddOnDrawer({
               type="submit"
               className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
-              {isEdit ? "Save Changes" : "Add Add-on"}
+              {isEdit ? t("common.saveChanges") : t("catalog.addAddOnTitle")}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>
