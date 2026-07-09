@@ -32,7 +32,7 @@ export function RoleEditDrawer({
 }: {
   role: Role | null;
   onCancel: () => void;
-  onSaved: (input: RoleInput) => void;
+  onSaved: (input: RoleInput) => Promise<{ success: boolean; error?: string }>;
 }) {
   const isCreate = role === null;
   const isAdmin = role?.id === SYSTEM_ROLE_IDS.ADMIN;
@@ -47,6 +47,7 @@ export function RoleEditDrawer({
     isAdmin ? [...ALL_PERMISSIONS] : role?.permissions ?? []
   );
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   function togglePermission(permission: Permission) {
     if (permissionsLocked) return;
@@ -64,7 +65,7 @@ export function RoleEditDrawer({
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const trimmedName = name.trim();
@@ -72,11 +73,18 @@ export function RoleEditDrawer({
       setError(t("validation.nameRequired"));
       return;
     }
-    onSaved({
+    setSubmitting(true);
+    const result = await onSaved({
       name: nameLocked ? role!.name : trimmedName,
       description: nameLocked ? role?.description : description.trim() || undefined,
       permissions: isAdmin ? [...ALL_PERMISSIONS] : permissions,
     });
+    setSubmitting(false);
+    if (!result.success) {
+      setError(result.error ?? "Could not save role.");
+      return;
+    }
+    onCancel();
   }
 
   return (
@@ -200,9 +208,15 @@ export function RoleEditDrawer({
           <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              disabled={submitting || isAdmin}
+              title={isAdmin ? "The Admin role cannot be edited." : undefined}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isCreate ? t("usersAccess.createRoleBtn") : t("common.saveChanges")}
+              {submitting
+                ? "Saving…"
+                : isCreate
+                  ? t("usersAccess.createRoleBtn")
+                  : t("common.saveChanges")}
             </button>
             <button
               type="button"

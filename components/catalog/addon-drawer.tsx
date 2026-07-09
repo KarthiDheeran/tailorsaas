@@ -15,7 +15,7 @@ export function AddOnDrawer({
 }: {
   addOn: CatalogAddOn | null;
   onCancel: () => void;
-  onSaved: (data: AddOnInput) => void;
+  onSaved: (data: AddOnInput) => Promise<{ success: boolean; error?: string }>;
 }) {
   const { t } = useLanguage();
   const isEdit = addOn !== null;
@@ -25,8 +25,9 @@ export function AddOnDrawer({
   );
   const [isActive, setIsActive] = useState(addOn?.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -40,7 +41,14 @@ export function AddOnDrawer({
       return;
     }
 
-    onSaved({ name: trimmedName, defaultPrice, isActive });
+    setSubmitting(true);
+    const result = await onSaved({ name: trimmedName, defaultPrice, isActive });
+    setSubmitting(false);
+    if (!result.success) {
+      setError(result.error ?? "Could not save add-on.");
+      return;
+    }
+    onCancel();
   }
 
   return (
@@ -127,9 +135,14 @@ export function AddOnDrawer({
           <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              disabled={submitting}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {isEdit ? t("common.saveChanges") : t("catalog.addAddOnTitle")}
+              {submitting
+                ? "Saving…"
+                : isEdit
+                  ? t("common.saveChanges")
+                  : t("catalog.addAddOnTitle")}
             </button>
             <button
               type="button"

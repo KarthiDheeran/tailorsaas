@@ -1,5 +1,4 @@
 import type { Order } from "@/lib/types";
-import { getCustomerById } from "@/lib/data/stub-data";
 import { formatDate } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 
@@ -17,7 +16,9 @@ export function TrialQueue({ orders }: { orders: Order[] }) {
       ) : (
         <ul className="divide-y divide-border-soft">
           {orders.map((order) => {
-            const customer = getCustomerById(order.customerId);
+            // See todays-deliveries.tsx's comment: uses the order's own
+            // customerSnapshot, no live customer lookup (Phase 6E).
+            const customer = order.customerSnapshot;
             const itemsSummary = order.items
               .map((i) => `${i.particular} x${i.qty}`)
               .join(", ");

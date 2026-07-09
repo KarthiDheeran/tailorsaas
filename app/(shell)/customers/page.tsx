@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
-import { getCustomerAreas, getCustomerListRows } from "@/lib/customers";
+import {
+  getCustomerAreasAction,
+  getCustomerListRowsAction,
+} from "@/app/(shell)/customers/actions";
+import type { CustomerListRow } from "@/lib/customers-db";
 import { CustomersTable } from "@/components/customers/customers-table";
 import {
   CustomerFilters,
@@ -24,12 +28,27 @@ function CustomersPageContent() {
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const [filters, setFilters] = useState<CustomerFilterState>(EMPTY_FILTERS);
+  const [allRows, setAllRows] = useState<CustomerListRow[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
   const todayIso = new Date().toISOString().slice(0, 10);
-  const allRows = getCustomerListRows(todayIso);
-  const areas = getCustomerAreas();
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getCustomerListRowsAction(todayIso), getCustomerAreasAction()]).then(
+      ([rows, areaList]) => {
+        if (cancelled) return;
+        setAllRows(rows);
+        setAreas(areaList);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const rows = allRows.filter((row) => {
     const query = filters.query.trim();

@@ -27,19 +27,14 @@ import {
   hasPermission as checkPermission,
 } from "@/lib/permissions";
 import { getAppUsers, type AppUser } from "@/lib/profiles";
-import {
-  createRole as createRoleData,
-  deleteRole as deleteRoleData,
-  getRoleById,
-  getRoles,
-  updateRole as updateRoleData,
-  type Role,
-  type RoleInput,
-} from "@/lib/roles";
+import { getRoleById, getRoles, type Role, type RoleInput } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import {
+  createRoleAction,
   createUserAction,
+  deleteRoleAction,
   resetUserPasswordAction,
+  updateRoleAction,
   updateUserProfileAction,
 } from "@/app/(shell)/users-access/actions";
 import type { CreateUserInput } from "@/components/users-access/add-user-drawer";
@@ -68,9 +63,9 @@ interface CurrentUserContextValue {
     staffId?: string;
   }) => Promise<ActionResult>;
   resetUserPassword: (input: { userId: string; tempPassword: string }) => Promise<ActionResult>;
-  createRole: (input: RoleInput) => void;
-  updateRole: (id: string, input: RoleInput) => void;
-  deleteRole: (id: string) => void;
+  createRole: (input: RoleInput) => Promise<ActionResult>;
+  updateRole: (id: string, input: RoleInput) => Promise<ActionResult>;
+  deleteRole: (id: string) => Promise<ActionResult>;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasAllPermissions: (permissions: Permission[]) => boolean;
@@ -133,7 +128,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
 
       setProfile((data as AppUser) ?? undefined);
       const roleId = data?.role_id;
-      const resolvedRole = roleId ? await getRoleById(roleId) : undefined;
+      const resolvedRole = roleId ? await getRoleById(supabase, roleId) : undefined;
       if (!cancelled) {
         setRole(resolvedRole);
         setProfileResolved(true);
@@ -150,7 +145,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   // dropdown/name lookup.
   useEffect(() => {
     let cancelled = false;
-    getRoles().then((r) => {
+    getRoles(createClient()).then((r) => {
       if (!cancelled) setRoles(r);
     });
     return () => {
@@ -171,16 +166,25 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshTick]);
 
-  const createRole = useCallback((input: RoleInput) => {
-    createRoleData(input).then(() => setRefreshTick((t) => t + 1));
+  const createRole = useCallback(async (input: RoleInput): Promise<ActionResult> => {
+    const result = await createRoleAction(input);
+    if (result.success) setRefreshTick((t) => t + 1);
+    return result;
   }, []);
 
-  const updateRole = useCallback((id: string, input: RoleInput) => {
-    updateRoleData(id, input).then(() => setRefreshTick((t) => t + 1));
-  }, []);
+  const updateRole = useCallback(
+    async (id: string, input: RoleInput): Promise<ActionResult> => {
+      const result = await updateRoleAction(id, input);
+      if (result.success) setRefreshTick((t) => t + 1);
+      return result;
+    },
+    []
+  );
 
-  const deleteRole = useCallback((id: string) => {
-    deleteRoleData(id).then(() => setRefreshTick((t) => t + 1));
+  const deleteRole = useCallback(async (id: string): Promise<ActionResult> => {
+    const result = await deleteRoleAction(id);
+    if (result.success) setRefreshTick((t) => t + 1);
+    return result;
   }, []);
 
   const createUser = useCallback(async (input: CreateUserInput): Promise<ActionResult> => {

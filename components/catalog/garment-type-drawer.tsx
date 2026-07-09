@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import {
-  getActiveAddOns,
   MEASUREMENT_FIELD_GROUPS,
   measurementFieldLabel,
+  type CatalogAddOn,
   type CatalogGarmentType,
   type GarmentTypeInput,
 } from "@/lib/catalog";
@@ -20,12 +20,16 @@ const NO_FIELDS_EXPECTED = ["alteration", "custom"];
 
 export function GarmentTypeDrawer({
   garment,
+  activeAddOns,
   onCancel,
   onSaved,
 }: {
   garment: CatalogGarmentType | null;
+  // Phase 5B: fetched by the parent page via a Server Action, rather than
+  // this drawer calling lib/catalog.ts's getActiveAddOns() itself.
+  activeAddOns: CatalogAddOn[];
   onCancel: () => void;
-  onSaved: (data: GarmentTypeInput) => void;
+  onSaved: (data: GarmentTypeInput) => Promise<{ success: boolean; error?: string }>;
 }) {
   const { t } = useLanguage();
   const isEdit = garment !== null;
@@ -39,8 +43,7 @@ export function GarmentTypeDrawer({
     garment?.addOnIds ?? []
   );
   const [error, setError] = useState<string | null>(null);
-
-  const activeAddOns = getActiveAddOns();
+  const [submitting, setSubmitting] = useState(false);
 
   const noFieldsExpected = NO_FIELDS_EXPECTED.includes(
     name.trim().toLowerCase()
@@ -58,7 +61,7 @@ export function GarmentTypeDrawer({
     );
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -72,13 +75,20 @@ export function GarmentTypeDrawer({
       return;
     }
 
-    onSaved({
+    setSubmitting(true);
+    const result = await onSaved({
       name: trimmedName,
       basePrice,
       measurementFieldIds: selectedFieldIds,
       addOnIds: selectedAddOnIds,
       isActive,
     });
+    setSubmitting(false);
+    if (!result.success) {
+      setError(result.error ?? "Could not save garment type.");
+      return;
+    }
+    onCancel();
   }
 
   return (
@@ -246,9 +256,10 @@ export function GarmentTypeDrawer({
           <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              disabled={submitting}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {isEdit ? "Save Changes" : "Add Garment Type"}
+              {submitting ? "Saving…" : isEdit ? "Save Changes" : "Add Garment Type"}
             </button>
             <button
               type="button"

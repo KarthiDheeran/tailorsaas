@@ -40,6 +40,16 @@ export interface CustomerMeasurements {
   updatedAt: string;
 }
 
+// Denormalized {name, phone, area} snapshot shape — used both for Order's
+// own customerSnapshot (captured at order-creation time) and, since Phase
+// 6E, as the customer-display shape Reports' Payments/Orders/Sales tabs use
+// instead of a live customers-table join (see lib/reports.ts).
+export interface CustomerSnapshot {
+  name: string;
+  phone: string;
+  area: string;
+}
+
 export interface OrderItemAddOn {
   key: string;
   label: string;
@@ -53,6 +63,11 @@ export interface OrderItem {
   // in New Order, so existing display code (orders table, order details,
   // edit order) didn't need to change.
   particular: string;
+  // Catalog garment type id, set only when New Order (Catalog-driven since
+  // Phase 6B) created this item. Edit Order still uses free-text particular
+  // with no catalog id concept, so items edited/created there leave this
+  // unset — a real FK "where possible," not guaranteed for every item.
+  garmentTypeId?: string;
   size?: string;
   qty: number;
   // Base rate (catalog base price, or a manual override) — excludes add-ons.
@@ -178,7 +193,7 @@ export interface Order {
   // before, so a later name/phone edit still shows correctly everywhere.
   // This snapshot exists only as a recorded fact about how the order looked
   // when it was placed.
-  customerSnapshot?: { name: string; phone: string; area: string };
+  customerSnapshot?: CustomerSnapshot;
   orderDate: string;
   trialDate: string;
   deliveryDate: string;

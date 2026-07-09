@@ -1,12 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Ruler, Tag, Trash2 } from "lucide-react";
-import { getGarmentMeasurementDraftSeed } from "@/lib/data/stub-data";
+import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
 import {
-  getActiveGarmentTypes,
   getAddOnsForGarment,
-  getGarmentById,
   calculateGarmentAmount,
   measurementFields as catalogMeasurementFieldLibrary,
   type CatalogAddOn,
@@ -36,6 +34,19 @@ function garmentMeasurementFields(
     key: id,
     label: CATALOG_FIELD_LABELS[id] ?? id,
   }));
+}
+
+// Phase 6B: Catalog data is now fetched once, at the page level
+// (app/(shell)/orders/new/page.tsx), and threaded down as plain arrays —
+// every lookup below is a pure, synchronous find() over that already-
+// fetched data rather than its own Supabase call, so per-row/per-render
+// computations stay exactly as fast as they were against the old mock
+// arrays.
+function findGarmentById(
+  garmentTypes: CatalogGarmentType[],
+  id: string
+): CatalogGarmentType | undefined {
+  return garmentTypes.find((g) => g.id === id);
 }
 
 export interface DraftItem {
@@ -70,12 +81,16 @@ export function blankDraftItem(): DraftItem {
 // qty/rate still carry over so the shopkeeper only needs to re-pick it).
 // Rate is always treated as an override so the customer's previously agreed
 // price is preserved even if the catalog's base price has since changed.
-export function orderItemToDraftItem(item: OrderItem): DraftItem {
-  const garment = getActiveGarmentTypes().find(
+export function orderItemToDraftItem(
+  item: OrderItem,
+  garmentTypes: CatalogGarmentType[],
+  addOns: CatalogAddOn[]
+): DraftItem {
+  const garment = garmentTypes.find(
     (g) => g.name.toLowerCase() === item.particular.trim().toLowerCase()
   );
   const addOnIds = garment
-    ? getAddOnsForGarment(garment)
+    ? getAddOnsForGarment(garment, addOns)
         .filter((a) =>
           item.addOns?.some(
             (io) => io.label.toLowerCase() === a.name.toLowerCase()
@@ -93,10 +108,14 @@ export function orderItemToDraftItem(item: OrderItem): DraftItem {
   };
 }
 
-function selectedAddOns(it: DraftItem): CatalogAddOn[] {
-  const garment = getGarmentById(it.garmentTypeId);
+function selectedAddOns(
+  it: DraftItem,
+  garmentTypes: CatalogGarmentType[],
+  addOns: CatalogAddOn[]
+): CatalogAddOn[] {
+  const garment = findGarmentById(garmentTypes, it.garmentTypeId);
   if (!garment) return [];
-  return getAddOnsForGarment(garment).filter((a) =>
+  return getAddOnsForGarment(garment, addOns).filter((a) =>
     it.addOnIds.includes(a.id)
   );
 }
@@ -104,22 +123,30 @@ function selectedAddOns(it: DraftItem): CatalogAddOn[] {
 // Item Amount = Qty × (Rate + selected add-ons total) — Rate here is the
 // row's current effective rate (Catalog base price, or the shopkeeper's
 // manual override), not necessarily the garment's basePrice.
-function computeAmount(it: DraftItem): number {
-  return calculateGarmentAmount(it.rate, selectedAddOns(it), it.qty);
+function computeAmount(
+  it: DraftItem,
+  garmentTypes: CatalogGarmentType[],
+  addOns: CatalogAddOn[]
+): number {
+  return calculateGarmentAmount(it.rate, selectedAddOns(it, garmentTypes, addOns), it.qty);
 }
 
-export function computeOrderItems(items: DraftItem[]): {
+export function computeOrderItems(
+  items: DraftItem[],
+  garmentTypes: CatalogGarmentType[],
+  addOns: CatalogAddOn[]
+): {
   computedItems: OrderItem[];
   totalAmount: number;
 } {
   const computedItems: OrderItem[] = items.map((it, i) => {
-    const garment = getGarmentById(it.garmentTypeId);
-    const addOns: OrderItemAddOn[] = selectedAddOns(it).map((a) => ({
+    const garment = findGarmentById(garmentTypes, it.garmentTypeId);
+    const itemAddOns: OrderItemAddOn[] = selectedAddOns(it, garmentTypes, addOns).map((a) => ({
       key: a.id,
       label: a.name,
       amount: a.defaultPrice,
     }));
-    const addOnsTotal = addOns.reduce((sum, a) => sum + a.amount, 0);
+    const addOnsTotal = itemAddOns.reduce((sum, a) => sum + a.amount, 0);
     const finalRate = it.rate + addOnsTotal;
     // Only snapshot measurements onto the item when the shopkeeper actually
     // opened/filled the modal for this row (it.measurement !== null) — not
@@ -129,9 +156,13 @@ export function computeOrderItems(items: DraftItem[]): {
     return {
       serialNo: i + 1,
       particular: garment?.name ?? "",
+      // Catalog garment type id, so order_items can reference
+      // catalog_garment_types "where possible" (Phase 6C) — Edit Order's
+      // own items never set this, since that flow has no Catalog dropdown.
+      garmentTypeId: it.garmentTypeId || undefined,
       qty: it.qty,
       rate: it.rate,
-      addOns: addOns.length > 0 ? addOns : undefined,
+      addOns: itemAddOns.length > 0 ? itemAddOns : undefined,
       addOnsTotal: addOnsTotal > 0 ? addOnsTotal : undefined,
       finalRate,
       amount: finalRate * it.qty,
@@ -240,16 +271,62 @@ export function NewOrderItemsCard({
   customerId,
   items,
   onItemsChange,
+  garmentTypes,
+  addOns,
 }: {
   // null while the customer is still unsaved (brand-new customer) — the
   // Measurements modal simply has nothing to seed from yet in that case.
   customerId: string | null;
   items: DraftItem[];
   onItemsChange: (items: DraftItem[]) => void;
+  // Phase 6B: fetched once at the page level (active garment types, all
+  // add-ons) and passed down here — every lookup in this component is a
+  // pure, synchronous find() over these arrays, not its own Supabase call.
+  garmentTypes: CatalogGarmentType[];
+  addOns: CatalogAddOn[];
 }) {
   const { t } = useLanguage();
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
-  const activeGarments = getActiveGarmentTypes();
+  // Already pre-filtered to active garments by the page's fetch
+  // (getActiveGarmentTypesAction) — no further filtering needed here.
+  const activeGarments = garmentTypes;
+  // Phase 5A: measurement seeds now come from a Server Action
+  // (getGarmentMeasurementDraftSeedAction), not a synchronous stub-data.ts
+  // call — cached here since measurementDraftFor/hasMeasurementData are read
+  // multiple times per render (once per item row, every render).
+  const [seedCache, setSeedCache] = useState<
+    Record<string, { values: Record<string, string>; fitNotes: string; notes: string }>
+  >({});
+
+  const garmentNames = items
+    .map((it) => findGarmentById(garmentTypes, it.garmentTypeId)?.name)
+    .filter((n): n is string => !!n);
+
+  useEffect(() => {
+    if (!customerId) return;
+    let cancelled = false;
+    const missing = Array.from(new Set(garmentNames)).filter(
+      (name) => !(`${customerId}::${name.toLowerCase()}` in seedCache)
+    );
+    if (missing.length === 0) return;
+    Promise.all(
+      missing.map(async (name) => {
+        const seed = await getGarmentMeasurementDraftSeedAction(customerId, name);
+        return [`${customerId}::${name.toLowerCase()}`, seed] as const;
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setSeedCache((prev) => {
+        const next = { ...prev };
+        for (const [key, seed] of entries) next[key] = seed;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, garmentNames.join("|")]);
 
   function updateItem(index: number, patch: Partial<DraftItem>) {
     onItemsChange(
@@ -264,7 +341,7 @@ export function NewOrderItemsCard({
   }
 
   function handleGarmentTypeChange(index: number, garmentTypeId: string) {
-    const garment = getGarmentById(garmentTypeId);
+    const garment = findGarmentById(garmentTypes, garmentTypeId);
     onItemsChange(
       items.map((it, i) => {
         if (i !== index) return it;
@@ -298,10 +375,11 @@ export function NewOrderItemsCard({
 
   function measurementDraftFor(index: number): GarmentMeasurementDraft {
     const it = items[index];
-    const garmentName = getGarmentById(it.garmentTypeId)?.name ?? "";
+    const garmentName = findGarmentById(garmentTypes, it.garmentTypeId)?.name ?? "";
     if (it.measurement) return it.measurement;
     if (!customerId) return { garmentType: garmentName, values: {}, fitNotes: "", notes: "" };
-    const seed = getGarmentMeasurementDraftSeed(customerId, garmentName);
+    const seed = seedCache[`${customerId}::${garmentName.toLowerCase()}`];
+    if (!seed) return { garmentType: garmentName, values: {}, fitNotes: "", notes: "" };
     return { garmentType: garmentName, ...seed };
   }
   function hasMeasurementData(index: number): boolean {
@@ -329,9 +407,9 @@ export function NewOrderItemsCard({
       </div>
       <div className="space-y-3">
         {items.map((it, i) => {
-          const garment = getGarmentById(it.garmentTypeId);
-          const addOnOptions = garment ? getAddOnsForGarment(garment) : [];
-          const amount = computeAmount(it);
+          const garment = findGarmentById(garmentTypes, it.garmentTypeId);
+          const addOnOptions = garment ? getAddOnsForGarment(garment, addOns) : [];
+          const amount = computeAmount(it, garmentTypes, addOns);
           const measurementsFilled = hasMeasurementData(i);
           const hasMeasurementFields = (garment?.measurementFieldIds.length ?? 0) > 0;
           const measurementsDisabled = !it.garmentTypeId || !hasMeasurementFields;
@@ -439,7 +517,7 @@ export function NewOrderItemsCard({
         <GarmentMeasurementModal
           initial={measurementDraftFor(activeItemIndex)}
           fields={garmentMeasurementFields(
-            getGarmentById(items[activeItemIndex].garmentTypeId)
+            findGarmentById(garmentTypes, items[activeItemIndex].garmentTypeId)
           )}
           onCancel={() => setActiveItemIndex(null)}
           onSave={handleSaveMeasurement}

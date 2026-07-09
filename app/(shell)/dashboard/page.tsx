@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ShoppingBag,
@@ -10,7 +11,8 @@ import {
   IndianRupee,
   Plus,
 } from "lucide-react";
-import { getDashboardData } from "@/lib/dashboard";
+import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
+import type { DashboardData } from "@/lib/dashboard";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodaysDeliveries } from "@/components/dashboard/todays-deliveries";
 import { OverdueOrdersList } from "@/components/dashboard/overdue-orders-list";
@@ -39,7 +41,25 @@ function DashboardContent() {
   // ISO (UTC) date string — consistent between server and client renders,
   // matching the todayIso convention already used in orders-table.tsx.
   const todayIso = new Date().toISOString().slice(0, 10);
-  const data = getDashboardData(todayIso);
+
+  // Phase 6E: fetched via a Server Action now (previously a direct,
+  // unguarded lib/dashboard.ts call) — starts null and fills in a moment
+  // after mount, same cost already accepted by every other migrated page.
+  const [data, setData] = useState<DashboardData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardDataAction(todayIso).then((result) => {
+      if (!cancelled) setData(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!data) return null;
+
   const visibleStats = data.stats.filter(
     (stat) => canViewPayments || !MONEY_STAT_LABELS.has(stat.label)
   );

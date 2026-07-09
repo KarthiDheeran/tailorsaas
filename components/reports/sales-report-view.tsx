@@ -1,25 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { IndianRupee, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
+import { getSalesReportAction } from "@/app/(shell)/reports/actions";
 import {
   getDateRangeForPreset,
-  getSalesReport,
   type DateRange,
   type DateRangePreset,
+  type SalesReport,
 } from "@/lib/reports";
-import { paymentModes } from "@/lib/data/stub-data";
+import { paymentModes } from "@/lib/constants";
 import type { PaymentMode } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
+
+const EMPTY_REPORT: SalesReport = {
+  totalSales: 0,
+  revenueCollected: 0,
+  totalOrders: 0,
+  avgOrderValue: 0,
+  rows: [],
+};
 
 export function SalesReportView({ todayIso }: { todayIso: string }) {
   const { t } = useLanguage();
@@ -31,10 +40,21 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
-  const report = useMemo(
-    () => getSalesReport(range, paymentMode || undefined),
-    [range.from, range.to, paymentMode]
-  );
+  // Phase 6E: fetched via a Server Action now — a useMemo can't await, so
+  // this became an effect + state, same conversion every other client
+  // component went through since Phase 5A.
+  const [report, setReport] = useState<SalesReport>(EMPTY_REPORT);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSalesReportAction(range, paymentMode || undefined).then((result) => {
+      if (!cancelled && result) setReport(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, paymentMode]);
 
   function handleExport() {
     downloadCsv(

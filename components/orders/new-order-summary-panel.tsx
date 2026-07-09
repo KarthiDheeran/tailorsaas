@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { Repeat, User } from "lucide-react";
-import type { Customer, Order } from "@/lib/types";
-import {
-  getCustomerMeasurements,
-  getGarmentMeasurementsForCustomer,
-} from "@/lib/data/stub-data";
-import { getCustomerDetail } from "@/lib/customers";
+import type {
+  Customer,
+  CustomerMeasurements,
+  GarmentMeasurement,
+  Order,
+} from "@/lib/types";
+import type { CustomerDetail } from "@/lib/customers-db";
 import { BalanceBadge, OrderStatusChip, formatDate } from "@/components/orders/orders-table";
 import { countFilledFields } from "@/components/orders/garment-measurement-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -30,9 +31,20 @@ function Card({
 
 export function NewOrderSummaryPanel({
   customer,
+  detail,
+  measurements,
+  garmentMeasurements,
   onRepeatOrder,
 }: {
   customer: Customer | null;
+  // Phase 5A: all fetched by the parent (app/(shell)/orders/new/page.tsx) via
+  // Server Actions rather than this panel calling
+  // getCustomerDetail/getCustomerMeasurements/getGarmentMeasurementsForCustomer
+  // itself — undefined while the parent's fetch for the current customer is
+  // still in flight.
+  detail: CustomerDetail | undefined;
+  measurements: CustomerMeasurements | undefined;
+  garmentMeasurements: GarmentMeasurement[];
   onRepeatOrder: (order: Order) => void;
 }) {
   const { hasPermission } = useCurrentUser();
@@ -48,15 +60,20 @@ export function NewOrderSummaryPanel({
     );
   }
 
-  const detail = getCustomerDetail(customer);
-  const measurements = getCustomerMeasurements(customer.id);
+  if (!detail) {
+    return (
+      <div className="rounded-xl border border-border-soft bg-white p-5 text-sm text-ink-muted shadow-soft">
+        Loading customer summary…
+      </div>
+    );
+  }
+
   const filledMeasurementCount = measurements
     ? Object.values(measurements.values).filter((v) => v.trim() !== "").length
     : 0;
   // Per-garment-type saved records (e.g. "Blouse: 9 fields saved") take
   // priority since they're the more specific, garment-scoped source; only
   // fall back to the generic customer baseline when none exist yet.
-  const garmentMeasurements = getGarmentMeasurementsForCustomer(customer.id);
   const todayIso = new Date().toISOString().slice(0, 10);
 
   return (

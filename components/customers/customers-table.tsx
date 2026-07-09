@@ -6,7 +6,7 @@ import { Eye, Plus, Pencil, Inbox } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
-import type { CustomerListRow } from "@/lib/customers";
+import type { CustomerListRow } from "@/lib/customers-db";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 

@@ -1,23 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CalendarClock, Receipt, Wallet } from "lucide-react";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
-import { getCustomerById } from "@/lib/data/stub-data";
+import {
+  getOrdersReportAction,
+  getReportGarmentTypesAction,
+} from "@/app/(shell)/reports/actions";
 import {
   getDateRangeForPreset,
-  getGarmentTypes,
-  getOrdersReport,
   type DateRange,
   type DateRangePreset,
   type OrderBalanceFilter,
   type OrderDeliveryFilter,
+  type OrdersReport,
 } from "@/lib/reports";
 import { useLanguage } from "@/components/i18n/language-provider";
+
+const EMPTY_REPORT: OrdersReport = {
+  summary: { totalOrders: 0, balanceDueOrders: 0, overdueOrders: 0, dueSoonDeliveries: 0 },
+  orders: [],
+};
 
 export function OrdersReportView({ todayIso }: { todayIso: string }) {
   const { t } = useLanguage();
@@ -31,22 +38,43 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
   const [garmentType, setGarmentType] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
 
-  const garmentTypes = useMemo(() => getGarmentTypes(), []);
+  // Phase 6E: both fetched via Server Actions now — see sales-report-view.tsx's
+  // comment for why this is an effect + state instead of useMemo. Garment
+  // types are independent of the report filters, so they only fetch once.
+  const [garmentTypes, setGarmentTypes] = useState<string[]>([]);
+  const [report, setReport] = useState<OrdersReport>(EMPTY_REPORT);
+
+  useEffect(() => {
+    let cancelled = false;
+    getReportGarmentTypesAction().then((result) => {
+      if (!cancelled) setGarmentTypes(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const range = getDateRangeForPreset(preset, todayIso, customRange);
-  const report = useMemo(
-    () =>
-      getOrdersReport(
-        {
-          range,
-          balanceStatus,
-          deliveryStatus,
-          garmentType: garmentType || undefined,
-          customerQuery,
-        },
-        todayIso
-      ),
-    [range.from, range.to, balanceStatus, deliveryStatus, garmentType, customerQuery, todayIso]
-  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrdersReportAction(
+      {
+        range,
+        balanceStatus,
+        deliveryStatus,
+        garmentType: garmentType || undefined,
+        customerQuery,
+      },
+      todayIso
+    ).then((result) => {
+      if (!cancelled && result) setReport(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, balanceStatus, deliveryStatus, garmentType, customerQuery, todayIso]);
 
   function handleExport() {
     downloadCsv(
@@ -54,7 +82,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
       ["Order No", "Customer", "Order Date", "Delivery Date", "Items", "Total", "Balance"],
       report.orders.map((o) => [
         o.orderNumber,
-        getCustomerById(o.customerId)?.name ?? "Unknown",
+        o.customerSnapshot?.name ?? "Unknown",
         o.orderDate,
         o.deliveryDate,
         o.items.map((i) => `${i.particular} x${i.qty}`).join("; "),

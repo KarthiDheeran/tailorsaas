@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { IndianRupee, Repeat, UserPlus, Wallet } from "lucide-react";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import { formatDate } from "@/components/orders/orders-table";
@@ -8,10 +8,13 @@ import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
-import { getCustomerAreas } from "@/lib/customers";
 import {
-  getCustomersReport,
+  getCustomersReportAction,
+  getReportCustomerAreasAction,
+} from "@/app/(shell)/reports/actions";
+import {
   getDateRangeForPreset,
+  type CustomersReport,
   type DateRange,
   type DateRangePreset,
 } from "@/lib/reports";
@@ -22,6 +25,11 @@ import { useLanguage } from "@/components/i18n/language-provider";
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
+
+const EMPTY_REPORT: CustomersReport = {
+  summary: { newCustomers: 0, repeatCustomers: 0, customersWithBalance: 0, avgLifetimeValue: 0 },
+  rows: [],
+};
 
 export function CustomersReportView({ todayIso }: { todayIso: string }) {
   const { hasPermission } = useCurrentUser();
@@ -38,23 +46,44 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
   const [repeatOnly, setRepeatOnly] = useState(false);
   const [inactiveOnly, setInactiveOnly] = useState(false);
 
-  const areas = useMemo(() => getCustomerAreas(), []);
+  // Phase 6E: both fetched via Server Actions now — see sales-report-view.tsx's
+  // comment for why this is an effect + state instead of useMemo. Areas are
+  // independent of the report filters, so they only fetch once.
+  const [areas, setAreas] = useState<string[]>([]);
+  const [report, setReport] = useState<CustomersReport>(EMPTY_REPORT);
+
+  useEffect(() => {
+    let cancelled = false;
+    getReportCustomerAreasAction().then((result) => {
+      if (!cancelled) setAreas(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const range = getDateRangeForPreset(preset, todayIso, customRange);
-  const report = useMemo(
-    () =>
-      getCustomersReport(
-        {
-          range,
-          area: area || undefined,
-          customerQuery,
-          hasBalanceOnly,
-          repeatOnly,
-          inactiveOnly,
-        },
-        todayIso
-      ),
-    [range.from, range.to, area, customerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]
-  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getCustomersReportAction(
+      {
+        range,
+        area: area || undefined,
+        customerQuery,
+        hasBalanceOnly,
+        repeatOnly,
+        inactiveOnly,
+      },
+      todayIso
+    ).then((result) => {
+      if (!cancelled && result) setReport(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, area, customerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]);
 
   function handleExport() {
     downloadCsv(

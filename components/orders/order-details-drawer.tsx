@@ -3,8 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { X, Pencil, Printer } from "lucide-react";
-import type { Order } from "@/lib/types";
-import { getCustomerById } from "@/lib/data/stub-data";
+import type { Customer, Order } from "@/lib/types";
 import {
   formatDate,
   OrderStatusEditor,
@@ -75,16 +74,20 @@ function PrintMenu({ orderId }: { orderId: string }) {
 
 export function OrderDetailsDrawer({
   order,
+  customer,
   onClose,
   onStatusChange,
   onEdit,
 }: {
   order: Order | null;
+  // Phase 5A: resolved by the parent (which already fetched customers
+  // server-side), rather than this drawer looking it up itself via the old
+  // client-side lib/data/stub-data.ts import.
+  customer: Customer | undefined;
   onClose: () => void;
   onStatusChange: () => void;
   onEdit: (order: Order) => void;
 }) {
-  const customer = order ? getCustomerById(order.customerId) : undefined;
   const todayIso = new Date().toISOString().slice(0, 10);
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();

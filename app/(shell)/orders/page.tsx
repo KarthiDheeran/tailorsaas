@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import {
-  getAllOrders,
-  getCustomerById,
-  getOrderById,
-  getOrdersForCustomer,
-} from "@/lib/data/stub-data";
+  getOrderByIdAction,
+  getOrdersAction,
+  getOrdersForCustomerAction,
+} from "@/app/(shell)/orders/actions";
+import { getCustomersAction } from "@/app/(shell)/customers/actions";
 import type { Customer, Order } from "@/lib/types";
 
 import {
@@ -58,10 +58,46 @@ function OrdersPageContent() {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<OrdersSortKey>("orderDate");
   const [sortDir, setSortDir] = useState<OrdersSortDir>("desc");
-  const [, setRefreshTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
+
+  // Phase 5A: orders + customers now come from Server Actions (both reads
+  // and writes go through app/(shell)/orders/actions.ts and
+  // app/(shell)/customers/actions.ts against the same server-side copy of
+  // the mock arrays), not direct client-side lib/data/stub-data.ts calls.
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customersById, setCustomersById] = useState<Record<string, Customer>>({});
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getOrdersAction(), getCustomersAction()]).then(
+      ([ordersResult, customersResult]) => {
+        if (cancelled) return;
+        setOrders(ordersResult);
+        setCustomersById(Object.fromEntries(customersResult.map((c) => [c.id, c])));
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick]);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerOrders([]);
+      return;
+    }
+    let cancelled = false;
+    getOrdersForCustomerAction(selectedCustomer.id).then((result) => {
+      if (!cancelled) setCustomerOrders(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomer, refreshTick]);
 
   // New Order redirects here with ?created=1 (and optionally &orderId=... if
   // "View Order" was clicked from the success modal) on success. Read via
@@ -75,8 +111,9 @@ function OrdersPageContent() {
     if (!created) return;
     setShowCreatedToast(true);
     if (orderId) {
-      const order = getOrderById(orderId);
-      if (order) setDetailsOrder(order);
+      getOrderByIdAction(orderId).then((order) => {
+        if (order) setDetailsOrder(order);
+      });
     }
     window.history.replaceState({}, "", "/orders");
     const timer = setTimeout(() => setShowCreatedToast(false), 4000);
@@ -145,9 +182,9 @@ function OrdersPageContent() {
   }
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
-  const filteredOrders = getAllOrders().filter((order) => {
+  const filteredOrders = orders.filter((order) => {
     if (trimmedQuery) {
-      const customer = getCustomerById(order.customerId);
+      const customer = customersById[order.customerId];
       const matchesQuery =
         order.orderNumber.toLowerCase().includes(trimmedQuery) ||
         customer?.name.toLowerCase().includes(trimmedQuery) ||
@@ -203,10 +240,6 @@ function OrdersPageContent() {
   );
   const rangeStart = allOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, allOrders.length);
-
-  const customerOrders = selectedCustomer
-    ? getOrdersForCustomer(selectedCustomer.id)
-    : [];
 
   function handleSelectCustomer(customer: Customer) {
     setSelectedCustomer(customer);
@@ -308,6 +341,7 @@ function OrdersPageContent() {
           </h2>
           <OrdersTable
             orders={customerOrders}
+            customersById={customersById}
             editableStatus
             onStatusChange={handleStatusChanged}
             onRowClick={setDetailsOrder}
@@ -317,6 +351,7 @@ function OrdersPageContent() {
         <>
           <OrdersTable
             orders={pagedOrders}
+            customersById={customersById}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
@@ -371,6 +406,7 @@ function OrdersPageContent() {
 
       <OrderDetailsDrawer
         order={detailsOrder}
+        customer={detailsOrder ? customersById[detailsOrder.customerId] : undefined}
         onClose={() => setDetailsOrder(null)}
         onStatusChange={handleStatusChanged}
         onEdit={handleEditOrder}
@@ -379,7 +415,7 @@ function OrdersPageContent() {
         key={editingOrder?.id ?? "none"}
         order={editingOrder}
         customer={
-          editingOrder ? getCustomerById(editingOrder.customerId) : undefined
+          editingOrder ? customersById[editingOrder.customerId] : undefined
         }
         onCancel={() => setEditingOrder(null)}
         onSaved={handleOrderSaved}

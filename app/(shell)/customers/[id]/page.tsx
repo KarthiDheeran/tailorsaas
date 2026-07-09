@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
 import { ChevronLeft, Plus, Pencil } from "lucide-react";
-import { getCustomerById, getCustomerMeasurements } from "@/lib/data/stub-data";
-import { getCustomerDetail } from "@/lib/customers";
+import {
+  getCustomerByIdAction,
+  getCustomerDetailAction,
+  getCustomerMeasurementsAction,
+} from "@/app/(shell)/customers/actions";
+import type { CustomerDetail } from "@/lib/customers-db";
+import type { Customer, CustomerMeasurements } from "@/lib/types";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { MeasurementsCard } from "@/components/customers/measurements-card";
 import { PaymentSummaryCard } from "@/components/customers/payment-summary-card";
@@ -21,14 +27,37 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
   const canCreateOrder = hasPermission("orders.create");
   const canViewPayments = hasPermission("orders.viewPayments");
   const canViewMeasurements = hasPermission("customers.viewMeasurements");
-  const customer = getCustomerById(params.id);
 
-  if (!customer) {
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [detail, setDetail] = useState<CustomerDetail | undefined>(undefined);
+  const [measurements, setMeasurements] = useState<CustomerMeasurements | undefined>(
+    undefined
+  );
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getCustomerByIdAction(params.id),
+      getCustomerDetailAction(params.id),
+      getCustomerMeasurementsAction(params.id),
+    ]).then(([c, d, m]) => {
+      if (cancelled) return;
+      setCustomer(c ?? null);
+      setDetail(d);
+      setMeasurements(m);
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
+
+  if (loaded && !customer) {
     notFound();
   }
 
-  const detail = getCustomerDetail(customer!);
-  const measurements = getCustomerMeasurements(customer!.id);
+  if (!customer || !detail) return null;
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -44,7 +73,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-[26px] font-semibold text-ink">
-              {customer!.name}
+              {customer.name}
             </h1>
             {canViewPayments && detail.outstandingBalance > 0 && (
               <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
@@ -54,15 +83,15 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             )}
           </div>
           <p className="mt-1 text-sm text-ink-muted">
-            {customer!.customerNumber} · {customer!.phone} · {customer!.area}{" "}
-            · {customer!.gender}
+            {customer.customerNumber} · {customer.phone} · {customer.area}{" "}
+            · {customer.gender}
           </p>
-          <p className="mt-1 text-sm text-ink-muted">{customer!.address}</p>
+          <p className="mt-1 text-sm text-ink-muted">{customer.address}</p>
         </div>
         <div className="flex items-center gap-2">
           {canCreateOrder && (
             <Link
-              href={`/orders/new?customerId=${customer!.id}`}
+              href={`/orders/new?customerId=${customer.id}`}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
               <Plus className="h-4 w-4" />
@@ -70,12 +99,12 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             </Link>
           )}
           <ContactActions
-            phone={customer!.phone}
-            message={`Hi ${customer!.name}, `}
+            phone={customer.phone}
+            message={`Hi ${customer.name}, `}
           />
           {canEdit && (
             <Link
-              href={`/customers/${customer!.id}/edit`}
+              href={`/customers/${customer.id}/edit`}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
               title={t("common.edit")}
             >
@@ -88,13 +117,16 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           {canViewMeasurements && (
-            <MeasurementsCard customer={customer!} measurements={measurements} />
+            <MeasurementsCard customer={customer} measurements={measurements} />
           )}
           <div>
             <h2 className="mb-3 text-[17px] font-semibold text-ink">
               {t("customers.orderHistory")}
             </h2>
-            <OrdersTable orders={detail.orders} />
+            <OrdersTable
+              orders={detail.orders}
+              customersById={{ [customer.id]: customer }}
+            />
           </div>
         </div>
         <div className="space-y-5">

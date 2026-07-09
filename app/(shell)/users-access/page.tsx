@@ -56,29 +56,29 @@ function UsersAccessPageContent() {
   }
 
   function handleRoleSaved(input: RoleInput) {
-    if (editingRole) {
-      updateRole(editingRole.id, input);
-    } else {
-      createRole(input);
-    }
-    setEditingRole(null);
-    setIsAddingRole(false);
+    // Drawer awaits this and closes itself (calling onCancel) only on
+    // success — same pattern as the Catalog/Staff drawers since Phase 5D
+    // gave Roles real server-side validation/errors to surface.
+    return editingRole ? updateRole(editingRole.id, input) : createRole(input);
   }
 
-  // Real now (Phase 4): a role is deletable only if it's custom and no
-  // profile is currently assigned to it — computed from the already-loaded
-  // roles/users lists rather than a separate lib lookup, since it's a
-  // two-line check with both lists already in scope here.
+  // Client-side quick feedback only (disables the delete button) — a role
+  // is deletable if it's custom and no profile is currently assigned to it.
+  // deleteRoleAction re-checks this authoritatively server-side with its
+  // own fresh query, never trusting this copy.
   const canDelete = (roleId: string) => {
     const role = roles.find((r) => r.id === roleId);
     if (!role || role.type !== "custom") return false;
     return !users.some((u) => u.role_id === roleId);
   };
 
-  function handleDeleteRole(role: Role) {
+  async function handleDeleteRole(role: Role) {
     if (!canDelete(role.id)) return;
     if (!confirm(`Delete role "${role.name}"? This can't be undone.`)) return;
-    deleteRole(role.id);
+    const result = await deleteRole(role.id);
+    if (!result.success) {
+      window.alert(result.error);
+    }
   }
 
   return (

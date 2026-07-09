@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Gender } from "@/lib/types";
-import { getCustomerByPhone } from "@/lib/data/stub-data";
+import { getCustomerByPhoneAction } from "@/app/(shell)/customers/actions";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 
@@ -65,7 +65,7 @@ export function NewCustomerForm({
     name: string;
   } | null>(null);
 
-  function buildValidatedValues(): NewCustomerFormValues | null {
+  async function buildValidatedValues(): Promise<NewCustomerFormValues | null> {
     const trimmedName = name.trim();
     const trimmedPhone = phone.trim();
     const nextErrors: { name?: string; phone?: string } = {};
@@ -81,7 +81,7 @@ export function NewCustomerForm({
       return null;
     }
 
-    const existing = getCustomerByPhone(trimmedPhone);
+    const existing = await getCustomerByPhoneAction(trimmedPhone);
     if (existing && existing.id !== excludeCustomerId) {
       setDuplicateCustomer({ id: existing.id, name: existing.name });
       return null;
@@ -101,14 +101,14 @@ export function NewCustomerForm({
     setPhone(value.replace(/\D/g, "").slice(0, 10));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const values = buildValidatedValues();
+    const values = await buildValidatedValues();
     if (values) onSubmit(values);
   }
 
-  function handleSecondarySubmit() {
-    const values = buildValidatedValues();
+  async function handleSecondarySubmit() {
+    const values = await buildValidatedValues();
     if (values) secondaryAction?.onSubmit(values);
   }
 

@@ -1,20 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Ruler, Trash2, X } from "lucide-react";
 import type {
   Customer,
+  GarmentMeasurement,
   Order,
   OrderItem,
   OrderItemAddOn,
   OrderStatus,
 } from "@/lib/types";
 import {
-  getGarmentMeasurement,
-  saveGarmentMeasurement,
-  updateCustomer,
-  updateOrder,
-} from "@/lib/data/stub-data";
+  getGarmentMeasurementAction,
+  saveGarmentMeasurementAction,
+  updateCustomerAction,
+} from "@/app/(shell)/customers/actions";
+import { updateOrderAction } from "@/app/(shell)/orders/actions";
 import { getMeasurementFields } from "@/lib/garment-catalog";
 import {
   BalanceBadge,
@@ -61,6 +62,16 @@ function garmentKey(garmentType: string): string {
   return garmentType.trim().toLowerCase();
 }
 
+function toDraft(garmentType: string, persisted: GarmentMeasurement | undefined): GarmentMeasurementDraft {
+  if (!persisted) return blankGarmentDraft(garmentType);
+  return {
+    garmentType,
+    values: { ...persisted.values },
+    fitNotes: persisted.fitNotes ?? "",
+    notes: persisted.notes ?? "",
+  };
+}
+
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
@@ -104,20 +115,57 @@ export function EditOrderDrawer({
   const [activeGarmentType, setActiveGarmentType] = useState<string | null>(
     null
   );
+  // Phase 5A: persisted garment-measurement records now come from a Server
+  // Action (getGarmentMeasurementAction), not a synchronous stub-data.ts
+  // call — cached here per garment type since persistedDraftFor is read
+  // several times per render (summary list, dirty-check).
+  const [persistedCache, setPersistedCache] = useState<
+    Record<string, GarmentMeasurement | undefined>
+  >({});
+
+  // Distinct garment types among the current item rows, in first-seen order.
+  const distinctGarments: string[] = [];
+  const seenGarmentKeys = new Set<string>();
+  for (const it of items) {
+    const trimmed = it.particular.trim();
+    if (!trimmed || seenGarmentKeys.has(garmentKey(trimmed))) continue;
+    seenGarmentKeys.add(garmentKey(trimmed));
+    distinctGarments.push(trimmed);
+  }
+
+  useEffect(() => {
+    if (!customer) return;
+    let cancelled = false;
+    const missing = distinctGarments.filter(
+      (g) => !(garmentKey(g) in persistedCache)
+    );
+    if (missing.length === 0) return;
+    Promise.all(
+      missing.map(async (g) => {
+        const record = await getGarmentMeasurementAction(customer.id, g);
+        return [garmentKey(g), record] as const;
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setPersistedCache((prev) => {
+        const next = { ...prev };
+        for (const [key, record] of entries) next[key] = record;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer, distinctGarments.join("|")]);
+
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!order) return null;
 
   function persistedDraftFor(garmentType: string): GarmentMeasurementDraft {
-    const persisted = customer
-      ? getGarmentMeasurement(customer.id, garmentType)
-      : undefined;
-    if (!persisted) return blankGarmentDraft(garmentType);
-    return {
-      garmentType,
-      values: { ...persisted.values },
-      fitNotes: persisted.fitNotes ?? "",
-      notes: persisted.notes ?? "",
-    };
+    return toDraft(garmentType, persistedCache[garmentKey(garmentType)]);
   }
 
   function draftFor(garmentType: string): GarmentMeasurementDraft {
@@ -140,16 +188,6 @@ export function EditOrderDrawer({
   const balance = totalAmount - order.advancePaid;
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  // Distinct garment types among the current item rows, in first-seen order,
-  // for the Measurements summary section below.
-  const distinctGarments: string[] = [];
-  const seenGarmentKeys = new Set<string>();
-  for (const it of items) {
-    const trimmed = it.particular.trim();
-    if (!trimmed || seenGarmentKeys.has(garmentKey(trimmed))) continue;
-    seenGarmentKeys.add(garmentKey(trimmed));
-    distinctGarments.push(trimmed);
-  }
   // A draft view of the order for BalanceBadge's overdue/paid logic, so
   // Payment Status reuses the exact same computation as the table/drawer
   // instead of a second copy of the paid/due/overdue rules.
@@ -207,9 +245,10 @@ export function EditOrderDrawer({
     onCancel();
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!order) return;
+    setError(null);
     const validItems = computedItems.filter(
       (it) => it.particular.trim() && it.qty > 0 && it.rate >= 0
     );
@@ -222,31 +261,48 @@ export function EditOrderDrawer({
     )
       return;
 
+    setSubmitting(true);
+
     if (customer) {
-      updateCustomer(customer.id, {
+      const customerResult = await updateCustomerAction(customer.id, {
         name: name.trim(),
         phone: phone.trim(),
         address: address.trim(),
         area: area.trim(),
         gender: customer.gender,
       });
+      if (!customerResult.success) {
+        setSubmitting(false);
+        setError(customerResult.error);
+        return;
+      }
       for (const draft of Object.values(measurementsByGarment)) {
-        saveGarmentMeasurement({
+        const measurementResult = await saveGarmentMeasurementAction({
           customerId: customer.id,
           garmentType: draft.garmentType,
           values: draft.values,
           fitNotes: draft.fitNotes,
           notes: draft.notes,
         });
+        if (!measurementResult.success) {
+          setSubmitting(false);
+          setError(measurementResult.error);
+          return;
+        }
       }
     }
-    const updated = updateOrder(order.id, {
+    const updated = await updateOrderAction(order.id, {
       orderDate,
       deliveryDate,
       items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
       status,
     });
-    if (updated) onSaved(updated);
+    setSubmitting(false);
+    if (!updated.success) {
+      setError(updated.error);
+      return;
+    }
+    onSaved(updated.data);
   }
 
   return (
@@ -295,6 +351,12 @@ export function EditOrderDrawer({
           className="flex flex-1 flex-col justify-between"
         >
           <div className="space-y-5 px-6 py-5">
+            {error && (
+              <div className="rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
+                {error}
+              </div>
+            )}
+
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
                 {t("orders.customer")}
@@ -488,9 +550,7 @@ export function EditOrderDrawer({
                   {distinctGarments.map((garmentType) => {
                     const key = garmentKey(garmentType);
                     const pending = measurementsByGarment[key];
-                    const persisted = customer
-                      ? getGarmentMeasurement(customer.id, garmentType)
-                      : undefined;
+                    const persisted = persistedCache[key];
                     const draft = pending ?? persistedDraftFor(garmentType);
                     const count = countFilledFields(draft);
                     let statusText: string;
@@ -559,9 +619,10 @@ export function EditOrderDrawer({
           <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              disabled={submitting}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {t("common.saveChanges")}
+              {submitting ? "Saving…" : t("common.saveChanges")}
             </button>
             <button
               type="button"

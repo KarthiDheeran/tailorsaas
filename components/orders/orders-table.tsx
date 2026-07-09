@@ -3,12 +3,9 @@
 import { useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { ArrowUp, ArrowDown, ChevronsUpDown, Inbox } from "lucide-react";
-import type { Order, OrderStatus } from "@/lib/types";
-import {
-  getCustomerById,
-  orderStatuses,
-  updateOrderStatus,
-} from "@/lib/data/stub-data";
+import type { Customer, Order, OrderStatus } from "@/lib/types";
+import { orderStatuses } from "@/lib/constants";
+import { updateOrderStatusAction } from "@/app/(shell)/orders/actions";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -85,10 +82,14 @@ export function OrderStatusEditor({
     return <OrderStatusChip status={order.status} />;
   }
 
-  function handleSelect(status: OrderStatus, e: MouseEvent) {
+  async function handleSelect(status: OrderStatus, e: MouseEvent) {
     e.stopPropagation();
-    updateOrderStatus(order.id, status);
     setOpen(false);
+    const result = await updateOrderStatusAction(order.id, status);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
     onStatusChange();
   }
 
@@ -209,6 +210,7 @@ function SortableHeader({
 
 export function OrdersTable({
   orders,
+  customersById,
   sortKey,
   sortDir,
   onSort,
@@ -217,6 +219,13 @@ export function OrdersTable({
   onRowClick,
 }: {
   orders: Order[];
+  // Optional: a caller that already has a fresher/fuller Customer record
+  // (e.g. one just edited in the same session) can pass a lookup map here to
+  // override the row's own snapshot. Callers that don't (e.g. Reports'
+  // Orders tab, Phase 6E) simply omit this — the table falls back to each
+  // order's own customerSnapshot (captured at creation time), so no
+  // customers.view-gated fetch is ever required just to render this table.
+  customersById?: Record<string, Customer>;
   sortKey?: OrdersSortKey;
   sortDir?: OrdersSortDir;
   onSort?: (key: OrdersSortKey) => void;
@@ -285,7 +294,12 @@ export function OrdersTable({
         </thead>
         <tbody className="text-[13px]">
           {orders.map((order) => {
-            const customer = getCustomerById(order.customerId);
+            // Falls back to the order's own customerSnapshot (captured at
+            // creation time) rather than a live customer lookup, so this
+            // table never needs a customers.view-gated fetch just to show a
+            // name/phone — important for callers like the Reports Orders tab
+            // that intentionally don't fetch customers separately (Phase 6E).
+            const customer = customersById?.[order.customerId] ?? order.customerSnapshot;
             const itemsSummary = order.items
               .map((i) => `${i.particular} x${i.qty}`)
               .join(", ");
@@ -301,7 +315,7 @@ export function OrdersTable({
                 <td className="whitespace-nowrap px-5 py-3">
                   {customer ? (
                     <Link
-                      href={`/customers/${customer.id}`}
+                      href={`/customers/${order.customerId}`}
                       onClick={(e) => e.stopPropagation()}
                       className="text-ink hover:text-primary hover:underline"
                     >

@@ -1,11 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
+import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
 import {
-  getCustomerById,
-  getGarmentMeasurement,
-  getOrderById,
-} from "@/lib/data/stub-data";
+  getCustomerByIdAction,
+  getGarmentMeasurementAction,
+} from "@/app/(shell)/customers/actions";
 import { measurementFields } from "@/lib/catalog";
 import {
   formatDate,
@@ -14,7 +15,7 @@ import {
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
-import type { Order, OrderItem } from "@/lib/types";
+import type { Customer, GarmentMeasurement, Order, OrderItem } from "@/lib/types";
 
 const SHOP_NAME = "TailorSaaS";
 
@@ -26,8 +27,10 @@ const FIELD_LABELS: Record<string, string> = Object.fromEntries(
 // (what was actually used when this order was placed — see New Order's
 // Measurements handling); fitNotes/notes were never snapshotted onto the
 // item, so those always come from the customer's per-garment record.
-function resolveMeasurements(order: Order, item: OrderItem) {
-  const persisted = getGarmentMeasurement(order.customerId, item.particular);
+function resolveMeasurements(
+  item: OrderItem,
+  persisted: GarmentMeasurement | undefined
+) {
   const values =
     item.measurements && Object.keys(item.measurements).length > 0
       ? item.measurements
@@ -45,11 +48,49 @@ function TailorJobCardPrintPageContent({
   params: { id: string };
 }) {
   const { t } = useLanguage();
-  const order = getOrderById(params.id);
-  if (!order) {
-    notFound();
-  }
-  const customer = getCustomerById(order!.customerId);
+
+  // Phase 6C: same effect-driven fetch/loading-state conversion as the
+  // customer receipt print page — this route's data source was never
+  // converted before now (Phase 5D only added permission gating), and a
+  // direct synchronous stub-data.ts read would simply return nothing once
+  // Orders is a real table.
+  const [order, setOrder] = useState<Order | null | undefined>(undefined);
+  const [customer, setCustomer] = useState<Customer | undefined>(undefined);
+  const [measurementsByItem, setMeasurementsByItem] = useState<
+    Record<number, GarmentMeasurement | undefined>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrderByIdAction(params.id).then((result) => {
+      if (cancelled) return;
+      setOrder(result ?? null);
+      if (!result) return;
+
+      getCustomerByIdAction(result.customerId).then((c) => {
+        if (!cancelled) setCustomer(c);
+      });
+
+      Promise.all(
+        result.items.map(async (item) => {
+          const persisted = await getGarmentMeasurementAction(
+            result.customerId,
+            item.particular
+          );
+          return [item.serialNo, persisted] as const;
+        })
+      ).then((entries) => {
+        if (cancelled) return;
+        setMeasurementsByItem(Object.fromEntries(entries));
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
+
+  if (order === undefined) return null;
+  if (order === null) notFound();
 
   return (
     <PrintPageFrame backHref="/orders">
@@ -63,12 +104,12 @@ function TailorJobCardPrintPageContent({
       <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
         <div>
           <p className="text-gray-500">{t("print.orderNo")}</p>
-          <p className="font-semibold">{order!.orderNumber}</p>
+          <p className="font-semibold">{order.orderNumber}</p>
         </div>
         <div>
           <p className="text-gray-500">{t("print.orderStatus")}</p>
           <p className="font-semibold">
-            {t(ORDER_STATUS_LABEL_KEYS[order!.status])}
+            {t(ORDER_STATUS_LABEL_KEYS[order.status])}
           </p>
         </div>
         <div>
@@ -81,19 +122,19 @@ function TailorJobCardPrintPageContent({
         </div>
         <div>
           <p className="text-gray-500">{t("print.orderDate")}</p>
-          <p className="font-semibold">{formatDate(order!.orderDate)}</p>
+          <p className="font-semibold">{formatDate(order.orderDate)}</p>
         </div>
         <div>
           <p className="text-gray-500">{t("print.deliveryDate")}</p>
-          <p className="font-semibold">{formatDate(order!.deliveryDate)}</p>
+          <p className="font-semibold">{formatDate(order.deliveryDate)}</p>
         </div>
       </div>
 
       <div className="mt-6 space-y-6">
-        {order!.items.map((item) => {
+        {order.items.map((item) => {
           const { values, fitNotes, notes } = resolveMeasurements(
-            order!,
-            item
+            item,
+            measurementsByItem[item.serialNo]
           );
           const filledValues = Object.entries(values).filter(
             ([, v]) => v.trim() !== ""

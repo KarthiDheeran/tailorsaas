@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
-import { getCustomerById, updateCustomer } from "@/lib/data/stub-data";
+import {
+  getCustomerByIdAction,
+  updateCustomerAction,
+} from "@/app/(shell)/customers/actions";
+import type { Customer } from "@/lib/types";
 import {
   NewCustomerForm,
   type NewCustomerFormValues,
@@ -13,16 +18,37 @@ import { useLanguage } from "@/components/i18n/language-provider";
 function EditCustomerPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { t } = useLanguage();
-  const customer = getCustomerById(params.id);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!customer) {
+  useEffect(() => {
+    let cancelled = false;
+    getCustomerByIdAction(params.id).then((c) => {
+      if (cancelled) return;
+      setCustomer(c ?? null);
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
+
+  if (loaded && !customer) {
     notFound();
   }
 
-  function handleSubmit(values: NewCustomerFormValues) {
-    updateCustomer(params.id, values);
+  async function handleSubmit(values: NewCustomerFormValues) {
+    setError(null);
+    const result = await updateCustomerAction(params.id, values);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
     router.push(`/customers/${params.id}`);
   }
+
+  if (!customer) return null;
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -35,15 +61,20 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
         </p>
       </div>
       <div className="max-w-2xl">
+        {error && (
+          <div className="mb-4 rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
+            {error}
+          </div>
+        )}
         <NewCustomerForm
           onSubmit={handleSubmit}
           excludeCustomerId={params.id}
           initialValues={{
-            name: customer!.name,
-            phone: customer!.phone,
-            address: customer!.address,
-            area: customer!.area,
-            gender: customer!.gender,
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address,
+            area: customer.area,
+            gender: customer.gender,
           }}
           title={t("customers.customerDetailsSection")}
           submitLabel={t("common.saveChanges")}

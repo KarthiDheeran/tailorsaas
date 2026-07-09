@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDate } from "@/components/orders/orders-table";
-import type { CustomerDetail } from "@/lib/customers";
+import type { CustomerDetail } from "@/lib/customers-db";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 function money(amount: number) {

@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
-import { orderStatuses, searchCustomers } from "@/lib/data/stub-data";
+import { orderStatuses } from "@/lib/constants";
+import { searchCustomersAction } from "@/app/(shell)/customers/actions";
 import type { Customer, OrderStatus } from "@/lib/types";
 import {
   FilterDropdown,
@@ -96,7 +98,23 @@ export function OrderListFilters({
     value: v,
     label: t(DELIVERY_FILTER_LABEL_KEYS[v]),
   }));
-  const customerSuggestions = searchCustomers(query);
+  const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setCustomerSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    searchCustomersAction(query).then((results) => {
+      if (!cancelled) setCustomerSuggestions(results);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
+
   const hasActiveFilters =
     query.trim() !== "" ||
     statusFilter !== "all" ||

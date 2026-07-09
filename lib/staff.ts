@@ -1,14 +1,24 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order, OrderItem, Staff, TaskType, WorkAssignment } from "@/lib/types";
+import { getOrderById } from "@/lib/data/orders-db";
 import {
-  getOrderById,
   getStaff,
   getStaffPaymentsForStaff,
   getWorkAssignments,
   getWorkAssignmentsForStaff,
-} from "@/lib/data/stub-data";
+} from "@/lib/data/staff-db";
 
+// ---------------------------------------------------------------------------
+// Phase 6D: all selectors here are now async and Supabase-backed, via
+// lib/data/staff-db.ts (staff/work assignments) and lib/data/orders-db.ts
+// (real orders, since 6C). Converted even though only getStaffListRows has
+// a live caller today (app/(shell)/staff/actions.ts) — getStaffDetail/
+// getWorkQueueRows/getStaffWageSummary stay dead code with zero callers,
+// same as before, just no longer pointing at deleted mock functions.
+//
 // Same string-based date math convention as lib/dashboard.ts / lib/customers.ts
 // (see CLAUDE.md's date formatting gotcha) — never Date/Intl locale APIs.
+// ---------------------------------------------------------------------------
 
 function isSameMonth(dateIso: string, todayIso: string): boolean {
   return dateIso.slice(0, 7) === todayIso.slice(0, 7);
@@ -41,34 +51,40 @@ export interface StaffListRow {
   pendingWork: number;
 }
 
-export function getStaffListRows(todayIso: string): StaffListRow[] {
-  return getStaff().map((member) => {
-    const assignments = getWorkAssignmentsForStaff(member.id);
-    const withStatus = assignments.map((a) => ({
-      assignment: a,
-      status: computeTaskStatus(a, todayIso),
-    }));
+export async function getStaffListRows(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<StaffListRow[]> {
+  const staffList = await getStaff(supabase);
+  return Promise.all(
+    staffList.map(async (member) => {
+      const assignments = await getWorkAssignmentsForStaff(supabase, member.id);
+      const withStatus = assignments.map((a) => ({
+        assignment: a,
+        status: computeTaskStatus(a, todayIso),
+      }));
 
-    const active = withStatus.filter(
-      ({ status }) => status !== "Completed" && status !== "Cancelled"
-    );
-    const activeOrders = new Set(active.map(({ assignment }) => assignment.orderId))
-      .size;
+      const active = withStatus.filter(
+        ({ status }) => status !== "Completed" && status !== "Cancelled"
+      );
+      const activeOrders = new Set(active.map(({ assignment }) => assignment.orderId))
+        .size;
 
-    const completedThisMonth = withStatus.filter(
-      ({ assignment, status }) =>
-        status === "Completed" &&
-        assignment.completedDate &&
-        isSameMonth(assignment.completedDate, todayIso)
-    ).length;
+      const completedThisMonth = withStatus.filter(
+        ({ assignment, status }) =>
+          status === "Completed" &&
+          assignment.completedDate &&
+          isSameMonth(assignment.completedDate, todayIso)
+      ).length;
 
-    return {
-      staff: member,
-      activeOrders,
-      completedThisMonth,
-      pendingWork: active.length,
-    };
-  });
+      return {
+        staff: member,
+        activeOrders,
+        completedThisMonth,
+        pendingWork: active.length,
+      };
+    })
+  );
 }
 
 export interface CurrentWorkRow {
@@ -88,23 +104,33 @@ export interface StaffDetail {
   currentWork: CurrentWorkRow[];
 }
 
-function toWorkRows(assignments: WorkAssignment[], todayIso: string): CurrentWorkRow[] {
-  return assignments
-    .map((assignment) => {
-      const order = getOrderById(assignment.orderId);
+async function toWorkRows(
+  supabase: SupabaseClient,
+  assignments: WorkAssignment[],
+  todayIso: string
+): Promise<CurrentWorkRow[]> {
+  const rows = await Promise.all(
+    assignments.map(async (assignment) => {
+      const order = await getOrderById(supabase, assignment.orderId);
       const item = order?.items.find(
         (i) => i.serialNo === assignment.orderItemSerialNo
       );
       if (!order || !item) return null;
       return { assignment, status: computeTaskStatus(assignment, todayIso), order, item };
     })
+  );
+  return rows
     .filter((row): row is CurrentWorkRow => row !== null)
     .sort((a, b) => (a.assignment.dueDate < b.assignment.dueDate ? -1 : 1));
 }
 
-export function getStaffDetail(staff: Staff, todayIso: string): StaffDetail {
-  const assignments = getWorkAssignmentsForStaff(staff.id);
-  const rows = toWorkRows(assignments, todayIso);
+export async function getStaffDetail(
+  supabase: SupabaseClient,
+  staff: Staff,
+  todayIso: string
+): Promise<StaffDetail> {
+  const assignments = await getWorkAssignmentsForStaff(supabase, staff.id);
+  const rows = await toWorkRows(supabase, assignments, todayIso);
 
   const assignedCount = rows.filter((r) => r.status === "Assigned").length;
   const delayedCount = rows.filter((r) => r.status === "Delayed").length;
@@ -144,15 +170,22 @@ export interface WorkQueueRow {
   staff: Staff | undefined;
 }
 
-export function getWorkQueueRows(todayIso: string): WorkQueueRow[] {
-  return getWorkAssignments()
-    .map((assignment) => {
-      const order = getOrderById(assignment.orderId);
+export async function getWorkQueueRows(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<WorkQueueRow[]> {
+  const [assignments, staffList] = await Promise.all([
+    getWorkAssignments(supabase),
+    getStaff(supabase),
+  ]);
+  const rows = await Promise.all(
+    assignments.map(async (assignment) => {
+      const order = await getOrderById(supabase, assignment.orderId);
       const item = order?.items.find(
         (i) => i.serialNo === assignment.orderItemSerialNo
       );
       if (!order || !item) return null;
-      const staffMember = getStaff().find((s) => s.id === assignment.assignedStaffId);
+      const staffMember = staffList.find((s) => s.id === assignment.assignedStaffId);
       return {
         assignment,
         status: computeTaskStatus(assignment, todayIso),
@@ -161,6 +194,8 @@ export function getWorkQueueRows(todayIso: string): WorkQueueRow[] {
         staff: staffMember,
       };
     })
+  );
+  return rows
     .filter((row): row is WorkQueueRow => row !== null)
     .sort((a, b) => (a.assignment.dueDate < b.assignment.dueDate ? -1 : 1));
 }
@@ -171,8 +206,12 @@ export interface StaffWageSummary {
   balance: number;
 }
 
-export function getStaffWageSummary(staff: Staff, todayIso: string): StaffWageSummary {
-  const assignments = getWorkAssignmentsForStaff(staff.id);
+export async function getStaffWageSummary(
+  supabase: SupabaseClient,
+  staff: Staff,
+  todayIso: string
+): Promise<StaffWageSummary> {
+  const assignments = await getWorkAssignmentsForStaff(supabase, staff.id);
 
   const payableAmount =
     staff.paymentType === "Salary"
@@ -186,7 +225,8 @@ export function getStaffWageSummary(staff: Staff, todayIso: string): StaffWageSu
           )
           .reduce((sum, a) => sum + a.wageAmount, 0);
 
-  const paidAmount = getStaffPaymentsForStaff(staff.id)
+  const payments = await getStaffPaymentsForStaff(supabase, staff.id);
+  const paidAmount = payments
     .filter((p) => isSameMonth(p.date, todayIso))
     .reduce((sum, p) => sum + p.amount, 0);
 

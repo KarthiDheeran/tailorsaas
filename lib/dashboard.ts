@@ -1,9 +1,14 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order } from "@/lib/types";
-import { getAllOrders } from "@/lib/data/stub-data";
+import { getAllOrders } from "@/lib/data/orders-db";
 
-// Computed dashboard selectors over the stub Order data. All comparisons use
-// plain YYYY-MM-DD string dates (never Date/Intl formatting) for the same
-// reason orders-table.tsx avoids them: consistent server/client rendering.
+// Phase 6E: real, Supabase-backed selector over Order data — the customer
+// names/phones the leaf components (todays-deliveries.tsx etc.) show come
+// from each order's own customerSnapshot, not a live customers-table join,
+// so this file (and the dashboard.view permission that gates it) never
+// needs to touch the customers table at all. All comparisons use plain
+// YYYY-MM-DD string dates (never Date/Intl formatting) for the same reason
+// orders-table.tsx avoids them: consistent server/client rendering.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,8 +41,11 @@ export interface DashboardData {
   paymentPending: Order[];
 }
 
-export function getDashboardData(todayIso: string): DashboardData {
-  const allOrders = getAllOrders();
+export async function getDashboardData(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<DashboardData> {
+  const allOrders = await getAllOrders(supabase);
   const yesterdayIso = addDays(todayIso, -1);
   const trialWindowEndIso = addDays(todayIso, 7);
 

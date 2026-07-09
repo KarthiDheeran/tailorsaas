@@ -1,14 +1,27 @@
-import type { Customer, Order, PaymentMode } from "@/lib/types";
-import {
-  getAllOrders,
-  getCustomerById,
-  paymentModes,
-} from "@/lib/data/stub-data";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Customer, CustomerSnapshot, Order, PaymentMode } from "@/lib/types";
+import { getAllOrders } from "@/lib/data/orders-db";
+import { paymentModes } from "@/lib/constants";
 import {
   getCustomerListRows,
   getCustomerDetail,
   type CustomerStatus,
-} from "@/lib/customers";
+} from "@/lib/customers-db";
+
+// ---------------------------------------------------------------------------
+// Phase 6E: real, Supabase-backed report selectors — every function now
+// takes an already-constructed Supabase client first. Reports is a derived,
+// read-only summary view: the caller only ever needs reports.view (checked
+// once, in app/(shell)/reports/actions.ts), never orders.view/customers.view
+// separately — see that file for how the client is chosen (admin client,
+// bypassing orders/customers RLS, once reports.view is confirmed).
+//
+// Customer names/phones for Sales/Payments/Orders all come from each order's
+// own customerSnapshot (no live customers-table join needed for those three
+// reports at all) — only the Customers tab genuinely needs the live
+// customers table (via lib/customers-db.ts, real since Phase 6A), since it
+// reports on customers themselves, not just orders.
+// ---------------------------------------------------------------------------
 
 // Same string-based date math as lib/dashboard.ts / lib/customers.ts (see
 // CLAUDE.md's date formatting gotcha) — never Date/Intl locale APIs.
@@ -37,6 +50,7 @@ function inRange(dateIso: string, range: DateRange): boolean {
   return dateIso >= range.from && dateIso <= range.to;
 }
 
+// Pure date math, no data access — doesn't need a Supabase client.
 export function getDateRangeForPreset(
   preset: DateRangePreset,
   todayIso: string,
@@ -87,11 +101,12 @@ export interface SalesReport {
   rows: SalesRow[];
 }
 
-export function getSalesReport(
+export async function getSalesReport(
+  supabase: SupabaseClient,
   range: DateRange,
   paymentMode?: PaymentMode
-): SalesReport {
-  const allOrders = getAllOrders();
+): Promise<SalesReport> {
+  const allOrders = await getAllOrders(supabase);
   const ordersInRange = allOrders.filter(
     (o) =>
       inRange(o.orderDate, range) &&
@@ -158,7 +173,9 @@ export interface PaymentModeBreakdown {
 
 export interface PaymentRow {
   order: Order;
-  customer: Customer | undefined;
+  // The order's own customerSnapshot — not a live customer record — so this
+  // report never needs customers.view (see file header).
+  customer: CustomerSnapshot | undefined;
   amountCollected: number;
 }
 
@@ -178,11 +195,13 @@ export interface PaymentsFilters {
   overdueOnly?: boolean;
 }
 
-export function getPaymentsReport(
+export async function getPaymentsReport(
+  supabase: SupabaseClient,
   filters: PaymentsFilters,
   todayIso: string
-): PaymentsReport {
-  let filtered = getAllOrders().filter((o) => inRange(o.orderDate, filters.range));
+): Promise<PaymentsReport> {
+  const allOrders = await getAllOrders(supabase);
+  let filtered = allOrders.filter((o) => inRange(o.orderDate, filters.range));
 
   if (filters.paymentMode) {
     filtered = filtered.filter((o) => o.paymentMode === filters.paymentMode);
@@ -198,7 +217,7 @@ export function getPaymentsReport(
   if (filters.customerQuery?.trim()) {
     const q = filters.customerQuery.trim().toLowerCase();
     filtered = filtered.filter((o) => {
-      const c = getCustomerById(o.customerId);
+      const c = o.customerSnapshot;
       return !!c && (c.name.toLowerCase().includes(q) || c.phone.includes(q));
     });
   }
@@ -230,7 +249,7 @@ export function getPaymentsReport(
   const rows: PaymentRow[] = filtered
     .map((order) => ({
       order,
-      customer: getCustomerById(order.customerId),
+      customer: order.customerSnapshot,
       amountCollected: order.totalAmount - order.balance,
     }))
     .sort((a, b) => (a.order.orderDate < b.order.orderDate ? 1 : -1));
@@ -265,20 +284,21 @@ export interface OrdersReport {
   orders: Order[];
 }
 
-export function getGarmentTypes(): string[] {
+export async function getGarmentTypes(supabase: SupabaseClient): Promise<string[]> {
+  const allOrders = await getAllOrders(supabase);
   const set = new Set<string>();
-  getAllOrders().forEach((o) => o.items.forEach((i) => set.add(i.particular)));
+  allOrders.forEach((o) => o.items.forEach((i) => set.add(i.particular)));
   return Array.from(set).sort();
 }
 
-export function getOrdersReport(
+export async function getOrdersReport(
+  supabase: SupabaseClient,
   filters: OrdersFilters,
   todayIso: string
-): OrdersReport {
+): Promise<OrdersReport> {
   const weekAhead = addDays(todayIso, 7);
-  const rangeOrders = getAllOrders().filter((o) =>
-    inRange(o.orderDate, filters.range)
-  );
+  const allOrders = await getAllOrders(supabase);
+  const rangeOrders = allOrders.filter((o) => inRange(o.orderDate, filters.range));
 
   let filtered = rangeOrders;
   if (filters.balanceStatus === "paid") {
@@ -309,7 +329,7 @@ export function getOrdersReport(
   if (filters.customerQuery?.trim()) {
     const q = filters.customerQuery.trim().toLowerCase();
     filtered = filtered.filter((o) => {
-      const c = getCustomerById(o.customerId);
+      const c = o.customerSnapshot;
       return !!c && (c.name.toLowerCase().includes(q) || c.phone.includes(q));
     });
   }
@@ -331,7 +351,9 @@ export function getOrdersReport(
 }
 
 // ---------------------------------------------------------------------------
-// Customers report
+// Customers report — the one report that genuinely needs the live customers
+// table (it reports on customers themselves, including ones with zero
+// orders), via lib/customers-db.ts's real selectors (Phase 6A).
 // ---------------------------------------------------------------------------
 
 export interface CustomerReportRow {
@@ -364,16 +386,17 @@ export interface CustomersReport {
   rows: CustomerReportRow[];
 }
 
-export function getCustomersReport(
+export async function getCustomersReport(
+  supabase: SupabaseClient,
   filters: CustomersReportFilters,
   todayIso: string
-): CustomersReport {
-  const listRows = getCustomerListRows(todayIso);
+): Promise<CustomersReport> {
+  const listRows = await getCustomerListRows(supabase, todayIso);
 
   // Customer records have no createdAt timestamp, so "new" is approximated
   // from order history: a customer's first-ever order date falling inside
   // the selected range.
-  const allOrders = getAllOrders();
+  const allOrders = await getAllOrders(supabase);
   const firstOrderDateByCustomer = new Map<string, string>();
   for (const o of allOrders) {
     const current = firstOrderDateByCustomer.get(o.customerId);
@@ -382,17 +405,19 @@ export function getCustomersReport(
     }
   }
 
-  const allRows: CustomerReportRow[] = listRows.map((r) => {
-    const detail = getCustomerDetail(r.customer);
-    return {
-      customer: r.customer,
-      totalOrders: r.totalOrders,
-      totalSpent: detail.totalOrdersValue,
-      outstandingBalance: r.outstandingBalance,
-      lastOrderDate: r.lastOrderDate,
-      status: r.status,
-    };
-  });
+  const allRows: CustomerReportRow[] = await Promise.all(
+    listRows.map(async (r) => {
+      const detail = await getCustomerDetail(supabase, r.customer);
+      return {
+        customer: r.customer,
+        totalOrders: r.totalOrders,
+        totalSpent: detail.totalOrdersValue,
+        outstandingBalance: r.outstandingBalance,
+        lastOrderDate: r.lastOrderDate,
+        status: r.status,
+      };
+    })
+  );
 
   const newCustomers = allRows.filter((r) => {
     const first = firstOrderDateByCustomer.get(r.customer.id);

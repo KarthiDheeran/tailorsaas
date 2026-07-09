@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { createCustomer } from "@/lib/data/stub-data";
+import { createCustomerAction } from "@/app/(shell)/customers/actions";
 import {
   NewCustomerForm,
   type NewCustomerFormValues,
@@ -14,15 +15,26 @@ import { useLanguage } from "@/components/i18n/language-provider";
 function AddCustomerPageContent() {
   const router = useRouter();
   const { t } = useLanguage();
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSaveCustomer(values: NewCustomerFormValues) {
-    const customer = createCustomer(values);
-    router.push(`/customers/${customer.id}`);
+  async function handleSaveCustomer(values: NewCustomerFormValues) {
+    setError(null);
+    const result = await createCustomerAction(values);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    router.push(`/customers/${result.data.id}`);
   }
 
-  function handleSaveAndNewOrder(values: NewCustomerFormValues) {
-    const customer = createCustomer(values);
-    router.push(`/orders/new?customerId=${customer.id}`);
+  async function handleSaveAndNewOrder(values: NewCustomerFormValues) {
+    setError(null);
+    const result = await createCustomerAction(values);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    router.push(`/orders/new?customerId=${result.data.id}`);
   }
 
   return (
@@ -43,6 +55,11 @@ function AddCustomerPageContent() {
         </p>
       </div>
       <div className="max-w-2xl">
+        {error && (
+          <div className="mb-4 rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
+            {error}
+          </div>
+        )}
         <NewCustomerForm
           onSubmit={handleSaveCustomer}
           onCancel={() => router.push("/customers")}

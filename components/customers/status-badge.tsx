@@ -1,6 +1,6 @@
 "use client";
 
-import type { CustomerStatus } from "@/lib/customers";
+import type { CustomerStatus } from "@/lib/customers-db";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { TranslationKey } from "@/lib/i18n/translations";

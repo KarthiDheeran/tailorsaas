@@ -1,5 +1,4 @@
 import type { Order } from "@/lib/types";
-import { getCustomerById } from "@/lib/data/stub-data";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 
 export function TodaysDeliveries({ orders }: { orders: Order[] }) {
@@ -32,7 +31,11 @@ export function TodaysDeliveries({ orders }: { orders: Order[] }) {
             </thead>
             <tbody className="text-[13px]">
               {orders.map((order) => {
-                const customer = getCustomerById(order.customerId);
+                // Uses the order's own customerSnapshot (captured at
+                // creation time) rather than a live customer lookup, so
+                // Dashboard never needs customers.view just to load
+                // (Phase 6E) — dashboard.view alone is sufficient.
+                const customer = order.customerSnapshot;
                 const itemsSummary = order.items
                   .map((i) => `${i.particular} x${i.qty}`)
                   .join(", ");

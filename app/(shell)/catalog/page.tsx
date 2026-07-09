@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import {
-  createAddOn,
-  createGarmentType,
-  getAllAddOns,
-  getAllGarmentTypes,
-  setAddOnActive,
-  setGarmentTypeActive,
-  updateAddOn,
-  updateGarmentType,
-  type AddOnInput,
-  type CatalogAddOn,
-  type CatalogGarmentType,
-  type GarmentTypeInput,
+import type {
+  AddOnInput,
+  CatalogAddOn,
+  CatalogGarmentType,
+  GarmentTypeInput,
 } from "@/lib/catalog";
+import {
+  createAddOnAction,
+  createGarmentTypeAction,
+  getActiveAddOnsAction,
+  getAddOnsAction,
+  getGarmentTypesAction,
+  setAddOnActiveAction,
+  setGarmentTypeActiveAction,
+  updateAddOnAction,
+  updateGarmentTypeAction,
+} from "@/app/(shell)/catalog/actions";
 import { CatalogTabs, type CatalogTab } from "@/components/catalog/catalog-tabs";
 import { CatalogTable } from "@/components/catalog/catalog-table";
 import { GarmentTypeDrawer } from "@/components/catalog/garment-type-drawer";
@@ -39,39 +42,71 @@ function CatalogPageContent() {
   const [editingAddOn, setEditingAddOn] = useState<CatalogAddOn | null>(null);
   const [isAddingAddOn, setIsAddingAddOn] = useState(false);
 
-  void refreshKey; // forces a re-render (and re-read of the catalog data) after mutations
-  const garmentTypes = getAllGarmentTypes();
-  const addOns = getAllAddOns();
+  // Phase 5B: reads now go through Server Actions (app/(shell)/catalog/
+  // actions.ts) against the same server-side copy of the mock catalog arrays
+  // that the mutations write to, instead of a direct client-side
+  // lib/catalog.ts import — so an edit and this list re-fetch stay
+  // consistent.
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
+  const [activeAddOns, setActiveAddOns] = useState<CatalogAddOn[]>([]);
 
-  function handleSaveGarment(data: GarmentTypeInput) {
-    if (editingGarment) {
-      updateGarmentType(editingGarment.id, data);
-    } else {
-      createGarmentType(data);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getGarmentTypesAction(),
+      getAddOnsAction(),
+      getActiveAddOnsAction(),
+    ]).then(([garments, allAddOns, active]) => {
+      if (cancelled) return;
+      setGarmentTypes(garments);
+      setAddOns(allAddOns);
+      setActiveAddOns(active);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  async function handleSaveGarment(data: GarmentTypeInput) {
+    const result = editingGarment
+      ? await updateGarmentTypeAction(editingGarment.id, data)
+      : await createGarmentTypeAction(data);
+    if (result.success) {
+      setEditingGarment(null);
+      setIsAddingGarment(false);
+      setRefreshKey((k) => k + 1);
     }
-    setEditingGarment(null);
-    setIsAddingGarment(false);
-    setRefreshKey((k) => k + 1);
+    return result;
   }
 
-  function handleToggleGarmentActive(garment: CatalogGarmentType) {
-    setGarmentTypeActive(garment.id, !garment.isActive);
-    setRefreshKey((k) => k + 1);
-  }
-
-  function handleSaveAddOn(data: AddOnInput) {
-    if (editingAddOn) {
-      updateAddOn(editingAddOn.id, data);
-    } else {
-      createAddOn(data);
+  async function handleToggleGarmentActive(garment: CatalogGarmentType) {
+    const result = await setGarmentTypeActiveAction(garment.id, !garment.isActive);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
     }
-    setEditingAddOn(null);
-    setIsAddingAddOn(false);
     setRefreshKey((k) => k + 1);
   }
 
-  function handleToggleAddOnActive(addOn: CatalogAddOn) {
-    setAddOnActive(addOn.id, !addOn.isActive);
+  async function handleSaveAddOn(data: AddOnInput) {
+    const result = editingAddOn
+      ? await updateAddOnAction(editingAddOn.id, data)
+      : await createAddOnAction(data);
+    if (result.success) {
+      setEditingAddOn(null);
+      setIsAddingAddOn(false);
+      setRefreshKey((k) => k + 1);
+    }
+    return result;
+  }
+
+  async function handleToggleAddOnActive(addOn: CatalogAddOn) {
+    const result = await setAddOnActiveAction(addOn.id, !addOn.isActive);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
     setRefreshKey((k) => k + 1);
   }
 
@@ -130,6 +165,7 @@ function CatalogPageContent() {
       {canManage && garmentDrawerOpen && (
         <GarmentTypeDrawer
           garment={editingGarment}
+          activeAddOns={activeAddOns}
           onCancel={() => {
             setEditingGarment(null);
             setIsAddingGarment(false);

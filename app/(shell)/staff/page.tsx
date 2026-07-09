@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
-import { updateStaff } from "@/lib/data/stub-data";
-import { getStaffListRows } from "@/lib/staff";
+import { getStaffListRowsAction, updateStaffAction } from "@/app/(shell)/staff/actions";
+import type { StaffListRow } from "@/lib/staff";
 import { StaffTabs, type StaffTab } from "@/components/staff/staff-tabs";
 import { StaffTable } from "@/components/staff/staff-table";
 import {
@@ -28,12 +28,26 @@ function StaffPageContent() {
   const [tab, setTab] = useState<StaffTab>("list");
   const [filters, setFilters] = useState<StaffFilterState>(EMPTY_FILTERS);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [allRows, setAllRows] = useState<StaffListRow[]>([]);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
   const todayIso = new Date().toISOString().slice(0, 10);
-  const allRows = getStaffListRows(todayIso);
-  void refreshKey; // forces a re-render (and re-read of stub-data) after mutations
+
+  // Phase 5C: reads now go through a Server Action
+  // (app/(shell)/staff/actions.ts) against the same server-side copy of the
+  // mock staff array that the mutations write to, instead of a direct
+  // client-side lib/staff.ts/lib/data/stub-data.ts import.
+  useEffect(() => {
+    let cancelled = false;
+    getStaffListRowsAction(todayIso).then((rows) => {
+      if (!cancelled) setAllRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   const rows = allRows.filter(({ staff }) => {
     const nameQuery = filters.nameQuery.trim().toLowerCase();
@@ -43,11 +57,11 @@ function StaffPageContent() {
     return true;
   });
 
-  function handleDeactivate(staffId: string) {
+  async function handleDeactivate(staffId: string) {
     const member = allRows.find((r) => r.staff.id === staffId)?.staff;
     if (!member) return;
     if (!confirm(`Deactivate ${member.name}?`)) return;
-    updateStaff(staffId, {
+    const result = await updateStaffAction(staffId, {
       name: member.name,
       phone: member.phone,
       role: member.role,
@@ -60,6 +74,10 @@ function StaffPageContent() {
       baseSalary: member.baseSalary,
       pieceRates: member.pieceRates,
     });
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
     setRefreshKey((k) => k + 1);
   }
 

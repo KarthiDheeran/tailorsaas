@@ -1,25 +1,39 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft } from "lucide-react";
+import { orderStatuses, paymentModes } from "@/lib/constants";
 import {
-  createCustomer,
-  createOrder,
-  generateNextOrderNumber,
-  getCustomerById,
-  getCustomers,
-  orderStatuses,
-  paymentModes,
-  saveCustomerMeasurements,
-  saveGarmentMeasurement,
-  searchCustomersByPhone,
-  updateCustomer,
-} from "@/lib/data/stub-data";
-import { getGarmentById } from "@/lib/catalog";
+  createCustomerAction,
+  getCustomerByIdAction,
+  getCustomerByPhoneAction,
+  getCustomerDetailAction,
+  getCustomerMeasurementsAction,
+  getGarmentMeasurementsForCustomerAction,
+  saveCustomerMeasurementsAction,
+  saveGarmentMeasurementAction,
+  searchCustomersByPhoneAction,
+  updateCustomerAction,
+} from "@/app/(shell)/customers/actions";
+import { createOrderAction, generateNextOrderNumberAction } from "@/app/(shell)/orders/actions";
+import {
+  getActiveGarmentTypesAction,
+  getAddOnsAction,
+} from "@/app/(shell)/catalog/actions";
+import type { CustomerDetail } from "@/lib/customers-db";
+import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
 import { pickBodyMeasurements } from "@/lib/garment-catalog";
-import type { Customer, Gender, Order, OrderStatus, PaymentMode } from "@/lib/types";
+import type {
+  Customer,
+  CustomerMeasurements,
+  GarmentMeasurement,
+  Gender,
+  Order,
+  OrderStatus,
+  PaymentMode,
+} from "@/lib/types";
 import { BalanceBadge } from "@/components/orders/orders-table";
 import { countFilledFields } from "@/components/orders/garment-measurement-modal";
 import {
@@ -53,23 +67,20 @@ function NewOrderPageContent() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customerId");
-  const prefillCustomer = prefillCustomerId
-    ? getCustomerById(prefillCustomerId) ?? null
-    : null;
 
   // Non-mutating peek at the next order number, frozen for this session —
-  // the real number is (re)computed by createOrder itself at save time.
-  const [orderNumberPreview] = useState(() => generateNextOrderNumber());
+  // the real number is (re)computed by createOrderAction itself at save
+  // time. Phase 5A: fetched via a Server Action, so it starts blank and
+  // fills in a moment after mount rather than being ready on first paint.
+  const [orderNumberPreview, setOrderNumberPreview] = useState("");
   const [status, setStatus] = useState<OrderStatus>("In Progress");
 
-  const [phone, setPhone] = useState(prefillCustomer?.phone ?? "");
-  const [name, setName] = useState(prefillCustomer?.name ?? "");
-  const [area, setArea] = useState(prefillCustomer?.area ?? "");
-  const [address, setAddress] = useState(prefillCustomer?.address ?? "");
-  const [gender, setGender] = useState<Gender>(prefillCustomer?.gender ?? "Male");
-  const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(
-    prefillCustomer
-  );
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [area, setArea] = useState("");
+  const [address, setAddress] = useState("");
+  const [gender, setGender] = useState<Gender>("Male");
+  const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
 
   const [orderDate, setOrderDate] = useState(todayIso());
   const [trialDate, setTrialDate] = useState("");
@@ -82,8 +93,129 @@ function NewOrderPageContent() {
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const { computedItems, totalAmount } = computeOrderItems(items);
+  // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
+  // once here and threaded down to NewOrderItemsCard as props — every
+  // per-row/per-render lookup inside that component and the pure helpers
+  // below stays a synchronous array find(), not its own Supabase call.
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getActiveGarmentTypesAction(), getAddOnsAction()]).then(
+      ([garments, allAddOns]) => {
+        if (cancelled) return;
+        setGarmentTypes(garments);
+        setAddOns(allAddOns);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [phoneSuggestions, setPhoneSuggestions] = useState<Customer[]>([]);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | undefined>(
+    undefined
+  );
+  const [customerMeasurements, setCustomerMeasurements] = useState<
+    CustomerMeasurements | undefined
+  >(undefined);
+  const [customerGarmentMeasurements, setCustomerGarmentMeasurements] = useState<
+    GarmentMeasurement[]
+  >([]);
+
+  // isDirty's baseline — starts blank, updated once if a prefill customer
+  // loads, so "dirty" only reflects changes made *after* the form settled
+  // into its starting state (prefilled or not).
+  const [initialFields, setInitialFields] = useState({
+    phone: "",
+    name: "",
+    area: "",
+    address: "",
+  });
+
+  function applyCustomer(c: Customer) {
+    setMatchedCustomer(c);
+    setPhone(c.phone);
+    setName(c.name);
+    setArea(c.area);
+    setAddress(c.address);
+    setGender(c.gender ?? "Male");
+  }
+
+  // Prefill from ?customerId= (the "New Order" link from an already-selected
+  // customer) — fetched via Server Action now, so the form starts blank and
+  // populates a moment after mount instead of on first paint.
+  useEffect(() => {
+    if (!prefillCustomerId) return;
+    let cancelled = false;
+    getCustomerByIdAction(prefillCustomerId).then((c) => {
+      if (cancelled || !c) return;
+      applyCustomer(c);
+      setInitialFields({ phone: c.phone, name: c.name, area: c.area, address: c.address });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillCustomerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    generateNextOrderNumberAction().then((n) => {
+      if (!cancelled) setOrderNumberPreview(n);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Phone-suggestions autosuggest — only searches once a customer isn't
+  // already matched, same trigger condition as before.
+  useEffect(() => {
+    if (matchedCustomer || !phone.trim()) {
+      setPhoneSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    searchCustomersByPhoneAction(phone).then((results) => {
+      if (!cancelled) setPhoneSuggestions(results);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phone, matchedCustomer]);
+
+  // Previous Orders / saved-measurements summary panel data — re-fetched
+  // whenever the matched customer changes.
+  useEffect(() => {
+    if (!matchedCustomer) {
+      setCustomerDetail(undefined);
+      setCustomerMeasurements(undefined);
+      setCustomerGarmentMeasurements([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      getCustomerDetailAction(matchedCustomer.id),
+      getCustomerMeasurementsAction(matchedCustomer.id),
+      getGarmentMeasurementsForCustomerAction(matchedCustomer.id),
+    ]).then(([detail, measurements, garmentMeasurements]) => {
+      if (cancelled) return;
+      setCustomerDetail(detail);
+      setCustomerMeasurements(measurements);
+      setCustomerGarmentMeasurements(garmentMeasurements);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchedCustomer]);
+
+  const { computedItems, totalAmount } = computeOrderItems(items, garmentTypes, addOns);
   const balance = totalAmount - advancePaid;
 
   const trimmedPhone = phone.trim();
@@ -117,21 +249,13 @@ function NewOrderPageContent() {
   };
   const hasErrors = Object.values(errors).some(Boolean);
 
-  const phoneSuggestions =
-    !matchedCustomer && phone.trim() ? searchCustomersByPhone(phone) : [];
-
   function handleSelectCustomer(c: Customer) {
-    setMatchedCustomer(c);
-    setPhone(c.phone);
-    setName(c.name);
-    setArea(c.area);
-    setAddress(c.address);
-    setGender(c.gender ?? "Male");
+    applyCustomer(c);
   }
 
-  function handlePhoneBlur() {
+  async function handlePhoneBlur() {
     if (matchedCustomer) return;
-    const exact = getCustomers().find((c) => c.phone === phone.trim());
+    const exact = await getCustomerByPhoneAction(phone.trim());
     if (exact) handleSelectCustomer(exact);
   }
 
@@ -145,7 +269,9 @@ function NewOrderPageContent() {
   }
 
   function handleRepeatOrder(order: Order) {
-    setItems(order.items.map(orderItemToDraftItem));
+    setItems(
+      order.items.map((item) => orderItemToDraftItem(item, garmentTypes, addOns))
+    );
     setOrderDate(todayIso());
     setDeliveryDate("");
     setTrialDate("");
@@ -153,15 +279,11 @@ function NewOrderPageContent() {
     setAdvancePaid(0);
   }
 
-  const initialPhone = prefillCustomer?.phone ?? "";
-  const initialName = prefillCustomer?.name ?? "";
-  const initialArea = prefillCustomer?.area ?? "";
-  const initialAddress = prefillCustomer?.address ?? "";
   const isDirty =
-    phone !== initialPhone ||
-    name !== initialName ||
-    area !== initialArea ||
-    address !== initialAddress ||
+    phone !== initialFields.phone ||
+    name !== initialFields.name ||
+    area !== initialFields.area ||
+    address !== initialFields.address ||
     deliveryDate !== "" ||
     trialDate !== "" ||
     advancePaid !== 0 ||
@@ -179,9 +301,11 @@ function NewOrderPageContent() {
     router.push("/orders");
   }
 
-  function handleSave() {
+  async function handleSave() {
     setSubmitAttempted(true);
     if (hasErrors) return;
+    setSaveError(null);
+    setSaving(true);
 
     const validItems = computedItems.filter(
       (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
@@ -194,7 +318,7 @@ function NewOrderPageContent() {
     // instead of creating a new one. That found record is used as-is rather
     // than overwritten with this form's values, since the shopkeeper was
     // never actually editing it.
-    const existingByPhone = getCustomers().find((c) => c.phone === trimmedPhone);
+    const existingByPhone = await getCustomerByPhoneAction(trimmedPhone);
     let customer: Customer;
     if (existingByPhone && existingByPhone.id !== matchedCustomer?.id) {
       customer = existingByPhone;
@@ -205,49 +329,73 @@ function NewOrderPageContent() {
         area.trim() !== matchedCustomer.area ||
         address.trim() !== matchedCustomer.address ||
         gender !== matchedCustomer.gender;
-      customer = fieldsChanged
-        ? updateCustomer(matchedCustomer.id, {
-            name: trimmedName,
-            phone: trimmedPhone,
-            address: address.trim(),
-            area: area.trim(),
-            gender,
-          }) ?? matchedCustomer
-        : matchedCustomer;
+      if (fieldsChanged) {
+        const result = await updateCustomerAction(matchedCustomer.id, {
+          name: trimmedName,
+          phone: trimmedPhone,
+          address: address.trim(),
+          area: area.trim(),
+          gender,
+        });
+        if (!result.success) {
+          setSaving(false);
+          setSaveError(result.error);
+          return;
+        }
+        customer = result.data;
+      } else {
+        customer = matchedCustomer;
+      }
     } else {
-      customer = createCustomer({
+      const result = await createCustomerAction({
         name: trimmedName,
         phone: trimmedPhone,
         address: address.trim(),
         area: area.trim(),
         gender,
       });
+      if (!result.success) {
+        setSaving(false);
+        setSaveError(result.error);
+        return;
+      }
+      customer = result.data;
     }
 
     // Persist any measurement edits: the per-garment-type record (reused for
     // this customer's future orders of the same garment type) and a merge
     // into the customer's general body-measurement baseline.
-    items.forEach((it) => {
-      const garment = getGarmentById(it.garmentTypeId);
-      if (!garment || !it.measurement) return;
-      if (countFilledFields(it.measurement) === 0) return;
-      saveGarmentMeasurement({
+    for (const it of items) {
+      const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
+      if (!garment || !it.measurement) continue;
+      if (countFilledFields(it.measurement) === 0) continue;
+      const measurementResult = await saveGarmentMeasurementAction({
         customerId: customer.id,
         garmentType: garment.name,
         values: it.measurement.values,
         fitNotes: it.measurement.fitNotes,
         notes: it.measurement.notes,
       });
+      if (!measurementResult.success) {
+        setSaving(false);
+        setSaveError(measurementResult.error);
+        return;
+      }
       const bodyMeasurements = pickBodyMeasurements(it.measurement.values);
       if (Object.keys(bodyMeasurements).length > 0) {
-        saveCustomerMeasurements({
+        const baselineResult = await saveCustomerMeasurementsAction({
           customerId: customer.id,
           values: bodyMeasurements,
         });
+        if (!baselineResult.success) {
+          setSaving(false);
+          setSaveError(baselineResult.error);
+          return;
+        }
       }
-    });
+    }
 
-    const created = createOrder({
+    const created = await createOrderAction({
       customerId: customer.id,
       orderDate,
       trialDate,
@@ -257,11 +405,16 @@ function NewOrderPageContent() {
       paymentMode,
       status,
     });
+    setSaving(false);
+    if (!created.success) {
+      setSaveError(created.error);
+      return;
+    }
 
     // Show the success state with print options rather than redirecting
     // immediately — the shopkeeper's very next step is usually printing the
     // receipt/job card, so don't force them back to the list first.
-    setSavedOrder(created);
+    setSavedOrder(created.data);
   }
 
   function handleViewOrder() {
@@ -504,6 +657,8 @@ function NewOrderPageContent() {
               customerId={matchedCustomer?.id ?? null}
               items={items}
               onItemsChange={setItems}
+              garmentTypes={garmentTypes}
+              addOns={addOns}
             />
 
             {canViewPayments && (
@@ -584,6 +739,9 @@ function NewOrderPageContent() {
           <div className="min-w-0">
             <NewOrderSummaryPanel
               customer={matchedCustomer}
+              detail={customerDetail}
+              measurements={customerMeasurements}
+              garmentMeasurements={customerGarmentMeasurements}
               onRepeatOrder={handleRepeatOrder}
             />
           </div>
@@ -593,7 +751,9 @@ function NewOrderPageContent() {
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft md:left-[250px]">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-8">
           <div className="flex items-center gap-2 text-sm text-ink-muted">
-            {canViewPayments ? (
+            {saveError ? (
+              <span className="font-medium text-chip-red-fg">{saveError}</span>
+            ) : canViewPayments ? (
               <>
                 <span>
                   {t("common.total")}: <span className="font-semibold text-ink">₹{totalAmount.toLocaleString("en-IN")}</span>
@@ -624,9 +784,10 @@ function NewOrderPageContent() {
             <button
               type="button"
               onClick={handleSave}
-              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              disabled={saving}
+              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {t("orders.saveOrder")}
+              {saving ? "Saving…" : t("orders.saveOrder")}
             </button>
           </div>
         </div>

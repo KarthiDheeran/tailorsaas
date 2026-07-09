@@ -1,45 +1,31 @@
 "use server";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hasPermission } from "@/lib/permissions";
+import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { checkCanSaveUserGivenUsers, getAppUsers } from "@/lib/profiles";
+import { ALL_PERMISSIONS, PERMISSION_PARENT } from "@/lib/permissions";
+import {
+  createRole as createRoleData,
+  deleteRole as deleteRoleData,
+  getRoleById,
+  isAdminRole,
+  updateRole as updateRoleData,
+  type Role,
+  type RoleInput,
+} from "@/lib/roles";
 
 type ActionResult = { success: true } | { success: false; error: string };
+type DataActionResult<T> = { success: true; data: T } | { success: false; error: string };
 
-// Re-verifies the caller actually holds settings.manageUsers, server-side,
-// using their own session cookie — every action below calls this before
-// touching anything. A Server Action is a callable endpoint like any other;
-// client-side gating (RequirePermission/hasPermission in the UI) is a
-// convenience, never a security boundary, so it's re-checked here from
-// scratch rather than trusted.
+// Phase 5 generalized this into lib/auth/require-server-permission.ts (used
+// by ~15 actions across Orders/Customers/Catalog/Staff now, not just this
+// file) — kept as a thin wrapper here so every call site below didn't need
+// to change.
 async function requireManageUsers(
-  supabase: SupabaseClient
+  supabase: Parameters<typeof requireServerPermission>[0]
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role_id, active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile || !profile.active) {
-    return { ok: false, error: "Account inactive." };
-  }
-
-  const { data: role } = await supabase
-    .from("roles")
-    .select("permissions")
-    .eq("id", profile.role_id)
-    .maybeSingle();
-  if (!role || !hasPermission(role.permissions ?? [], "settings.manageUsers")) {
-    return { ok: false, error: "You don't have permission to manage users." };
-  }
-  return { ok: true };
+  return requireServerPermission(supabase, "settings.manageUsers");
 }
 
 export async function createUserAction(input: {
@@ -158,5 +144,95 @@ export async function resetUserPasswordAction(input: {
     .eq("id", input.userId);
   if (profileError) return { success: false, error: profileError.message };
 
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5D: Roles CRUD — the one gap left over from Phase 3, which wired
+// roles up to real Supabase reads/writes but never re-verified the caller's
+// permission server-side (RLS alone protected the table, but couldn't
+// express "every permission key must be real" or "a custom role in use
+// can't be deleted"). Same requireServerPermission pattern as every other
+// Phase 5 action.
+// ---------------------------------------------------------------------------
+
+function validateRoleInput(input: RoleInput): string | null {
+  if (!input.name.trim()) return "Role name is required.";
+  for (const permission of input.permissions) {
+    if (!ALL_PERMISSIONS.includes(permission)) {
+      return `Unknown permission: ${permission}.`;
+    }
+  }
+  for (const permission of input.permissions) {
+    const parent = PERMISSION_PARENT[permission];
+    if (parent && !input.permissions.includes(parent)) {
+      return `"${permission}" requires "${parent}" to also be granted.`;
+    }
+  }
+  return null;
+}
+
+export async function createRoleAction(
+  input: RoleInput
+): Promise<DataActionResult<Role>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "settings.manageRoles");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const validationError = validateRoleInput(input);
+  if (validationError) return { success: false, error: validationError };
+
+  const role = await createRoleData(supabase, input);
+  return { success: true, data: role };
+}
+
+export async function updateRoleAction(
+  id: string,
+  input: RoleInput
+): Promise<DataActionResult<Role>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "settings.manageRoles");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  // Explicit, clear rejection rather than lib/roles.ts's silent no-op pin —
+  // a direct call to this action (bypassing the UI, which already disables
+  // Admin's entire checklist) must get an unambiguous error, not a
+  // successful-looking response that quietly changed nothing.
+  if (isAdminRole(id)) {
+    return { success: false, error: "The Admin role cannot be edited." };
+  }
+
+  const validationError = validateRoleInput(input);
+  if (validationError) return { success: false, error: validationError };
+
+  const role = await updateRoleData(supabase, id, input);
+  if (!role) return { success: false, error: "Role not found." };
+  return { success: true, data: role };
+}
+
+export async function deleteRoleAction(id: string): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "settings.manageRoles");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const role = await getRoleById(supabase, id);
+  if (!role) return { success: false, error: "Role not found." };
+  if (role.type === "system") {
+    return { success: false, error: "System roles cannot be deleted." };
+  }
+
+  // Authoritative "still assigned" check — fetched fresh here, never
+  // trusting the client's own users list (same posture as
+  // updateUserProfileAction's last-Admin check above).
+  const users = await getAppUsers(supabase);
+  if (users.some((u) => u.role_id === id)) {
+    return {
+      success: false,
+      error: "Cannot delete a role that still has users assigned to it.",
+    };
+  }
+
+  const ok = await deleteRoleData(supabase, id);
+  if (!ok) return { success: false, error: "Could not delete role." };
   return { success: true };
 }

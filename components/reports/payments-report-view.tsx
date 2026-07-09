@@ -1,19 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, IndianRupee, Wallet } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
+import { getPaymentsReportAction } from "@/app/(shell)/reports/actions";
 import {
   getDateRangeForPreset,
-  getPaymentsReport,
   type DateRange,
   type DateRangePreset,
+  type PaymentsReport,
 } from "@/lib/reports";
-import { paymentModes } from "@/lib/data/stub-data";
+import { paymentModes } from "@/lib/constants";
 import type { PaymentMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -21,6 +22,14 @@ import { useLanguage } from "@/components/i18n/language-provider";
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
+
+const EMPTY_REPORT: PaymentsReport = {
+  totalCollected: 0,
+  byMode: [],
+  outstandingBalance: 0,
+  overdueBalance: 0,
+  rows: [],
+};
 
 export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   const { t } = useLanguage();
@@ -35,20 +44,29 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   const [overdueOnly, setOverdueOnly] = useState(false);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
-  const report = useMemo(
-    () =>
-      getPaymentsReport(
-        {
-          range,
-          paymentMode: paymentMode || undefined,
-          customerQuery,
-          pendingOnly,
-          overdueOnly,
-        },
-        todayIso
-      ),
-    [range.from, range.to, paymentMode, customerQuery, pendingOnly, overdueOnly, todayIso]
-  );
+  // Phase 6E: fetched via a Server Action now — see sales-report-view.tsx's
+  // comment for why this is an effect + state instead of useMemo.
+  const [report, setReport] = useState<PaymentsReport>(EMPTY_REPORT);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPaymentsReportAction(
+      {
+        range,
+        paymentMode: paymentMode || undefined,
+        customerQuery,
+        pendingOnly,
+        overdueOnly,
+      },
+      todayIso
+    ).then((result) => {
+      if (!cancelled && result) setReport(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, paymentMode, customerQuery, pendingOnly, overdueOnly, todayIso]);
 
   function handleExport() {
     downloadCsv(
