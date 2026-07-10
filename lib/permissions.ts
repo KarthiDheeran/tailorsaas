@@ -1,16 +1,15 @@
 // ---------------------------------------------------------------------------
-// Frontend-only access simulation for MVP. Not real security. Replace with
-// real auth/session and server-side permission enforcement before production.
-// ---------------------------------------------------------------------------
-//
-// There is no login system, no session, and no backend in this app yet (see
-// CLAUDE.md). This module defines the permission vocabulary only — key,
-// label, and which module group it belongs to. Roles (lib/roles.ts) own
-// sets of these permissions; users (lib/mock-users.ts) are assigned a role,
-// not permissions directly — see components/auth/current-user-provider.tsx
+// Permission vocabulary only — key, label, and which module group it belongs
+// to. Real Supabase auth/session backs this as of Phase 1-4 (see CLAUDE.md):
+// roles (lib/roles.ts) own sets of these permissions in a real `roles` table,
+// and users (lib/profiles.ts, backed by a real `profiles` table) are assigned
+// a role, not permissions directly — see components/auth/current-user-provider.tsx
 // for how a user's effective permissions get resolved through their role.
-// Nothing here is enforced server-side — it only hides/shows UI and blocks
-// client-side navigation, so it must never be treated as a security boundary.
+// This module itself still isn't a security boundary on its own — it only
+// drives client-side UI hide/show and navigation gating. The actual
+// enforcement is lib/auth/require-server-permission.ts, called server-side
+// by every Server Action before it touches data.
+// ---------------------------------------------------------------------------
 
 export type Permission =
   | "dashboard.view"

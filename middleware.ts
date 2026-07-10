@@ -3,8 +3,9 @@ import { updateSession } from "@/lib/supabase/middleware";
 
 // Auth-only gate (Phase 2). This checks *whether* a request is logged in,
 // not *what* they're allowed to see once inside — that's still
-// RequirePermission/AccessDenied, reading from the (still-mock,
-// pre-Phase-3) CurrentUserProvider. Two separate layers, on purpose.
+// RequirePermission/AccessDenied, reading from CurrentUserProvider (real
+// Supabase-backed roles/permissions as of Phase 3-4, no longer mock).
+// Two separate layers, on purpose.
 const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password"];
 
 export async function middleware(request: NextRequest) {
