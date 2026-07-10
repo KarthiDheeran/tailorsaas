@@ -6,12 +6,15 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   ClipboardList,
+  Wallet,
+  Package,
   Users,
   Users2,
   BarChart3,
   Shirt,
-  Layers,
-  UserCog,
+  FileText,
+  Workflow,
+  Settings,
   ChevronsUpDown,
   Check,
   Languages,
@@ -29,15 +32,26 @@ const navItems: {
   href: string;
   labelKey: TranslationKey;
   icon: LucideIcon;
-  permission: Permission;
+  permission?: Permission;
+  anyOf?: Permission[];
+  activePrefixes?: string[];
 }[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
+  { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
+  { href: "/production", labelKey: "nav.production", icon: Workflow, anyOf: ["orders.view", "staff.view"] },
   { href: "/customers", labelKey: "nav.customers", icon: Users, permission: "customers.view" },
-  { href: "/catalog", labelKey: "nav.catalog", icon: Layers, permission: "catalog.view" },
+  { href: "/payments", labelKey: "nav.payments", icon: Wallet, anyOf: ["orders.viewPayments", "expenses.view"] },
+  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "inventory.view" },
   { href: "/staff", labelKey: "nav.staff", icon: Users2, permission: "staff.view" },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3, permission: "reports.view" },
-  { href: "/users-access", labelKey: "nav.usersAccess", icon: UserCog, permission: "settings.view" },
+  {
+    href: "/settings",
+    labelKey: "nav.settings",
+    icon: Settings,
+    permission: "settings.view",
+    activePrefixes: ["/settings", "/catalog", "/users-access"],
+  },
 ];
 
 // Small language selector, styled like the mock-user switcher just below it.
@@ -87,10 +101,14 @@ function LanguageSwitcher() {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { currentUser, currentRole, hasPermission } = useCurrentUser();
+  const { currentUser, currentRole, hasPermission, hasAnyPermission } = useCurrentUser();
   const { t } = useLanguage();
 
-  const visibleNavItems = navItems.filter((item) => hasPermission(item.permission));
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.permission) return hasPermission(item.permission);
+    if (item.anyOf) return hasAnyPermission(item.anyOf);
+    return true;
+  });
 
   return (
     <aside className="flex h-screen w-[250px] flex-col bg-white px-4 py-6 print:hidden">
@@ -106,9 +124,13 @@ export function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 space-y-1.5">
-        {visibleNavItems.map(({ href, labelKey, icon: Icon }) => {
+        {visibleNavItems.map(({ href, labelKey, icon: Icon, activePrefixes }) => {
           const isActive =
-            pathname === href || pathname.startsWith(`${href}/`);
+            pathname === href ||
+            pathname.startsWith(`${href}/`) ||
+            activePrefixes?.some(
+              (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+            );
           return (
             <Link
               key={href}

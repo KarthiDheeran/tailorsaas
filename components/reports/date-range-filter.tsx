@@ -19,16 +19,25 @@ export function DateRangeFilter({
   custom,
   onPresetChange,
   onCustomChange,
+  presets,
 }: {
   preset: DateRangePreset;
   custom: DateRange;
   onPresetChange: (preset: DateRangePreset) => void;
   onCustomChange: (range: DateRange) => void;
+  // Phase 7G: restricts which preset buttons render — e.g. the Payments
+  // page's simpler filter set (Today/Yesterday/This Week/This Month, no
+  // All Time/Custom) vs. Reports' full analytical range. Defaults to every
+  // preset, so Reports' own usage needs no changes at all.
+  presets?: DateRangePreset[];
 }) {
   const { t } = useLanguage();
+  const visiblePresets = presets
+    ? PRESETS.filter((p) => presets.includes(p.key))
+    : PRESETS;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {PRESETS.map((p) => (
+      {visiblePresets.map((p) => (
         <button
           key={p.key}
           type="button"

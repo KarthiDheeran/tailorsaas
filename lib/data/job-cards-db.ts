@@ -1,0 +1,268 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { JobCard, JobCardStage, ProductionBucket } from "@/lib/job-cards";
+import type {
+  CustomerSnapshot,
+  OrderItem,
+  OrderStatus,
+  Staff,
+  TaskPriority,
+  TaskType,
+} from "@/lib/types";
+
+export type JobCardFabricSource =
+  | "Not specified"
+  | "Customer provided"
+  | "Shop provided";
+
+export interface JobCardAssignmentInput {
+  taskType: TaskType;
+  assignedStaffId: string;
+  dueDate: string;
+  priority: TaskPriority;
+  notes?: string;
+}
+
+const JOB_CARD_COLUMNS = `
+  id, job_card_number, order_id, order_number, customer_id, order_status,
+  order_item_serial_no, unit_no, garment_type, customer_snapshot,
+  measurements_snapshot, fabric_source, fabric_notes,
+  current_stage, assigned_staff_id, priority, due_date, trial_date,
+  started_date, completed_date, cancelled, notes, created_at, updated_at
+`;
+
+interface JobCardRow {
+  id: string;
+  job_card_number: string;
+  order_id: string;
+  order_number: string;
+  customer_id: string;
+  order_status: OrderStatus;
+  order_item_serial_no: number;
+  unit_no: number;
+  garment_type: string;
+  customer_snapshot: CustomerSnapshot | null;
+  measurements_snapshot: Record<string, string> | null;
+  fabric_source: JobCardFabricSource;
+  fabric_notes: string | null;
+  current_stage: JobCardStage;
+  assigned_staff_id: string | null;
+  priority: TaskPriority;
+  due_date: string;
+  trial_date: string | null;
+  started_date: string | null;
+  completed_date: string | null;
+  cancelled: boolean;
+  notes: string | null;
+}
+
+export function isMissingJobCardsSchemaError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const code = candidate.code ?? "";
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "42883" ||
+    code === "PGRST202" ||
+    code === "PGRST205" ||
+    message.includes("job_cards") ||
+    message.includes("sync_job_cards_for_order")
+  );
+}
+
+export async function getJobCards(
+  supabase: SupabaseClient,
+  todayIso: string,
+  staffList: Staff[] = []
+): Promise<JobCard[]> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select(JOB_CARD_COLUMNS)
+    .order("due_date", { ascending: true })
+    .order("job_card_number", { ascending: true });
+  if (error) throw error;
+
+  const rows = ((data as unknown as JobCardRow[]) ?? []);
+  const totalsByLine = new Map<string, number>();
+  for (const row of rows) {
+    const key = lineKey(row.order_id, row.order_item_serial_no);
+    totalsByLine.set(key, (totalsByLine.get(key) ?? 0) + 1);
+  }
+
+  const staffById = new Map(staffList.map((staff) => [staff.id, staff]));
+  return rows.map((row) =>
+    mapJobCardRow(row, todayIso, totalsByLine, staffById)
+  );
+}
+
+export async function syncJobCardsForOrder(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<void> {
+  const { error } = await supabase.rpc("sync_job_cards_for_order", {
+    p_order_id: orderId,
+  });
+  if (error) throw error;
+}
+
+export async function assignJobCard(
+  supabase: SupabaseClient,
+  id: string,
+  data: JobCardAssignmentInput
+): Promise<void> {
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      current_stage: taskTypeToStage(data.taskType),
+      assigned_staff_id: data.assignedStaffId,
+      due_date: data.dueDate,
+      priority: data.priority,
+      notes: data.notes ?? null,
+      started_date: null,
+      completed_date: null,
+      cancelled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function startJobCard(
+  supabase: SupabaseClient,
+  id: string,
+  todayIso: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      started_date: todayIso,
+      completed_date: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function completeJobCard(
+  supabase: SupabaseClient,
+  id: string,
+  todayIso: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      current_stage: "Ready",
+      completed_date: todayIso,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+function mapJobCardRow(
+  row: JobCardRow,
+  todayIso: string,
+  totalsByLine: Map<string, number>,
+  staffById: Map<string, Staff>
+): JobCard {
+  const stage =
+    row.cancelled || row.order_status === "Cancelled"
+      ? "Cancelled"
+      : row.order_status === "Delivered"
+        ? "Delivered"
+        : row.current_stage;
+  const assignedStaff = row.assigned_staff_id
+    ? staffById.get(row.assigned_staff_id)
+    : undefined;
+  const taskStatus = getPersistedTaskStatus(row, todayIso);
+  const item: OrderItem = {
+    serialNo: row.order_item_serial_no,
+    particular: row.garment_type,
+    qty: totalsByLine.get(lineKey(row.order_id, row.order_item_serial_no)) ?? 1,
+    rate: 0,
+    amount: 0,
+    measurements: row.measurements_snapshot ?? undefined,
+  };
+
+  return {
+    id: row.id,
+    persisted: true,
+    jobCardNumber: row.job_card_number,
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    customerId: row.customer_id,
+    customer: row.customer_snapshot ?? undefined,
+    item,
+    unitNo: row.unit_no,
+    totalUnits: item.qty,
+    garment: row.garment_type,
+    deliveryDate: row.due_date,
+    orderStatus: row.order_status,
+    stage,
+    productionBucket: getPersistedProductionBucket(stage),
+    taskType: stageToTaskType(row.current_stage),
+    taskStatus,
+    assignedStaffId: row.assigned_staff_id ?? undefined,
+    assignedTo: assignedStaff?.name ?? "Unassigned",
+    priority: row.priority,
+    fabricSource: row.fabric_source,
+    fabricNotes: row.fabric_notes ?? undefined,
+    notes: row.notes ?? undefined,
+    startedDate: row.started_date ?? undefined,
+    completedDate: row.completed_date ?? undefined,
+    isDelayed:
+      row.due_date < todayIso &&
+      row.order_status !== "Delivered" &&
+      row.order_status !== "Cancelled" &&
+      stage !== "Ready" &&
+      stage !== "Delivered" &&
+      stage !== "Cancelled",
+  };
+}
+
+function lineKey(orderId: string, serialNo: number) {
+  return `${orderId}:${serialNo}`;
+}
+
+function getPersistedTaskStatus(
+  row: JobCardRow,
+  todayIso: string
+): JobCard["taskStatus"] {
+  if (row.cancelled || row.current_stage === "Cancelled") return "Cancelled";
+  if (row.completed_date || row.current_stage === "Ready") return "Completed";
+  if (row.due_date < todayIso || row.current_stage === "Delayed") return "Delayed";
+  if (row.started_date) return "In Progress";
+  if (row.assigned_staff_id) return "Assigned";
+  return undefined;
+}
+
+function getPersistedProductionBucket(
+  stage: JobCardStage
+): ProductionBucket | "Closed" {
+  if (stage === "Cancelled" || stage === "Delivered") return "Closed";
+  if (stage === "Ready") return "Ready";
+  if (stage === "Cutting") return "Cutting";
+  if (stage === "Stitching" || stage === "Embroidery") return "Stitching";
+  if (stage === "Finishing") return "Finishing";
+  if (stage === "Trial" || stage === "Alteration" || stage === "Delayed") {
+    return "Trial / Alteration";
+  }
+  return "Unassigned";
+}
+
+function taskTypeToStage(taskType: TaskType): JobCardStage {
+  if (taskType === "Measurement") return "Trial";
+  if (taskType === "Ironing/Packing") return "Finishing";
+  if (taskType === "Delivery") return "Ready";
+  return taskType;
+}
+
+function stageToTaskType(stage: JobCardStage): TaskType | undefined {
+  if (stage === "Cutting") return "Cutting";
+  if (stage === "Stitching") return "Stitching";
+  if (stage === "Embroidery") return "Embroidery";
+  if (stage === "Finishing") return "Finishing";
+  if (stage === "Trial") return "Measurement";
+  if (stage === "Alteration") return "Alteration";
+  if (stage === "Ready") return "Delivery";
+  return undefined;
+}

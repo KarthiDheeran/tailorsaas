@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, IndianRupee, Wallet } from "lucide-react";
-import { formatDate } from "@/components/orders/orders-table";
+import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
@@ -15,9 +15,11 @@ import {
   type PaymentsReport,
 } from "@/lib/reports";
 import { paymentModes } from "@/lib/constants";
-import type { PaymentMode } from "@/lib/types";
+import type { PaymentMode, PaymentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
+
+const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 
 function money(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
@@ -31,6 +33,15 @@ const EMPTY_REPORT: PaymentsReport = {
   rows: [],
 };
 
+// Phase 7D: this tab is now a real per-payment-transaction ledger over the
+// payments table (each row is one payment, not one order — see lib/
+// reports.ts's getPaymentsReport) rather than the old order-level
+// approximation. Voided payments stay in the table (marked, with their void
+// reason) rather than being hidden — the more transparent, audit-consistent
+// choice, matching how components/orders/payment-history-list.tsx already
+// shows voided rows in the Order Details drawer — but they're excluded from
+// every summary card and the by-mode breakdown, computed server-side in
+// getPaymentsReport.
 export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   const { t } = useLanguage();
   const [preset, setPreset] = useState<DateRangePreset>("thisMonth");
@@ -39,6 +50,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
     to: todayIso,
   });
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
+  const [paymentType, setPaymentType] = useState<PaymentType | "">("");
   const [customerQuery, setCustomerQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -54,6 +66,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
       {
         range,
         paymentMode: paymentMode || undefined,
+        paymentType: paymentType || undefined,
         customerQuery,
         pendingOnly,
         overdueOnly,
@@ -66,19 +79,43 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, paymentMode, customerQuery, pendingOnly, overdueOnly, todayIso]);
+  }, [
+    range.from,
+    range.to,
+    paymentMode,
+    paymentType,
+    customerQuery,
+    pendingOnly,
+    overdueOnly,
+    todayIso,
+  ]);
 
   function handleExport() {
     downloadCsv(
       `payments-report-${todayIso}.csv`,
-      ["Date", "Customer", "Order No", "Amount Collected", "Payment Mode", "Balance"],
+      [
+        "Payment Date",
+        "Customer",
+        "Order No",
+        "Amount",
+        "Payment Mode",
+        "Payment Type",
+        "Notes",
+        "Voided",
+        "Void Reason",
+        "Recorded By",
+      ],
       report.rows.map((r) => [
-        r.order.orderDate,
+        r.payment.paymentDate,
         r.customer?.name ?? "Unknown",
-        r.order.orderNumber,
-        r.amountCollected,
-        r.order.paymentMode,
-        r.order.balance,
+        r.orderNumber,
+        r.payment.amount,
+        r.payment.paymentMode,
+        r.payment.paymentType,
+        r.payment.notes ?? "",
+        r.payment.voided ? "Yes" : "No",
+        r.payment.voidReason ?? "",
+        r.recordedByName ?? "",
       ])
     );
   }
@@ -102,6 +139,18 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
             {paymentModes.map((m) => (
               <option key={m} value={m}>
                 {m}
+              </option>
+            ))}
+          </select>
+          <select
+            value={paymentType}
+            onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
+            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
+          >
+            <option value="">{t("reports.allPaymentTypes")}</option>
+            {PAYMENT_TYPES.map((pt) => (
+              <option key={pt} value={pt}>
+                {pt}
               </option>
             ))}
           </select>
@@ -174,50 +223,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
         </div>
       )}
 
-      {report.rows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
-          <p className="text-sm text-ink-muted">{t("reports.noPaymentsMatch")}</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
-          <table className="w-full text-left">
-            <thead className="text-[13px] font-semibold text-ink-muted">
-              <tr className="border-b border-border-soft">
-                <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
-                <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
-                <th className="whitespace-nowrap px-5 py-3">{t("reports.orderNo")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.amountCollected")}</th>
-                <th className="whitespace-nowrap px-5 py-3">{t("orders.paymentMode")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("common.balance")}</th>
-              </tr>
-            </thead>
-            <tbody className="text-[13px]">
-              {report.rows.map((row) => (
-                <tr key={row.order.id} className="border-t border-border-soft">
-                  <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
-                    {formatDate(row.order.orderDate)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-ink">
-                    {row.customer?.name ?? "Unknown"}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
-                    {row.order.orderNumber}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                    {money(row.amountCollected)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
-                    {row.order.paymentMode}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
-                    {money(row.order.balance)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <PaymentLedgerTable rows={report.rows} emptyMessage={t("reports.noPaymentsMatch")} />
     </div>
   );
 }

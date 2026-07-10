@@ -20,8 +20,14 @@ export type Permission =
   | "orders.cancel"
   | "orders.changeStatus"
   | "orders.viewPayments"
+  | "orders.recordPayment"
+  | "orders.voidPayment"
   | "orders.printCustomerReceipt"
   | "orders.printJobCard"
+  | "expenses.view"
+  | "expenses.manage"
+  | "inventory.view"
+  | "inventory.manage"
   | "customers.view"
   | "customers.create"
   | "customers.edit"
@@ -56,8 +62,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "orders.cancel", label: "Cancel orders", group: "Orders" },
   { key: "orders.changeStatus", label: "Change order status", group: "Orders" },
   { key: "orders.viewPayments", label: "View payment details", group: "Orders" },
+  { key: "orders.recordPayment", label: "Record a payment", group: "Orders" },
+  { key: "orders.voidPayment", label: "Void a payment", group: "Orders" },
   { key: "orders.printCustomerReceipt", label: "Print customer receipt", group: "Orders" },
   { key: "orders.printJobCard", label: "Print tailor job card", group: "Orders" },
+
+  { key: "expenses.view", label: "View expenses", group: "Accounts" },
+  { key: "expenses.manage", label: "Manage expenses", group: "Accounts" },
+
+  { key: "inventory.view", label: "View inventory", group: "Inventory" },
+  { key: "inventory.manage", label: "Manage inventory", group: "Inventory" },
 
   { key: "customers.view", label: "View customers", group: "Customers" },
   { key: "customers.create", label: "Create customers", group: "Customers" },
@@ -146,9 +160,11 @@ export function hasAllPermissions(
 
 // Permission dependency graph (child -> required parent), enforced in the
 // Roles permission checklist: checking a child auto-checks its parent;
-// unchecking a parent auto-unchecks its children. Each entry here is a
-// single level deep (no permission is both a parent and a child of
-// another), so withPermissionDependencies below doesn't need to recurse.
+// unchecking a parent auto-unchecks its children. Most entries are a single
+// level deep, but orders.voidPayment -> orders.recordPayment ->
+// orders.viewPayments is a genuine two-level chain (orders.recordPayment is
+// both a child and a parent) — withPermissionDependencies below walks the
+// full chain in both directions rather than assuming one hop.
 export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
   "orders.create": "orders.view",
   "orders.edit": "orders.view",
@@ -156,7 +172,11 @@ export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
   "orders.changeStatus": "orders.view",
   "orders.printCustomerReceipt": "orders.view",
   "orders.printJobCard": "orders.view",
+  "expenses.manage": "expenses.view",
+  "inventory.manage": "inventory.view",
   "orders.viewPayments": "orders.view",
+  "orders.recordPayment": "orders.viewPayments",
+  "orders.voidPayment": "orders.recordPayment",
   "customers.create": "customers.view",
   "customers.edit": "customers.view",
   "customers.editMeasurements": "customers.viewMeasurements",
@@ -168,9 +188,14 @@ export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
 };
 
 // Applies one checkbox toggle plus its cascade effect. Ordering matches the
-// brief exactly: checking a child pulls its parent in; unchecking a parent
-// pushes its children out. Unchecking a child never touches its parent, and
-// checking a parent never touches its children.
+// brief exactly: checking a child pulls its parent (and grandparent, etc.)
+// in; unchecking a parent pushes its children (and grandchildren, etc.)
+// out. Unchecking a child never touches its parent, and checking a parent
+// never touches its children. Walks the full PERMISSION_PARENT chain rather
+// than a single hop, since orders.recordPayment is both a child
+// (of orders.viewPayments) and a parent (of orders.voidPayment) — a single-
+// hop version would let voidPayment get checked without viewPayments, or
+// stay checked after viewPayments is unchecked.
 export function withPermissionDependencies(
   permissions: Permission[],
   toggled: Permission,
@@ -180,11 +205,23 @@ export function withPermissionDependencies(
     ? Array.from(new Set([...permissions, toggled]))
     : permissions.filter((p) => p !== toggled);
   if (checked) {
-    const parent = PERMISSION_PARENT[toggled];
-    if (parent && !next.includes(parent)) next = [...next, parent];
+    let current = toggled;
+    while (PERMISSION_PARENT[current]) {
+      const parent = PERMISSION_PARENT[current]!;
+      if (!next.includes(parent)) next = [...next, parent];
+      current = parent;
+    }
   } else {
-    const children = ALL_PERMISSIONS.filter((p) => PERMISSION_PARENT[p] === toggled);
-    if (children.length > 0) next = next.filter((p) => !children.includes(p));
+    const toRemove = new Set<Permission>();
+    let frontier: Permission[] = [toggled];
+    while (frontier.length > 0) {
+      const children = ALL_PERMISSIONS.filter((p) =>
+        frontier.includes(PERMISSION_PARENT[p]!)
+      );
+      children.forEach((c) => toRemove.add(c));
+      frontier = children;
+    }
+    if (toRemove.size > 0) next = next.filter((p) => !toRemove.has(p));
   }
   return next;
 }

@@ -5,8 +5,10 @@ import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import {
   createStaff,
   createWorkAssignment,
+  getStaff,
   getStaffById,
   getStaffPaymentsForStaff,
+  getWorkAssignments,
   getWorkAssignmentsForStaff,
   recordStaffPayment,
   updateStaff,
@@ -14,7 +16,13 @@ import {
 } from "@/lib/data/staff-db";
 import { getOrderById } from "@/lib/data/orders-db";
 import { paymentModes } from "@/lib/constants";
-import { getStaffListRows, TASK_TYPES, type StaffListRow } from "@/lib/staff";
+import {
+  getStaffListRows,
+  getWorkQueueRows,
+  TASK_TYPES,
+  type StaffListRow,
+  type WorkQueueRow,
+} from "@/lib/staff";
 import type {
   PaymentMode,
   Staff,
@@ -117,6 +125,20 @@ export async function getStaffListRowsAction(todayIso: string): Promise<StaffLis
   const guard = await requireServerPermission(supabase, "staff.view");
   if (!guard.ok) return [];
   return getStaffListRows(supabase, todayIso);
+}
+
+export async function getWorkQueueRowsAction(todayIso: string): Promise<WorkQueueRow[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.view");
+  if (!guard.ok) return [];
+  return getWorkQueueRows(supabase, todayIso);
+}
+
+export async function getStaffAction(): Promise<Staff[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.view");
+  if (!guard.ok) return [];
+  return getStaff(supabase);
 }
 
 export async function getStaffByIdAction(id: string): Promise<Staff | undefined> {
@@ -270,6 +292,13 @@ export async function getWorkAssignmentsForStaffAction(
   const guard = await requireServerPermission(supabase, "staff.view");
   if (!guard.ok) return [];
   return getWorkAssignmentsForStaff(supabase, staffId);
+}
+
+export async function getWorkAssignmentsAction(): Promise<WorkAssignment[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.view");
+  if (!guard.ok) return [];
+  return getWorkAssignments(supabase);
 }
 
 export async function getStaffPaymentsForStaffAction(

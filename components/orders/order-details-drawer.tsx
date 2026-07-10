@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Pencil, Printer } from "lucide-react";
-import type { Customer, Order } from "@/lib/types";
+import { X, Pencil, Printer, Wallet } from "lucide-react";
+import type { Customer, Order, Payment } from "@/lib/types";
 import {
   formatDate,
   OrderStatusEditor,
-  BalanceBadge,
+  PaymentStatusBadge,
 } from "@/components/orders/orders-table";
+import { getPaymentsForOrderAction } from "@/app/(shell)/orders/actions";
+import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
+import { PaymentHistoryList } from "@/components/orders/payment-history-list";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -78,6 +81,7 @@ export function OrderDetailsDrawer({
   onClose,
   onStatusChange,
   onEdit,
+  onOrderUpdated,
 }: {
   order: Order | null;
   // Phase 5A: resolved by the parent (which already fetched customers
@@ -87,12 +91,43 @@ export function OrderDetailsDrawer({
   onClose: () => void;
   onStatusChange: () => void;
   onEdit: (order: Order) => void;
+  // Phase 7C: called with the freshly re-fetched Order after a payment is
+  // recorded or voided (advance_paid/balance/payment_status all change via
+  // the ledger trigger). The parent owns `order` as state (it's what gets
+  // passed back in as this same prop), so updating there — rather than
+  // this drawer holding a second, locally-synced copy — is what keeps this
+  // drawer's own display and the page's OrdersTable/BalanceBadge correct
+  // from a single source of truth, with no useEffect-based prop-mirroring.
+  onOrderUpdated: (order: Order) => void;
 }) {
-  const todayIso = new Date().toISOString().slice(0, 10);
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canViewPayments = hasPermission("orders.viewPayments");
+  const canRecordPayment = hasPermission("orders.recordPayment");
   const canEdit = hasPermission("orders.edit");
+
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [showRecordModal, setShowRecordModal] = useState(false);
+
+  useEffect(() => {
+    if (!order || !canViewPayments) {
+      setPayments([]);
+      return;
+    }
+    let cancelled = false;
+    getPaymentsForOrderAction(order.id).then((result) => {
+      if (!cancelled) setPayments(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, canViewPayments]);
+
+  function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
+    setPayments(result.payments);
+    onOrderUpdated(result.order);
+  }
 
   return (
     <>
@@ -241,8 +276,31 @@ export function OrderDetailsDrawer({
                     <span className="text-sm text-ink-muted">
                       {t("orders.paymentStatus")}
                     </span>
-                    <BalanceBadge order={order} todayIso={todayIso} />
+                    <PaymentStatusBadge order={order} />
                   </div>
+                  {canRecordPayment && order.balance > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRecordModal(true)}
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                    >
+                      <Wallet className="h-3.5 w-3.5" />
+                      {t("orders.recordPayment")}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {canViewPayments && (
+                <div>
+                  <p className="mb-2 text-[13px] font-medium text-ink-muted">
+                    {t("orders.paymentHistory")}
+                  </p>
+                  <PaymentHistoryList
+                    order={order}
+                    payments={payments}
+                    onVoided={handlePaymentChanged}
+                  />
                 </div>
               )}
             </div>
@@ -269,6 +327,16 @@ export function OrderDetailsDrawer({
           </>
         )}
       </div>
+      {order && showRecordModal && (
+        <RecordPaymentModal
+          order={order}
+          onClose={() => setShowRecordModal(false)}
+          onRecorded={(result) => {
+            handlePaymentChanged(result);
+            setShowRecordModal(false);
+          }}
+        />
+      )}
     </>
   );
 }

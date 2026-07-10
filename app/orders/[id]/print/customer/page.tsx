@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
-import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
+import {
+  getOrderByIdAction,
+  getPaymentsForOrderAction,
+} from "@/app/(shell)/orders/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
 import {
   formatDate,
@@ -12,11 +15,38 @@ import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
-import type { Customer, Order } from "@/lib/types";
+import type { Customer, Order, Payment } from "@/lib/types";
 
 // No shop-settings module exists yet (see CLAUDE.md) — using the app's own
 // name as a stand-in until a real shop profile/name field is introduced.
 const SHOP_NAME = "TailorSaaS";
+
+// Phase 7E: the receipt used to show order.paymentMode directly, as if an
+// order only ever had one payment — not true once an order can have an
+// advance, a partial, and a final payment each recorded in a different
+// mode. Kept deliberately simple per this chunk's own instruction (no
+// itemized ledger on the receipt — that's what the Order Details drawer's
+// Payment History and the Reports Payments tab are for): voided payments
+// are excluded entirely, then collapsed to "—" (none), the one mode (one
+// payment), or "Multiple" with a small per-mode breakdown (more than one).
+type PaymentModeSummary =
+  | { kind: "none" }
+  | { kind: "single"; mode: string }
+  | { kind: "multiple"; breakdown: { mode: string; amount: number }[] };
+
+function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
+  const counted = payments.filter((p) => !p.voided);
+  if (counted.length === 0) return { kind: "none" };
+  if (counted.length === 1) return { kind: "single", mode: counted[0].paymentMode };
+  const byMode = new Map<string, number>();
+  for (const p of counted) {
+    byMode.set(p.paymentMode, (byMode.get(p.paymentMode) ?? 0) + p.amount);
+  }
+  return {
+    kind: "multiple",
+    breakdown: Array.from(byMode.entries()).map(([mode, amount]) => ({ mode, amount })),
+  };
+}
 
 function CustomerReceiptPrintPageContent({
   params,
@@ -42,6 +72,7 @@ function CustomerReceiptPrintPageContent({
   // went through in 5A/6B.
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
+  const [payments, setPayments] = useState<Payment[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,8 +90,28 @@ function CustomerReceiptPrintPageContent({
     };
   }, [params.id]);
 
+  // Phase 7E: only fetched when the caller can see payment figures at all —
+  // getPaymentsForOrderAction already re-checks orders.viewPayments
+  // server-side and would just return [] otherwise, but there's no reason
+  // to make the round trip when this block won't even render.
+  useEffect(() => {
+    if (!canViewPayments) {
+      setPayments([]);
+      return;
+    }
+    let cancelled = false;
+    getPaymentsForOrderAction(params.id).then((result) => {
+      if (!cancelled) setPayments(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id, canViewPayments]);
+
   if (order === undefined) return null;
   if (order === null) notFound();
+
+  const modeSummary = summarizePaymentModes(payments);
 
   return (
     <PrintPageFrame backHref="/orders">
@@ -138,7 +189,7 @@ function CustomerReceiptPrintPageContent({
               </span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-gray-500">{t("print.paidAdvance")}</span>
+              <span className="text-gray-500">{t("print.paid")}</span>
               <span className="font-semibold">
                 ₹{order.advancePaid.toLocaleString("en-IN")}
               </span>
@@ -151,8 +202,21 @@ function CustomerReceiptPrintPageContent({
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-500">{t("print.paymentMode")}</span>
-              <span className="font-semibold">{order.paymentMode}</span>
+              <span className="font-semibold">
+                {modeSummary.kind === "none" && "—"}
+                {modeSummary.kind === "single" && modeSummary.mode}
+                {modeSummary.kind === "multiple" && t("print.multiplePaymentModes")}
+              </span>
             </div>
+            {modeSummary.kind === "multiple" && (
+              <div className="flex justify-end">
+                <span className="text-right text-xs text-gray-500">
+                  {modeSummary.breakdown
+                    .map((b) => `${b.mode} ₹${b.amount.toLocaleString("en-IN")}`)
+                    .join(" · ")}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Customer, CustomerSnapshot, Order, PaymentMode } from "@/lib/types";
+import type {
+  Customer,
+  CustomerSnapshot,
+  Order,
+  Payment,
+  PaymentMode,
+  PaymentType,
+} from "@/lib/types";
 import { getAllOrders } from "@/lib/data/orders-db";
+import { getAllPayments } from "@/lib/data/payments-db";
+import { getAppUsers } from "@/lib/profiles";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerListRows,
@@ -163,7 +172,13 @@ export async function getSalesReport(
 }
 
 // ---------------------------------------------------------------------------
-// Payments report
+// Payments report — Phase 7D: rebuilt as a real per-transaction ledger over
+// the payments table (supabase/migrations/0008_payments.sql), replacing the
+// old one-row-per-order approximation this tab shipped with before a real
+// payment log existed (see the "Data-model limitations" note further down —
+// it no longer applies to this tab specifically, only to Sales/Orders,
+// which still don't need per-transaction data). Still admin-client-only,
+// gated on reports.view alone (see app/(shell)/reports/actions.ts).
 // ---------------------------------------------------------------------------
 
 export interface PaymentModeBreakdown {
@@ -172,11 +187,18 @@ export interface PaymentModeBreakdown {
 }
 
 export interface PaymentRow {
-  order: Order;
+  payment: Payment;
+  orderNumber: string;
   // The order's own customerSnapshot — not a live customer record — so this
-  // report never needs customers.view (see file header).
+  // report still never needs customers.view (see file header).
   customer: CustomerSnapshot | undefined;
-  amountCollected: number;
+  // Resolved via lib/profiles.ts's getAppUsers, called with the same admin
+  // client already used for everything else here — unlike the Order Details
+  // drawer's Payment History (components/orders/payment-history-list.tsx),
+  // which deliberately skips this because a plain authenticated caller's
+  // RLS can't read another user's profile. Reports already bypasses that
+  // RLS for its own reads, so resolving a name here is genuinely free.
+  recordedByName: string | undefined;
 }
 
 export interface PaymentsReport {
@@ -190,6 +212,7 @@ export interface PaymentsReport {
 export interface PaymentsFilters {
   range: DateRange;
   paymentMode?: PaymentMode;
+  paymentType?: PaymentType;
   customerQuery?: string;
   pendingOnly?: boolean;
   overdueOnly?: boolean;
@@ -200,59 +223,99 @@ export async function getPaymentsReport(
   filters: PaymentsFilters,
   todayIso: string
 ): Promise<PaymentsReport> {
-  const allOrders = await getAllOrders(supabase);
-  let filtered = allOrders.filter((o) => inRange(o.orderDate, filters.range));
+  const [allOrders, allPayments, allUsers] = await Promise.all([
+    getAllOrders(supabase),
+    getAllPayments(supabase),
+    getAppUsers(supabase),
+  ]);
+  const ordersById = new Map(allOrders.map((o) => [o.id, o]));
+  const userNameById = new Map(allUsers.map((u) => [u.id, u.full_name]));
+
+  // Date range now filters on when the payment was actually taken
+  // (payment_date), not when its order was placed — this tab is a payment
+  // ledger, so that's the date a shopkeeper actually means by "this range."
+  let filtered = allPayments.filter((p) => inRange(p.paymentDate, filters.range));
 
   if (filters.paymentMode) {
-    filtered = filtered.filter((o) => o.paymentMode === filters.paymentMode);
+    filtered = filtered.filter((p) => p.paymentMode === filters.paymentMode);
   }
-  if (filters.pendingOnly) {
-    filtered = filtered.filter((o) => o.balance > 0);
-  }
-  if (filters.overdueOnly) {
-    filtered = filtered.filter(
-      (o) => o.balance > 0 && o.deliveryDate < todayIso
-    );
+  if (filters.paymentType) {
+    filtered = filtered.filter((p) => p.paymentType === filters.paymentType);
   }
   if (filters.customerQuery?.trim()) {
+    // Matches customer name/phone OR order number — Phase 7F's Payments
+    // page search box needs order-no search too (a shopkeeper often knows
+    // the order number, not the customer's exact name), and this filter is
+    // shared with Reports' Payments tab, so both get it for free.
     const q = filters.customerQuery.trim().toLowerCase();
-    filtered = filtered.filter((o) => {
-      const c = o.customerSnapshot;
-      return !!c && (c.name.toLowerCase().includes(q) || c.phone.includes(q));
+    filtered = filtered.filter((p) => {
+      const order = ordersById.get(p.orderId);
+      const c = order?.customerSnapshot;
+      const matchesCustomer =
+        !!c && (c.name.toLowerCase().includes(q) || c.phone.includes(q));
+      const matchesOrderNo = order?.orderNumber.toLowerCase().includes(q) ?? false;
+      return matchesCustomer || matchesOrderNo;
+    });
+  }
+  // Pending/Overdue stay order-level concepts translated onto the
+  // transaction list: "this payment's order still has (overdue) balance
+  // outstanding," not a property of the payment itself.
+  if (filters.pendingOnly) {
+    filtered = filtered.filter((p) => (ordersById.get(p.orderId)?.balance ?? 0) > 0);
+  }
+  if (filters.overdueOnly) {
+    filtered = filtered.filter((p) => {
+      const order = ordersById.get(p.orderId);
+      return !!order && order.balance > 0 && order.deliveryDate < todayIso;
     });
   }
 
-  // A whole order's collected amount is bucketed under its single recorded
-  // paymentMode field — the data model has no per-payment ledger to split
-  // advance vs. balance-at-delivery by mode if they ever differed.
-  const totalCollected = filtered.reduce(
-    (sum, o) => sum + (o.totalAmount - o.balance),
-    0
-  );
+  // Voided payments stay in the filtered set (so they're still visible in
+  // the table, clearly marked — see payments-report-view.tsx) but are
+  // excluded from every monetary total below, same rule the ledger's own
+  // recompute trigger already applies to orders.advance_paid/balance.
+  const counted = filtered.filter((p) => !p.voided);
+
+  const totalCollected = counted.reduce((sum, p) => sum + p.amount, 0);
   const byMode = paymentModes
     .map((mode) => ({
       mode,
-      amount: filtered
-        .filter((o) => o.paymentMode === mode)
-        .reduce((sum, o) => sum + (o.totalAmount - o.balance), 0),
+      amount: counted
+        .filter((p) => p.paymentMode === mode)
+        .reduce((sum, p) => sum + p.amount, 0),
     }))
     .filter((b) => b.amount > 0);
 
-  const outstandingBalance = filtered.reduce(
+  // Distinct orders referenced by the filtered transactions, each counted
+  // once regardless of how many of its payments matched the filters —
+  // summing per payment row would double-count an order with more than one
+  // matching transaction. orders.balance is already trigger-maintained to
+  // exclude voided payments, so no extra voided-handling is needed here.
+  const distinctOrders = Array.from(new Set(filtered.map((p) => p.orderId)))
+    .map((id) => ordersById.get(id))
+    .filter((o): o is Order => !!o);
+  const outstandingBalance = distinctOrders.reduce(
     (sum, o) => sum + Math.max(o.balance, 0),
     0
   );
-  const overdueBalance = filtered
+  const overdueBalance = distinctOrders
     .filter((o) => o.balance > 0 && o.deliveryDate < todayIso)
     .reduce((sum, o) => sum + o.balance, 0);
 
-  const rows: PaymentRow[] = filtered
-    .map((order) => ({
-      order,
-      customer: order.customerSnapshot,
-      amountCollected: order.totalAmount - order.balance,
-    }))
-    .sort((a, b) => (a.order.orderDate < b.order.orderDate ? 1 : -1));
+  const rows: PaymentRow[] = filtered.map((payment) => {
+    const order = ordersById.get(payment.orderId);
+    return {
+      payment,
+      orderNumber: order?.orderNumber ?? "—",
+      customer: order?.customerSnapshot,
+      recordedByName: payment.recordedBy
+        ? userNameById.get(payment.recordedBy)
+        : undefined,
+    };
+  });
+  // Already newest-first from getAllPayments' own ordering — no re-sort
+  // needed (unlike the old order-level version, which had to sort by
+  // orderDate itself).
 
   return { totalCollected, byMode, outstandingBalance, overdueBalance, rows };
 }

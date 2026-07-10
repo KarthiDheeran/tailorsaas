@@ -108,16 +108,29 @@ function OrdersPageContent() {
     const params = new URLSearchParams(window.location.search);
     const created = params.get("created") === "1";
     const orderId = params.get("orderId");
-    if (!created) return;
-    setShowCreatedToast(true);
-    if (orderId) {
-      getOrderByIdAction(orderId).then((order) => {
+    if (created) {
+      setShowCreatedToast(true);
+      if (orderId) {
+        getOrderByIdAction(orderId).then((order) => {
+          if (order) setDetailsOrder(order);
+        });
+      }
+      window.history.replaceState({}, "", "/orders");
+      const timer = setTimeout(() => setShowCreatedToast(false), 4000);
+      return () => clearTimeout(timer);
+    }
+
+    // Phase 7F: "View Order" links from the new Payments page arrive as
+    // /orders?view=<id> — just opens the Order Details drawer on that
+    // order, no toast, same "read once then strip the param" convention as
+    // the created-toast case above.
+    const viewOrderId = params.get("view");
+    if (viewOrderId) {
+      getOrderByIdAction(viewOrderId).then((order) => {
         if (order) setDetailsOrder(order);
       });
+      window.history.replaceState({}, "", "/orders");
     }
-    window.history.replaceState({}, "", "/orders");
-    const timer = setTimeout(() => setShowCreatedToast(false), 4000);
-    return () => clearTimeout(timer);
   }, []);
 
   function handleStatusChanged() {
@@ -131,6 +144,17 @@ function OrdersPageContent() {
 
   function handleOrderSaved(updatedOrder: Order) {
     setEditingOrder(null);
+    setDetailsOrder(updatedOrder);
+    setRefreshTick((t) => t + 1);
+  }
+
+  // Phase 7C: OrderDetailsDrawer calls this after a payment is recorded or
+  // voided — advance_paid/balance/payment_status all change via the ledger
+  // trigger, so the drawer needs the freshly re-fetched Order, and the
+  // underlying OrdersTable/BalanceBadge need the same refreshTick bump
+  // handleStatusChanged/handleOrderSaved already use for any other in-place
+  // order mutation.
+  function handleOrderUpdated(updatedOrder: Order) {
     setDetailsOrder(updatedOrder);
     setRefreshTick((t) => t + 1);
   }
@@ -410,6 +434,7 @@ function OrdersPageContent() {
         onClose={() => setDetailsOrder(null)}
         onStatusChange={handleStatusChanged}
         onEdit={handleEditOrder}
+        onOrderUpdated={handleOrderUpdated}
       />
       <EditOrderDrawer
         key={editingOrder?.id ?? "none"}

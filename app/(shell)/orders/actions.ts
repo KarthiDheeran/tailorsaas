@@ -14,9 +14,18 @@ import {
   updateOrder,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
+import {
+  isMissingJobCardsSchemaError,
+  syncJobCardsForOrder,
+} from "@/lib/data/job-cards-db";
+import {
+  getPaymentsForOrder,
+  recordPayment,
+  voidPayment,
+} from "@/lib/data/payments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
-import type { Order, OrderItem, OrderStatus, PaymentMode } from "@/lib/types";
+import type { Order, OrderItem, OrderStatus, Payment, PaymentMode } from "@/lib/types";
 
 // Mirrors components/orders/orders-table.tsx's getAvailableOrderStatuses
 // exactly (kept as a small, deliberate duplication rather than importing a
@@ -56,6 +65,17 @@ function availableOrderStatusesFor(permissions: Permission[]): OrderStatus[] {
 type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+async function trySyncJobCardsForOrder(
+  supabase: ReturnType<typeof createServerClient>,
+  orderId: string
+): Promise<void> {
+  try {
+    await syncJobCardsForOrder(supabase, orderId);
+  } catch (error) {
+    if (!isMissingJobCardsSchemaError(error)) throw error;
+  }
+}
 
 export async function getOrdersAction(): Promise<Order[]> {
   const supabase = createServerClient();
@@ -105,6 +125,7 @@ export async function createOrderAction(data: {
     return { success: false, error: "At least one item is required." };
   }
   const order = await createOrder(supabase, data);
+  await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
 }
 
@@ -125,6 +146,7 @@ export async function updateOrderAction(
   }
   const order = await updateOrder(supabase, id, data);
   if (!order) return { success: false, error: "Order not found." };
+  await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
 }
 
@@ -142,5 +164,79 @@ export async function updateOrderStatusAction(
   }
   const order = await updateOrderStatus(supabase, id, status);
   if (!order) return { success: false, error: "Order not found." };
+  await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7B: payment ledger actions (supabase/migrations/0008_payments.sql).
+// requireServerPermission is checked here on top of record_payment()/
+// void_payment() already checking it again internally — client-side
+// hasPermission is UX-only and is never trusted as the security boundary,
+// same rule as every other action in this file. Both mutations return the
+// freshly re-fetched Order (advance_paid/balance/payment_status all change
+// via the migration's trigger) alongside the updated Payment list, so the
+// caller can refresh its whole payment UI from one round trip instead of a
+// second fetch.
+// ---------------------------------------------------------------------------
+
+export async function getPaymentsForOrderAction(orderId: string): Promise<Payment[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  if (!guard.ok) return [];
+  return getPaymentsForOrder(supabase, orderId);
+}
+
+export async function recordPaymentAction(data: {
+  orderId: string;
+  amount: number;
+  paymentDate: string;
+  paymentMode: PaymentMode;
+  notes?: string;
+}): Promise<ActionResult<{ order: Order; payments: Payment[] }>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.recordPayment");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    await recordPayment(supabase, data);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to record payment.",
+    };
+  }
+
+  const [order, payments] = await Promise.all([
+    getOrderById(supabase, data.orderId),
+    getPaymentsForOrder(supabase, data.orderId),
+  ]);
+  if (!order) return { success: false, error: "Order not found." };
+  return { success: true, data: { order, payments } };
+}
+
+export async function voidPaymentAction(
+  paymentId: string,
+  orderId: string,
+  reason: string
+): Promise<ActionResult<{ order: Order; payments: Payment[] }>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.voidPayment");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    await voidPayment(supabase, paymentId, reason);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to void payment.",
+    };
+  }
+
+  const [order, payments] = await Promise.all([
+    getOrderById(supabase, orderId),
+    getPaymentsForOrder(supabase, orderId),
+  ]);
+  if (!order) return { success: false, error: "Order not found." };
+  return { success: true, data: { order, payments } };
 }

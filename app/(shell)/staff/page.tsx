@@ -3,8 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
-import { getStaffListRowsAction, updateStaffAction } from "@/app/(shell)/staff/actions";
-import type { StaffListRow } from "@/lib/staff";
+import {
+  completeJobCardAction,
+  getJobCardsAction,
+  startJobCardAction,
+} from "@/app/(shell)/job-cards/actions";
+import {
+  getStaffListRowsAction,
+  getWorkQueueRowsAction,
+  updateStaffAction,
+  updateWorkAssignmentAction,
+} from "@/app/(shell)/staff/actions";
+import type { StaffListRow, WorkQueueRow } from "@/lib/staff";
 import { StaffTabs, type StaffTab } from "@/components/staff/staff-tabs";
 import { StaffTable } from "@/components/staff/staff-table";
 import {
@@ -14,6 +24,9 @@ import {
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatDate } from "@/components/orders/orders-table";
+import type { JobCard } from "@/lib/job-cards";
+import { cn } from "@/lib/utils";
 
 const EMPTY_FILTERS: StaffFilterState = {
   nameQuery: "",
@@ -29,6 +42,8 @@ function StaffPageContent() {
   const [filters, setFilters] = useState<StaffFilterState>(EMPTY_FILTERS);
   const [refreshKey, setRefreshKey] = useState(0);
   const [allRows, setAllRows] = useState<StaffListRow[]>([]);
+  const [workQueueRows, setWorkQueueRows] = useState<WorkQueueRow[]>([]);
+  const [jobCardQueueRows, setJobCardQueueRows] = useState<JobCard[] | null>(null);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
@@ -40,9 +55,18 @@ function StaffPageContent() {
   // client-side lib/staff.ts/lib/data/stub-data.ts import.
   useEffect(() => {
     let cancelled = false;
-    getStaffListRowsAction(todayIso).then((rows) => {
-      if (!cancelled) setAllRows(rows);
-    });
+    Promise.all([
+      getStaffListRowsAction(todayIso),
+      getWorkQueueRowsAction(todayIso),
+      getJobCardsAction(todayIso),
+    ]).then(
+      ([staffRows, queueRows, jobCards]) => {
+        if (cancelled) return;
+        setAllRows(staffRows);
+        setWorkQueueRows(queueRows);
+        setJobCardQueueRows(jobCards);
+      }
+    );
     return () => {
       cancelled = true;
     };
@@ -111,11 +135,21 @@ function StaffPageContent() {
       )}
 
       {tab === "work-queue" && (
-        <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
-          <p className="text-sm text-ink-muted">
-            {t("staff.workQueueComingSoon")}
-          </p>
-        </div>
+        jobCardQueueRows !== null ? (
+          <JobCardWorkQueueTable
+            rows={jobCardQueueRows}
+            canManage={canManage}
+            todayIso={todayIso}
+            onChanged={() => setRefreshKey((k) => k + 1)}
+          />
+        ) : (
+          <WorkQueueTable
+            rows={workQueueRows}
+            canManage={canManage}
+            todayIso={todayIso}
+            onChanged={() => setRefreshKey((k) => k + 1)}
+          />
+        )
       )}
 
       {tab === "payments" && (
@@ -125,6 +159,265 @@ function StaffPageContent() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function JobCardWorkQueueTable({
+  rows,
+  canManage,
+  todayIso,
+  onChanged,
+}: {
+  rows: JobCard[];
+  canManage: boolean;
+  todayIso: string;
+  onChanged: () => void;
+}) {
+  const assignedRows = rows
+    .filter(
+      (row) =>
+        row.assignedStaffId &&
+        row.productionBucket !== "Closed" &&
+        row.stage !== "Ready"
+    )
+    .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
+
+  async function markStarted(row: JobCard) {
+    const result = await startJobCardAction(row.id, todayIso);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onChanged();
+  }
+
+  async function markCompleted(row: JobCard) {
+    const result = await completeJobCardAction(row.id, todayIso);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onChanged();
+  }
+
+  if (assignedRows.length === 0) {
+    return (
+      <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
+        <p className="text-sm text-ink-muted">No job cards assigned yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+      <table className="w-full text-left">
+        <thead className="text-[13px] font-semibold text-ink-muted">
+          <tr className="border-b border-border-soft">
+            <th className="whitespace-nowrap px-5 py-3">Job Card</th>
+            <th className="whitespace-nowrap px-5 py-3">Garment</th>
+            <th className="whitespace-nowrap px-5 py-3">Stage</th>
+            <th className="whitespace-nowrap px-5 py-3">Assigned To</th>
+            <th className="whitespace-nowrap px-5 py-3">Due Date</th>
+            <th className="whitespace-nowrap px-5 py-3">Priority</th>
+            <th className="whitespace-nowrap px-5 py-3">Status</th>
+            {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
+          </tr>
+        </thead>
+        <tbody className="text-[13px]">
+          {assignedRows.map((row) => (
+            <tr key={row.id} className="border-t border-border-soft hover:bg-surface">
+              <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
+                {row.jobCardNumber}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink">{row.garment}</td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.taskType ?? row.stage}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.assignedTo}
+              </td>
+              <td
+                className={cn(
+                  "whitespace-nowrap px-5 py-3",
+                  row.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"
+                )}
+              >
+                {formatDate(row.deliveryDate)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.priority ?? "Normal"}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                <span
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-semibold",
+                    row.taskStatus === "Completed"
+                      ? "bg-chip-mint text-chip-mint-fg"
+                      : row.taskStatus === "Delayed"
+                        ? "bg-chip-red text-chip-red-fg"
+                        : row.taskStatus === "In Progress"
+                          ? "bg-chip-blue text-chip-blue-fg"
+                          : "bg-chip-info text-chip-info-fg"
+                  )}
+                >
+                  {row.taskStatus ?? "Assigned"}
+                </span>
+              </td>
+              {canManage && (
+                <td className="whitespace-nowrap px-5 py-3 text-right">
+                  {!row.startedDate && !row.completedDate && (
+                    <button
+                      type="button"
+                      onClick={() => markStarted(row)}
+                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface"
+                    >
+                      Start
+                    </button>
+                  )}
+                  {row.startedDate && !row.completedDate && (
+                    <button
+                      type="button"
+                      onClick={() => markCompleted(row)}
+                      className="rounded-lg border border-primary bg-primary-tint px-3 py-1.5 text-xs font-semibold text-primary"
+                    >
+                      Complete
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WorkQueueTable({
+  rows,
+  canManage,
+  todayIso,
+  onChanged,
+}: {
+  rows: WorkQueueRow[];
+  canManage: boolean;
+  todayIso: string;
+  onChanged: () => void;
+}) {
+  async function markStarted(row: WorkQueueRow) {
+    const result = await updateWorkAssignmentAction(row.assignment.id, {
+      startedDate: todayIso,
+    });
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onChanged();
+  }
+
+  async function markCompleted(row: WorkQueueRow) {
+    const result = await updateWorkAssignmentAction(row.assignment.id, {
+      completedDate: todayIso,
+    });
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onChanged();
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
+        <p className="text-sm text-ink-muted">No work assigned yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+      <table className="w-full text-left">
+        <thead className="text-[13px] font-semibold text-ink-muted">
+          <tr className="border-b border-border-soft">
+            <th className="whitespace-nowrap px-5 py-3">Order</th>
+            <th className="whitespace-nowrap px-5 py-3">Garment</th>
+            <th className="whitespace-nowrap px-5 py-3">Task</th>
+            <th className="whitespace-nowrap px-5 py-3">Assigned To</th>
+            <th className="whitespace-nowrap px-5 py-3">Due Date</th>
+            <th className="whitespace-nowrap px-5 py-3">Priority</th>
+            <th className="whitespace-nowrap px-5 py-3">Status</th>
+            {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
+          </tr>
+        </thead>
+        <tbody className="text-[13px]">
+          {rows.map((row) => (
+            <tr key={row.assignment.id} className="border-t border-border-soft hover:bg-surface">
+              <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
+                {row.order.orderNumber}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink">
+                {row.item.particular} x{row.item.qty}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.assignment.taskType}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.staff?.name ?? "Unknown"}
+              </td>
+              <td
+                className={cn(
+                  "whitespace-nowrap px-5 py-3",
+                  row.status === "Delayed" ? "font-semibold text-chip-red-fg" : "text-ink-muted"
+                )}
+              >
+                {formatDate(row.assignment.dueDate)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.assignment.priority}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                <span
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-semibold",
+                    row.status === "Completed"
+                      ? "bg-chip-mint text-chip-mint-fg"
+                      : row.status === "Delayed"
+                        ? "bg-chip-red text-chip-red-fg"
+                        : row.status === "In Progress"
+                          ? "bg-chip-blue text-chip-blue-fg"
+                          : "bg-chip-info text-chip-info-fg"
+                  )}
+                >
+                  {row.status}
+                </span>
+              </td>
+              {canManage && (
+                <td className="whitespace-nowrap px-5 py-3 text-right">
+                  {!row.assignment.startedDate && !row.assignment.completedDate && (
+                    <button
+                      type="button"
+                      onClick={() => markStarted(row)}
+                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface"
+                    >
+                      Start
+                    </button>
+                  )}
+                  {row.assignment.startedDate && !row.assignment.completedDate && (
+                    <button
+                      type="button"
+                      onClick={() => markCompleted(row)}
+                      className="rounded-lg border border-primary bg-primary-tint px-3 py-1.5 text-xs font-semibold text-primary"
+                    >
+                      Complete
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

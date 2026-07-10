@@ -171,6 +171,48 @@ export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: stri
   );
 }
 
+// Recorded-amount-based status (Unpaid / Partially Paid / Paid) — distinct
+// from BalanceBadge above, which is delivery-date-based ("Paid" / "₹X due" /
+// "₹X overdue") and stays as-is everywhere it's already used (Orders table,
+// Pending Dues, Dashboard). This one reflects only advancePaid/balance, so
+// it's what changes immediately when a payment is recorded, independent of
+// the delivery date.
+export function getPaymentStatusLabel(
+  order: Pick<Order, "advancePaid" | "balance">
+): "Unpaid" | "Partially Paid" | "Paid" {
+  if (order.balance <= 0) return "Paid";
+  if (order.advancePaid <= 0) return "Unpaid";
+  return "Partially Paid";
+}
+
+export function PaymentStatusBadge({
+  order,
+}: {
+  order: Pick<Order, "advancePaid" | "balance">;
+}) {
+  const { t } = useLanguage();
+  const status = getPaymentStatusLabel(order);
+  if (status === "Paid") {
+    return (
+      <span className="inline-block rounded-full bg-chip-mint px-3 py-1 text-xs font-semibold text-chip-mint-fg">
+        {t("common.paid")}
+      </span>
+    );
+  }
+  if (status === "Partially Paid") {
+    return (
+      <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
+        {t("orders.partiallyPaid")}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block rounded-full bg-chip-red px-3 py-1 text-xs font-semibold text-chip-red-fg">
+      {t("orders.unpaid")}
+    </span>
+  );
+}
+
 export type OrdersSortKey = "orderDate" | "deliveryDate";
 export type OrdersSortDir = "asc" | "desc";
 

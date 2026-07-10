@@ -97,6 +97,128 @@ export type PaymentMode =
   | "Bank Transfer"
   | "Cheque";
 
+export type ExpenseCategory =
+  | "Fabric"
+  | "Accessories"
+  | "Salary"
+  | "Rent"
+  | "Utilities"
+  | "Maintenance"
+  | "Transport"
+  | "Marketing"
+  | "Other";
+
+export type InventoryItemType =
+  | "Fabric"
+  | "Button"
+  | "Lining"
+  | "Thread"
+  | "Zip"
+  | "Accessory"
+  | "Other";
+
+export type InventoryUnit = "meter" | "piece" | "roll" | "packet" | "kg";
+
+export type InventoryMovementType =
+  | "Stock In"
+  | "Stock Out"
+  | "Adjustment"
+  | "Wastage";
+
+export type CustomerFabricStatus =
+  | "Received"
+  | "In Use"
+  | "Returned"
+  | "Consumed";
+
+// A single transaction against an order's balance (supabase/migrations/
+// 0008_payments.sql's `payments` table). paymentType is computed
+// server-side by the record_payment() RPC — Final if it zeroes the order's
+// balance, Advance if it's the order's first non-voided payment, Partial
+// otherwise — never client-supplied. Voided rows are kept (soft-void only,
+// see void_payment()) rather than deleted, so voidedAt/voidedBy/voidReason
+// stay populated for the audit trail; a voided payment no longer counts
+// toward the order's advance_paid/balance (see the recompute trigger).
+export type PaymentType = "Advance" | "Partial" | "Final";
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  amount: number;
+  paymentDate: string;
+  paymentMode: PaymentMode;
+  paymentType: PaymentType;
+  notes?: string;
+  recordedBy?: string;
+  voided: boolean;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
+  createdAt: string;
+}
+
+export interface Expense {
+  id: string;
+  expenseDate: string;
+  category: ExpenseCategory;
+  vendor?: string;
+  description: string;
+  amount: number;
+  paymentMode: PaymentMode;
+  notes?: string;
+  recordedBy?: string;
+  voided: boolean;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
+  createdAt: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  itemType: InventoryItemType;
+  name: string;
+  sku?: string;
+  color?: string;
+  unit: InventoryUnit;
+  quantityOnHand: number;
+  reorderLevel: number;
+  costPerUnit?: number;
+  active: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  itemId: string;
+  movementType: InventoryMovementType;
+  quantity: number;
+  movementDate: string;
+  reason?: string;
+  recordedBy?: string;
+  createdAt: string;
+}
+
+export interface CustomerFabric {
+  id: string;
+  customerId?: string;
+  orderId?: string;
+  customerName: string;
+  customerPhone?: string;
+  fabricDescription: string;
+  color?: string;
+  quantity: number;
+  unit: InventoryUnit;
+  receivedDate: string;
+  status: CustomerFabricStatus;
+  notes?: string;
+  returnedDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type StaffRole =
   | "Master Tailor"
   | "Cutter"
