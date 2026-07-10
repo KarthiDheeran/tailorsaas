@@ -1,5 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order } from "@/lib/types";
+import {
+  getExpenses,
+  isMissingExpensesSchemaError,
+} from "@/lib/data/expenses-db";
+import {
+  getCustomerFabrics,
+  getInventoryItems,
+  isMissingInventorySchemaError,
+} from "@/lib/data/inventory-db";
+import {
+  getJobCards,
+  isMissingJobCardsSchemaError,
+} from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 
 // Phase 6E: real, Supabase-backed selector over Order data — the customer
@@ -89,6 +102,12 @@ export async function getDashboardData(
     ordersToday.reduce((sum, o) => sum + o.advancePaid, 0) +
     todaysDeliveries.reduce((sum, o) => sum + o.balance, 0);
 
+  const [jobCardStats, inventoryStats, expenseStats] = await Promise.all([
+    getDashboardJobCardStats(supabase, todayIso),
+    getDashboardInventoryStats(supabase),
+    getDashboardExpenseStats(supabase, todayIso),
+  ]);
+
   const orderDelta = ordersToday.length - ordersYesterday.length;
   const orderDeltaLabel =
     orderDelta === 0
@@ -139,6 +158,55 @@ export async function getDashboardData(
     },
   ];
 
+  if (jobCardStats) {
+    stats.push(
+      {
+        label: "Unassigned Job Cards",
+        value: String(jobCardStats.unassigned),
+        sublabel: "Needs staff assignment",
+        tone: jobCardStats.unassigned > 0 ? "warning" : "default",
+      },
+      {
+        label: "Delayed Job Cards",
+        value: String(jobCardStats.delayed),
+        sublabel: "Production attention",
+        tone: jobCardStats.delayed > 0 ? "warning" : "default",
+      },
+      {
+        label: "Ready Job Cards",
+        value: String(jobCardStats.ready),
+        sublabel: "Ready for delivery",
+        tone: "default",
+      }
+    );
+  }
+
+  if (inventoryStats) {
+    stats.push(
+      {
+        label: "Low Stock Items",
+        value: String(inventoryStats.lowStock),
+        sublabel: "Reorder needed",
+        tone: inventoryStats.lowStock > 0 ? "warning" : "default",
+      },
+      {
+        label: "Customer Fabric",
+        value: String(inventoryStats.customerFabricInCustody),
+        sublabel: "Still with shop",
+        tone: "default",
+      }
+    );
+  }
+
+  if (expenseStats) {
+    stats.push({
+      label: "Expenses Today",
+      value: `₹${expenseStats.todayTotal.toLocaleString("en-IN")}`,
+      sublabel: "Shop spending",
+      tone: "default",
+    });
+  }
+
   return {
     stats,
     todaysDeliveries,
@@ -146,4 +214,64 @@ export async function getDashboardData(
     trialQueue,
     paymentPending,
   };
+}
+
+async function getDashboardJobCardStats(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<{ unassigned: number; delayed: number; ready: number } | null> {
+  try {
+    const cards = await getJobCards(supabase, todayIso);
+    const active = cards.filter(
+      (card) => card.stage !== "Cancelled" && card.stage !== "Delivered"
+    );
+    return {
+      unassigned: active.filter((card) => card.stage === "Unassigned").length,
+      delayed: active.filter((card) => card.isDelayed).length,
+      ready: active.filter((card) => card.stage === "Ready").length,
+    };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+async function getDashboardInventoryStats(
+  supabase: SupabaseClient
+): Promise<{ lowStock: number; customerFabricInCustody: number } | null> {
+  try {
+    const [items, customerFabrics] = await Promise.all([
+      getInventoryItems(supabase),
+      getCustomerFabrics(supabase),
+    ]);
+    return {
+      lowStock: items.filter(
+        (item) => item.active && item.quantityOnHand <= item.reorderLevel
+      ).length,
+      customerFabricInCustody: customerFabrics.filter(
+        (fabric) => fabric.status === "Received" || fabric.status === "In Use"
+      ).length,
+    };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) return null;
+    throw error;
+  }
+}
+
+async function getDashboardExpenseStats(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<{ todayTotal: number } | null> {
+  try {
+    const expenses = await getExpenses(supabase, {
+      from: todayIso,
+      to: todayIso,
+    });
+    return {
+      todayTotal: expenses.reduce((sum, expense) => sum + Number(expense.amount), 0),
+    };
+  } catch (error) {
+    if (isMissingExpensesSchemaError(error)) return null;
+    throw error;
+  }
 }

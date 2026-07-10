@@ -10,6 +10,10 @@ import {
   Wallet,
   IndianRupee,
   Plus,
+  ClipboardList,
+  Scissors,
+  Package,
+  Shirt,
 } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
@@ -21,14 +25,20 @@ import { PaymentPending } from "@/components/dashboard/payment-pending";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 
-const STAT_ICONS = [
-  ShoppingBag,
-  Truck,
-  AlertTriangle,
-  CalendarClock,
-  Wallet,
-  IndianRupee,
-];
+const STAT_ICONS = {
+  "Orders Today": ShoppingBag,
+  "Deliveries Today": Truck,
+  "Overdue Orders": AlertTriangle,
+  "Pending Trials": CalendarClock,
+  "Outstanding Balance": Wallet,
+  "Revenue Today": IndianRupee,
+  "Unassigned Job Cards": ClipboardList,
+  "Delayed Job Cards": Scissors,
+  "Ready Job Cards": Shirt,
+  "Low Stock Items": Package,
+  "Customer Fabric": Shirt,
+  "Expenses Today": IndianRupee,
+} as const;
 
 // Stat cards that surface money figures — hidden for anyone without
 // orders.viewPayments (Staff-like access), per the brief's "don't show
@@ -38,6 +48,7 @@ const MONEY_STAT_LABELS = new Set(["Outstanding Balance", "Revenue Today"]);
 function DashboardContent() {
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
+  const canViewExpenses = hasPermission("expenses.view");
   // ISO (UTC) date string — consistent between server and client renders,
   // matching the todayIso convention already used in orders-table.tsx.
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -60,9 +71,11 @@ function DashboardContent() {
 
   if (!data) return null;
 
-  const visibleStats = data.stats.filter(
-    (stat) => canViewPayments || !MONEY_STAT_LABELS.has(stat.label)
-  );
+  const visibleStats = data.stats.filter((stat) => {
+    if (MONEY_STAT_LABELS.has(stat.label)) return canViewPayments;
+    if (stat.label === "Expenses Today") return canViewExpenses;
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -89,7 +102,7 @@ function DashboardContent() {
           <StatCard
             key={stat.label}
             stat={stat}
-            icon={STAT_ICONS[data.stats.indexOf(stat)]}
+            icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
           />
         ))}
       </div>
