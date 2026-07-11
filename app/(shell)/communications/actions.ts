@@ -1,9 +1,6 @@
 "use server";
 
-import {
-  getServerCallerPermissions,
-  requireServerPermission,
-} from "@/lib/auth/require-server-permission";
+import { getServerCallerPermissions } from "@/lib/auth/require-server-permission";
 import {
   getWhatsAppMessages,
   isMissingWhatsAppMessagesSchemaError,
@@ -37,8 +34,10 @@ export async function logWhatsAppMessageAction(
   input: WhatsAppMessageInput
 ): Promise<ActionResult> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "calendar.view");
-  if (!guard.ok) return { success: false, error: guard.error };
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!hasAnyPermission(permissions, ["calendar.view", "orders.view", "customers.view"])) {
+    return { success: false, error: "You don't have permission to log WhatsApp messages." };
+  }
 
   if (!input.phone.trim()) return { success: false, error: "Phone is required." };
   if (!input.message.trim()) return { success: false, error: "Message is required." };

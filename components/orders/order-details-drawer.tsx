@@ -321,6 +321,8 @@ export function OrderDetailsDrawer({
                 <ContactActions
                   phone={customer.phone}
                   message={`Hi ${customer.name}, regarding your order ${order.orderNumber}.`}
+                  contextType="Order"
+                  contextId={order.id}
                 />
               )}
             </div>

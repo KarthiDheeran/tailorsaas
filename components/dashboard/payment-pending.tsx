@@ -48,6 +48,8 @@ export function PaymentPending({ orders }: { orders: Order[] }) {
                     <ContactActions
                       phone={customer.phone}
                       message={`Hi ${customer.name}, your order ${order.orderNumber} has a pending balance of ₹${order.balance.toLocaleString("en-IN")}.`}
+                      contextType="Order"
+                      contextId={order.id}
                     />
                   )}
                 </div>

@@ -101,6 +101,8 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
           <ContactActions
             phone={customer.phone}
             message={`Hi ${customer.name}, `}
+            contextType="Customer"
+            contextId={customer.id}
           />
           {canEdit && (
             <Link

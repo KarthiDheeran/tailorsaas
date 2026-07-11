@@ -44,6 +44,8 @@ export function TrialQueue({ orders }: { orders: Order[] }) {
                   <ContactActions
                     phone={customer.phone}
                     message={`Hi ${customer.name}, your trial for order ${order.orderNumber} is scheduled on ${formatDate(order.trialDate)}.`}
+                    contextType="Order"
+                    contextId={order.id}
                   />
                 )}
               </li>

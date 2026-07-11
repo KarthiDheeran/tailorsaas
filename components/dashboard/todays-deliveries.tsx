@@ -76,6 +76,8 @@ export function TodaysDeliveries({ orders }: { orders: Order[] }) {
                         <ContactActions
                           phone={customer.phone}
                           message={`Hi ${customer.name}, your order ${order.orderNumber} is ready for delivery today.`}
+                          contextType="Order"
+                          contextId={order.id}
                         />
                       )}
                     </td>

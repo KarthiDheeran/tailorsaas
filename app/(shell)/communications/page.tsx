@@ -7,7 +7,27 @@ import { getWhatsAppMessagesAction } from "@/app/(shell)/communications/actions"
 import { RequirePermission } from "@/components/auth/require-permission";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
-import type { WhatsAppMessage } from "@/lib/types";
+import type {
+  WhatsAppMessage,
+  WhatsAppMessageContextType,
+  WhatsAppMessageStatus,
+} from "@/lib/types";
+
+const CONTEXT_FILTERS: ("all" | WhatsAppMessageContextType)[] = [
+  "all",
+  "Order",
+  "Job Card",
+  "Customer",
+  "Delivery",
+  "Payment",
+  "Calendar",
+];
+
+const STATUS_FILTERS: ("all" | WhatsAppMessageStatus)[] = [
+  "all",
+  "Opened",
+  "Marked Sent",
+];
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-IN", {
@@ -31,6 +51,8 @@ function contextHref(message: WhatsAppMessage): string | null {
 function CommunicationsContent() {
   const [messages, setMessages] = useState<WhatsAppMessage[] | null>([]);
   const [query, setQuery] = useState("");
+  const [contextFilter, setContextFilter] = useState<"all" | WhatsAppMessageContextType>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | WhatsAppMessageStatus>("all");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -58,9 +80,11 @@ function CommunicationsContent() {
   const filteredMessages = useMemo(() => {
     const rows = messages ?? [];
     const needle = query.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((message) =>
-      [
+    return rows.filter((message) => {
+      if (contextFilter !== "all" && message.contextType !== contextFilter) return false;
+      if (statusFilter !== "all" && message.status !== statusFilter) return false;
+      if (!needle) return true;
+      return [
         message.phone,
         message.message,
         message.contextType,
@@ -68,9 +92,9 @@ function CommunicationsContent() {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(needle)
-    );
-  }, [messages, query]);
+        .includes(needle);
+    });
+  }, [contextFilter, messages, query, statusFilter]);
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -97,7 +121,8 @@ function CommunicationsContent() {
       ) : (
         <>
           <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 shadow-soft">
-            <div className="relative max-w-md">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
               <input
                 value={query}
@@ -105,6 +130,33 @@ function CommunicationsContent() {
                 placeholder="Search phone, message, context, or status"
                 className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
               />
+            </div>
+              <select
+                value={contextFilter}
+                onChange={(event) =>
+                  setContextFilter(event.target.value as "all" | WhatsAppMessageContextType)
+                }
+                className="h-10 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+              >
+                {CONTEXT_FILTERS.map((context) => (
+                  <option key={context} value={context}>
+                    {context === "all" ? "All contexts" : context}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as "all" | WhatsAppMessageStatus)
+                }
+                className="h-10 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+              >
+                {STATUS_FILTERS.map((status) => (
+                  <option key={status} value={status}>
+                    {status === "all" ? "All statuses" : status}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

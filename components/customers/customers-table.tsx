@@ -124,6 +124,8 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                     <ContactActions
                       phone={customer.phone}
                       message={`Hi ${customer.name}, `}
+                      contextType="Customer"
+                      contextId={customer.id}
                     />
                     {canEdit && (
                       <Link

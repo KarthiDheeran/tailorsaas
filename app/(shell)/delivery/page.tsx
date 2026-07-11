@@ -316,6 +316,8 @@ function DeliveryDeskContent() {
                             <ContactActions
                               phone={phone}
                               message={`Hello ${customerLabel(row)}, your order ${order.orderNumber} is ready for delivery.`}
+                              contextType="Order"
+                              contextId={order.id}
                             />
                           )}
                           {canPrintReceipt && (
