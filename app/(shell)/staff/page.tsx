@@ -119,7 +119,9 @@ function StaffPageContent() {
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">{t("staff.title")}</h1>
+          <h1 className="text-[26px] font-semibold text-ink">
+            {canManage ? t("staff.title") : t("nav.myTasks")}
+          </h1>
           <p className="text-sm text-ink-muted">
             {canManage
               ? `${allRows.length} ${t("staff.onRecord")}`

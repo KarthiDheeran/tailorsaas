@@ -131,6 +131,10 @@ export function Sidebar() {
             activePrefixes?.some(
               (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
             );
+          const label =
+            href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
+              ? t("nav.myTasks")
+              : t(labelKey);
           return (
             <Link
               key={href}
@@ -143,7 +147,7 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-[18px] w-[18px]" />
-              <span className="break-words">{t(labelKey)}</span>
+              <span className="break-words">{label}</span>
             </Link>
           );
         })}
