@@ -20,6 +20,8 @@ export interface JobCardAssignmentInput {
   dueDate: string;
   priority: TaskPriority;
   notes?: string;
+  fabricSource?: JobCardFabricSource;
+  fabricNotes?: string;
 }
 
 const JOB_CARD_COLUMNS = `
@@ -180,6 +182,8 @@ export async function assignJobCard(
       due_date: data.dueDate,
       priority: data.priority,
       notes: data.notes ?? null,
+      fabric_source: data.fabricSource ?? "Not specified",
+      fabric_notes: data.fabricNotes?.trim() ? data.fabricNotes.trim() : null,
       started_date: null,
       completed_date: null,
       cancelled: false,

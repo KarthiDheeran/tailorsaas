@@ -10,6 +10,7 @@ import {
   startJobCardAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
+import { getCustomerFabricsAction } from "@/app/(shell)/inventory/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
   getStaffAction,
@@ -25,10 +26,11 @@ import {
   type JobCardStage,
   type ProductionBucket,
 } from "@/lib/job-cards";
-import type { Order, Staff, WorkAssignment } from "@/lib/types";
+import type { CustomerFabric, Order, Staff, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { FabricInfo } from "@/components/job-cards/fabric-info";
 
 const BUCKETS: ProductionBucket[] = [
   "Unassigned",
@@ -88,6 +90,7 @@ function ProductionCard({
   canUpdate,
   canMoveStages,
   canViewOrders,
+  linkedFabrics,
   todayIso,
   onUpdated,
 }: {
@@ -95,6 +98,7 @@ function ProductionCard({
   canUpdate: boolean;
   canMoveStages: boolean;
   canViewOrders: boolean;
+  linkedFabrics: CustomerFabric[];
   todayIso: string;
   onUpdated: () => void;
 }) {
@@ -181,6 +185,7 @@ function ProductionCard({
             {card.taskStatus ? ` - ${card.taskStatus}` : ""}
           </div>
         )}
+        <FabricInfo card={card} linkedFabrics={linkedFabrics} compact />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canViewOrders && (
@@ -274,12 +279,14 @@ function ProductionContent() {
   const { currentUser, hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
   const canViewOrders = hasPermission("orders.view");
+  const canViewInventory = hasPermission("inventory.view");
   const currentStaffId = currentUser?.staff_id ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
+  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -292,13 +299,15 @@ function ProductionContent() {
       getOrdersAction(),
       getStaffAction(),
       getWorkAssignmentsAction(),
+      canViewInventory ? getCustomerFabricsAction() : Promise.resolve([]),
     ])
-      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
+      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult, fabricsResult]) => {
         if (cancelled) return;
         setPersistedCards(jobCardsResult);
         setOrders(ordersResult);
         setStaff(staffResult);
         setAssignments(assignmentsResult);
+        setCustomerFabrics(fabricsResult ?? []);
         setLoadError(null);
       })
       .catch((error) => {
@@ -312,13 +321,23 @@ function ProductionContent() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, todayIso]);
+  }, [canViewInventory, refreshKey, todayIso]);
 
   const jobCards = useMemo(
     () => persistedCards ?? buildJobCards(orders, todayIso, assignments, staff),
     [persistedCards, orders, todayIso, assignments, staff]
   );
   const activeCards = jobCards.filter((card) => card.productionBucket !== "Closed");
+  const customerFabricsByOrder = useMemo(() => {
+    const byOrder = new Map<string, CustomerFabric[]>();
+    for (const fabric of customerFabrics) {
+      if (!fabric.orderId) continue;
+      const current = byOrder.get(fabric.orderId) ?? [];
+      current.push(fabric);
+      byOrder.set(fabric.orderId, current);
+    }
+    return byOrder;
+  }, [customerFabrics]);
   const cardsByBucket = new Map<ProductionBucket, JobCard[]>(
     BUCKETS.map((bucket) => [
       bucket,
@@ -449,6 +468,7 @@ function ProductionContent() {
                         canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
                         canMoveStages={canManageStaff}
                         canViewOrders={canViewOrders}
+                        linkedFabrics={customerFabricsByOrder.get(card.orderId) ?? []}
                         todayIso={todayIso}
                         onUpdated={() => setRefreshKey((key) => key + 1)}
                       />

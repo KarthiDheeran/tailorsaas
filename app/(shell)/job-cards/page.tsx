@@ -8,6 +8,7 @@ import {
   getJobCardsAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
+import { getCustomerFabricsAction } from "@/app/(shell)/inventory/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
   createWorkAssignmentAction,
@@ -19,6 +20,7 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { formatDate, OrderStatusChip } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards";
 import type {
+  CustomerFabric,
   Order,
   Staff,
   StaffRole,
@@ -29,6 +31,11 @@ import type {
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  FabricInfo,
+  JOB_CARD_FABRIC_SOURCES,
+  type JobCardFabricSourceValue,
+} from "@/components/job-cards/fabric-info";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" }[] = [
   { label: "Active", value: "active" },
@@ -124,11 +131,13 @@ function JobCardsContent() {
   const { hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
   const canViewOrders = hasPermission("orders.view");
+  const canViewInventory = hasPermission("inventory.view");
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
+  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
   const [filter, setFilter] = useState<JobCardStage | "all" | "active">("active");
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -147,13 +156,15 @@ function JobCardsContent() {
       getOrdersAction(),
       getStaffAction(),
       getWorkAssignmentsAction(),
+      canViewInventory ? getCustomerFabricsAction() : Promise.resolve([]),
     ])
-      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
+      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult, fabricsResult]) => {
         if (cancelled) return;
         setPersistedCards(jobCardsResult);
         setOrders(ordersResult);
         setStaff(staffResult.filter((member) => member.status === "Active"));
         setAssignments(assignmentsResult);
+        setCustomerFabrics(fabricsResult ?? []);
         setLoadError(null);
       })
       .catch((error) => {
@@ -167,7 +178,7 @@ function JobCardsContent() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, todayIso]);
+  }, [canViewInventory, refreshKey, todayIso]);
 
   const jobCards = useMemo(
     () => persistedCards ?? buildJobCards(orders, todayIso, assignments, staff),
@@ -178,6 +189,16 @@ function JobCardsContent() {
     if (filter === "active") return card.stage !== "Delivered" && card.stage !== "Cancelled";
     return card.stage === filter;
   });
+  const customerFabricsByOrder = useMemo(() => {
+    const byOrder = new Map<string, CustomerFabric[]>();
+    for (const fabric of customerFabrics) {
+      if (!fabric.orderId) continue;
+      const current = byOrder.get(fabric.orderId) ?? [];
+      current.push(fabric);
+      byOrder.set(fabric.orderId, current);
+    }
+    return byOrder;
+  }, [customerFabrics]);
 
   const activeCount = jobCards.filter((c) => c.stage !== "Delivered" && c.stage !== "Cancelled").length;
   const unassignedCount = jobCards.filter((c) => c.stage === "Unassigned").length;
@@ -308,6 +329,7 @@ function JobCardsContent() {
                   <th className="whitespace-nowrap px-5 py-3">Order</th>
                   <th className="whitespace-nowrap px-5 py-3">Assigned To</th>
                   <th className="whitespace-nowrap px-5 py-3">Stage</th>
+                  <th className="whitespace-nowrap px-5 py-3">Fabric</th>
                   <th className="whitespace-nowrap px-5 py-3">Due Date</th>
                   <th className="whitespace-nowrap px-5 py-3">Order Status</th>
                   {canManageStaff && (
@@ -316,7 +338,9 @@ function JobCardsContent() {
                 </tr>
               </thead>
               <tbody className="text-[13px]">
-                {filteredCards.map((card: JobCard) => (
+                {filteredCards.map((card: JobCard) => {
+                  const linkedFabrics = customerFabricsByOrder.get(card.orderId) ?? [];
+                  return (
                   <tr key={card.id} className="border-t border-border-soft hover:bg-surface">
                     <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                       {card.jobCardNumber}
@@ -355,6 +379,9 @@ function JobCardsContent() {
                         </div>
                       )}
                     </td>
+                    <td className="px-5 py-3 align-top">
+                      <FabricInfo card={card} linkedFabrics={linkedFabrics} />
+                    </td>
                     <td className="whitespace-nowrap px-5 py-3">
                       <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
                         {formatDate(card.deliveryDate)}
@@ -375,7 +402,8 @@ function JobCardsContent() {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -422,6 +450,10 @@ function AssignWorkDrawer({
   const [dueDate, setDueDate] = useState(card.assignment?.dueDate ?? card.deliveryDate);
   const [priority, setPriority] = useState<TaskPriority>(card.priority ?? "Normal");
   const [workNotes, setWorkNotes] = useState(card.notes ?? "");
+  const [fabricSource, setFabricSource] = useState<JobCardFabricSourceValue>(
+    card.fabricSource ?? "Not specified"
+  );
+  const [fabricNotes, setFabricNotes] = useState(card.fabricNotes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const recommendedStaff = staff.filter((member) =>
@@ -444,6 +476,8 @@ function AssignWorkDrawer({
           dueDate,
           priority,
           notes: workNotes,
+          fabricSource,
+          fabricNotes,
         })
       : await createWorkAssignmentAction({
           orderId: card.orderId,
@@ -565,6 +599,36 @@ function AssignWorkDrawer({
               </select>
             </label>
           </div>
+
+          {card.persisted && (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-ink-muted">Fabric Source</span>
+                <select
+                  value={fabricSource}
+                  onChange={(e) => setFabricSource(e.target.value as JobCardFabricSourceValue)}
+                  className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  {JOB_CARD_FABRIC_SOURCES.map((source) => (
+                    <option key={source} value={source}>
+                      {source}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-ink-muted">Fabric Notes</span>
+                <textarea
+                  value={fabricNotes}
+                  onChange={(e) => setFabricNotes(e.target.value)}
+                  rows={3}
+                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  placeholder="Customer fabric, shop fabric, lining, color, or handling notes"
+                />
+              </label>
+            </>
+          )}
 
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-ink-muted">Work Notes</span>

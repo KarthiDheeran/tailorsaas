@@ -16,6 +16,7 @@ import {
   syncOrderStatusFromJobCards,
   syncJobCardsForOrder,
   type JobCardAssignmentInput,
+  type JobCardFabricSource,
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
@@ -40,6 +41,11 @@ const VALID_TASK_TYPES = new Set<TaskType>([
   "Delivery",
 ]);
 const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
+const VALID_FABRIC_SOURCES = new Set<JobCardFabricSource>([
+  "Not specified",
+  "Customer provided",
+  "Shop provided",
+]);
 const VALID_STAGES = new Set<JobCardStage>([
   "Unassigned",
   "Cutting",
@@ -216,6 +222,9 @@ function validateAssignment(data: JobCardAssignmentInput): string | null {
   if (!data.assignedStaffId.trim()) return "Assigned staff member is required.";
   if (!ISO_DATE.test(data.dueDate)) return "A valid due date is required.";
   if (!VALID_PRIORITIES.has(data.priority)) return "Invalid priority.";
+  if (data.fabricSource && !VALID_FABRIC_SOURCES.has(data.fabricSource)) {
+    return "Invalid fabric source.";
+  }
   return null;
 }
 
