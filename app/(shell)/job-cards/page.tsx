@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ClipboardList, Scissors, Shirt, X } from "lucide-react";
 import {
   assignJobCardAction,
+  getJobCardActivityLogsAction,
   getJobCardsAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
@@ -27,6 +28,7 @@ import type {
   CustomerFabric,
   CustomerFabricStatus,
   InventoryItem,
+  JobCardActivityLog,
   Order,
   Staff,
   StaffRole,
@@ -153,6 +155,7 @@ function JobCardsContent() {
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
   const [stockCard, setStockCard] = useState<JobCard | null>(null);
+  const [historyCard, setHistoryCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Only gates the very first load — refreshKey-triggered refetches (assign
@@ -381,9 +384,7 @@ function JobCardsContent() {
                   <th className="whitespace-nowrap px-5 py-3">Fabric</th>
                   <th className="whitespace-nowrap px-5 py-3">Due Date</th>
                   <th className="whitespace-nowrap px-5 py-3">Order Status</th>
-                  {(canManageStaff || canManageInventory) && (
-                    <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
-                  )}
+                  <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="text-[13px]">
@@ -451,39 +452,44 @@ function JobCardsContent() {
                     <td className="whitespace-nowrap px-5 py-3">
                       <OrderStatusChip status={card.orderStatus} />
                     </td>
-                    {(canManageStaff || canManageInventory) && (
-                      <td className="whitespace-nowrap px-5 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          {canManageInventory && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setStockCard(card)}
-                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
-                              >
-                                Use Stock
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setFabricCard(card)}
-                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
-                              >
-                                Add Fabric
-                              </button>
-                            </>
-                          )}
-                          {canManageStaff && (
+                    <td className="whitespace-nowrap px-5 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        {canManageInventory && (
+                          <>
                             <button
                               type="button"
-                              onClick={() => setAssigningCard(card)}
+                              onClick={() => setStockCard(card)}
                               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
                             >
-                              Assign Work
+                              Use Stock
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
+                            <button
+                              type="button"
+                              onClick={() => setFabricCard(card)}
+                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                            >
+                              Add Fabric
+                            </button>
+                          </>
+                        )}
+                        {canManageStaff && (
+                          <button
+                            type="button"
+                            onClick={() => setAssigningCard(card)}
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                          >
+                            Assign Work
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setHistoryCard(card)}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                        >
+                          History
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                   );
                 })}
@@ -536,8 +542,134 @@ function JobCardsContent() {
           }}
         />
       )}
+
+      {historyCard && (
+        <JobCardHistoryDrawer
+          card={historyCard}
+          staff={staff}
+          onClose={() => setHistoryCard(null)}
+        />
+      )}
     </div>
   );
+}
+
+function JobCardHistoryDrawer({
+  card,
+  staff,
+  onClose,
+}: {
+  card: JobCard;
+  staff: Staff[];
+  onClose: () => void;
+}) {
+  const [logs, setLogs] = useState<JobCardActivityLog[] | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const staffById = useMemo(() => new Map(staff.map((member) => [member.id, member.name])), [staff]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getJobCardActivityLogsAction(card.id)
+      .then((result) => {
+        if (cancelled) return;
+        setLogs(result);
+        setError(null);
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setError(getErrorMessage(caught, "Failed to load job card history."));
+        setLogs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [card.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
+      <button type="button" className="flex-1" aria-label="Close" onClick={onClose} />
+      <div className="flex h-full w-full max-w-md flex-col bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Job Card History</h2>
+            <p className="text-sm text-ink-muted">
+              {card.jobCardNumber} - {card.garment}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {error && (
+            <div className="mb-4 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
+              {error}
+            </div>
+          )}
+          {logs === undefined ? (
+            <LoadingState label="Loading history..." />
+          ) : logs === null ? (
+            <div className="rounded-lg border border-border-soft bg-surface px-3 py-4 text-sm text-ink-muted">
+              Activity history is ready in the app, but the database migration has not been applied yet.
+              Apply <span className="font-semibold text-ink">supabase/migrations/0016_job_card_activity.sql</span> to start saving production history.
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border-soft px-3 py-8 text-center text-sm text-ink-muted">
+              No history recorded yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div key={log.id} className="rounded-lg border border-border-soft p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">{log.actionType}</div>
+                      <div className="mt-1 text-xs text-ink-muted">
+                        {formatDateTime(log.createdAt)}
+                      </div>
+                    </div>
+                    {log.toStage && (
+                      <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted">
+                        {log.toStage}
+                      </span>
+                    )}
+                  </div>
+                  {(log.fromStage || log.toStage) && (
+                    <div className="mt-2 text-xs text-ink-muted">
+                      {log.fromStage ?? "-"} {"->"} {log.toStage ?? "-"}
+                    </div>
+                  )}
+                  {log.assignedStaffId && (
+                    <div className="mt-1 text-xs text-ink-muted">
+                      Assigned: {staffById.get(log.assignedStaffId) ?? "Unknown staff"}
+                    </div>
+                  )}
+                  {log.notes && (
+                    <div className="mt-2 text-xs text-ink-muted">{log.notes}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function AssignWorkDrawer({

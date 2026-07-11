@@ -24,6 +24,13 @@ export interface JobCardAssignmentInput {
   fabricNotes?: string;
 }
 
+export interface JobCardActivitySnapshot {
+  id: string;
+  orderId: string;
+  currentStage: JobCardStage;
+  assignedStaffId?: string;
+}
+
 const JOB_CARD_COLUMNS = `
   id, job_card_number, order_id, order_number, customer_id, order_status,
   order_item_serial_no, unit_no, garment_type, customer_snapshot,
@@ -205,6 +212,31 @@ export async function getJobCardAssignedStaffId(
   if (error) throw error;
   if (!data) return undefined;
   return (data as { assigned_staff_id: string | null }).assigned_staff_id;
+}
+
+export async function getJobCardActivitySnapshot(
+  supabase: SupabaseClient,
+  id: string
+): Promise<JobCardActivitySnapshot | undefined> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("id, order_id, current_stage, assigned_staff_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return undefined;
+  const row = data as {
+    id: string;
+    order_id: string;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+  };
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    currentStage: row.current_stage,
+    assignedStaffId: row.assigned_staff_id ?? undefined,
+  };
 }
 
 export async function startJobCard(

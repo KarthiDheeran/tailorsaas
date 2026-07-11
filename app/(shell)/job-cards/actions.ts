@@ -8,6 +8,7 @@ import {
 import {
   assignJobCard,
   completeJobCard,
+  getJobCardActivitySnapshot,
   getJobCardAssignedStaffId,
   getJobCards,
   isMissingJobCardsSchemaError,
@@ -18,11 +19,16 @@ import {
   type JobCardAssignmentInput,
   type JobCardFabricSource,
 } from "@/lib/data/job-cards-db";
+import {
+  getJobCardActivityLogs,
+  isMissingJobCardActivitySchemaError,
+  logJobCardActivity,
+} from "@/lib/data/job-card-activity-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
-import type { TaskPriority, TaskType } from "@/lib/types";
+import type { JobCardActivityLog, TaskPriority, TaskType } from "@/lib/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
@@ -73,6 +79,21 @@ export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | n
   }
 }
 
+export async function getJobCardActivityLogsAction(
+  id: string
+): Promise<JobCardActivityLog[] | null> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!hasAnyPermission(permissions, ["orders.view", "staff.view"])) return [];
+
+  try {
+    return await getJobCardActivityLogs(supabase, id);
+  } catch (error) {
+    if (isMissingJobCardActivitySchemaError(error)) return null;
+    throw error;
+  }
+}
+
 export async function assignJobCardAction(
   id: string,
   data: JobCardAssignmentInput
@@ -85,7 +106,20 @@ export async function assignJobCardAction(
   if (validationError) return { success: false, error: validationError };
 
   try {
+    const before = await getJobCardActivitySnapshot(supabase, id);
     await assignJobCard(supabase, id, data);
+    if (before) {
+      await logJobCardActivityBestEffort({
+        jobCardId: id,
+        orderId: before.orderId,
+        actionType: "Assigned",
+        fromStage: before.currentStage,
+        toStage: taskTypeToStage(data.taskType),
+        assignedStaffId: data.assignedStaffId,
+        notes: data.notes,
+        performedBy: guard.userId,
+      });
+    }
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -108,7 +142,20 @@ export async function startJobCardAction(
   if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
 
   try {
-    await startJobCard(createAdminClient(), id, todayIso);
+    const admin = createAdminClient();
+    const before = await getJobCardActivitySnapshot(admin, id);
+    await startJobCard(admin, id, todayIso);
+    if (before) {
+      await logJobCardActivityBestEffort({
+        jobCardId: id,
+        orderId: before.orderId,
+        actionType: "Started",
+        fromStage: before.currentStage,
+        toStage: before.currentStage,
+        assignedStaffId: before.assignedStaffId,
+        performedBy: guard.userId,
+      });
+    }
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -132,8 +179,21 @@ export async function completeJobCardAction(
 
   try {
     const admin = createAdminClient();
+    const before = await getJobCardActivitySnapshot(admin, id);
     const orderId = await completeJobCard(admin, id, todayIso);
     await syncOrderStatusFromJobCards(admin, orderId);
+    const after = await getJobCardActivitySnapshot(admin, id);
+    if (before) {
+      await logJobCardActivityBestEffort({
+        jobCardId: id,
+        orderId,
+        actionType: after?.currentStage === "Ready" ? "Completed" : "Stage Moved",
+        fromStage: before.currentStage,
+        toStage: after?.currentStage ?? before.currentStage,
+        assignedStaffId: before.assignedStaffId,
+        performedBy: guard.userId,
+      });
+    }
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -159,8 +219,20 @@ export async function moveJobCardStageAction(
 
   try {
     const admin = createAdminClient();
+    const before = await getJobCardActivitySnapshot(admin, id);
     const orderId = await moveJobCardStage(admin, id, stage, todayIso);
     await syncOrderStatusFromJobCards(admin, orderId);
+    if (before) {
+      await logJobCardActivityBestEffort({
+        jobCardId: id,
+        orderId,
+        actionType: stage === "Ready" ? "Completed" : "Stage Moved",
+        fromStage: before.currentStage,
+        toStage: stage,
+        assignedStaffId: before.assignedStaffId,
+        performedBy: guard.userId,
+      });
+    }
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -171,6 +243,22 @@ export async function moveJobCardStageAction(
       error: error instanceof Error ? error.message : "Failed to move job card stage.",
     };
   }
+}
+
+async function logJobCardActivityBestEffort(input: Parameters<typeof logJobCardActivity>[1]) {
+  try {
+    await logJobCardActivity(createAdminClient(), input);
+  } catch (error) {
+    if (isMissingJobCardActivitySchemaError(error)) return;
+    console.error("Failed to log job card activity", error);
+  }
+}
+
+function taskTypeToStage(taskType: TaskType): JobCardStage {
+  if (taskType === "Measurement") return "Trial";
+  if (taskType === "Ironing/Packing") return "Finishing";
+  if (taskType === "Delivery") return "Ready";
+  return taskType;
 }
 
 export async function syncJobCardsForOrderAction(orderId: string): Promise<ActionResult> {
@@ -231,10 +319,12 @@ function validateAssignment(data: JobCardAssignmentInput): string | null {
 async function requireJobCardProgressAccess(
   supabase: ReturnType<typeof createServerClient>,
   id: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const context = await getServerCallerContext(supabase);
   if (!context) return { ok: false, error: "Not signed in." };
-  if (hasPermission(context.permissions, "staff.manage")) return { ok: true };
+  if (hasPermission(context.permissions, "staff.manage")) {
+    return { ok: true, userId: context.userId };
+  }
   if (!hasPermission(context.permissions, "staff.view") || !context.staffId) {
     return { ok: false, error: "You don't have permission to update this job card." };
   }
@@ -244,5 +334,5 @@ async function requireJobCardProgressAccess(
   if (assignedStaffId !== context.staffId) {
     return { ok: false, error: "You can only update job cards assigned to you." };
   }
-  return { ok: true };
+  return { ok: true, userId: context.userId };
 }

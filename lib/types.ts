@@ -241,6 +241,25 @@ export interface WhatsAppMessage {
   createdAt: string;
 }
 
+export type JobCardActivityAction =
+  | "Assigned"
+  | "Started"
+  | "Stage Moved"
+  | "Completed";
+
+export interface JobCardActivityLog {
+  id: string;
+  jobCardId: string;
+  orderId: string;
+  actionType: JobCardActivityAction;
+  fromStage?: string;
+  toStage?: string;
+  assignedStaffId?: string;
+  notes?: string;
+  performedBy?: string;
+  createdAt: string;
+}
+
 export type StaffRole =
   | "Master Tailor"
   | "Cutter"
