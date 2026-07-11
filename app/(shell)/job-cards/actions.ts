@@ -11,12 +11,15 @@ import {
   getJobCardAssignedStaffId,
   getJobCards,
   isMissingJobCardsSchemaError,
+  moveJobCardStage,
   startJobCard,
+  syncOrderStatusFromJobCards,
   syncJobCardsForOrder,
   type JobCardAssignmentInput,
 } from "@/lib/data/job-cards-db";
+import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
-import type { JobCard } from "@/lib/job-cards";
+import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type { TaskPriority, TaskType } from "@/lib/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -37,6 +40,17 @@ const VALID_TASK_TYPES = new Set<TaskType>([
   "Delivery",
 ]);
 const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
+const VALID_STAGES = new Set<JobCardStage>([
+  "Unassigned",
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Trial",
+  "Alteration",
+  "Delayed",
+  "Ready",
+]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | null> {
@@ -111,7 +125,9 @@ export async function completeJobCardAction(
   if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
 
   try {
-    await completeJobCard(createAdminClient(), id, todayIso);
+    const admin = createAdminClient();
+    const orderId = await completeJobCard(admin, id, todayIso);
+    await syncOrderStatusFromJobCards(admin, orderId);
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -120,6 +136,33 @@ export async function completeJobCardAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to complete job card.",
+    };
+  }
+}
+
+export async function moveJobCardStageAction(
+  id: string,
+  stage: JobCardStage,
+  todayIso: string
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!VALID_STAGES.has(stage)) return { success: false, error: "Invalid stage." };
+  if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
+
+  try {
+    const admin = createAdminClient();
+    const orderId = await moveJobCardStage(admin, id, stage, todayIso);
+    await syncOrderStatusFromJobCards(admin, orderId);
+    return { success: true, data: undefined };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to move job card stage.",
     };
   }
 }
@@ -139,6 +182,31 @@ export async function syncJobCardsForOrderAction(orderId: string): Promise<Actio
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to sync job cards.",
+    };
+  }
+}
+
+export async function syncMissingJobCardsAction(): Promise<ActionResult<{ synced: number }>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    const orders = await getAllOrders(supabase);
+    const activeOrders = orders.filter(
+      (order) => order.status !== "Delivered" && order.status !== "Cancelled"
+    );
+    for (const order of activeOrders) {
+      await syncJobCardsForOrder(supabase, order.id);
+    }
+    return { success: true, data: { synced: activeOrders.length } };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create missing job cards.",
     };
   }
 }

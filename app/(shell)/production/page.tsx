@@ -6,7 +6,9 @@ import { AlertTriangle, CheckCircle2, Clock, Scissors } from "lucide-react";
 import {
   completeJobCardAction,
   getJobCardsAction,
+  moveJobCardStageAction,
   startJobCardAction,
+  syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
@@ -17,7 +19,12 @@ import {
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { formatDate } from "@/components/orders/orders-table";
-import { buildJobCards, type JobCard, type ProductionBucket } from "@/lib/job-cards";
+import {
+  buildJobCards,
+  type JobCard,
+  type JobCardStage,
+  type ProductionBucket,
+} from "@/lib/job-cards";
 import type { Order, Staff, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
@@ -41,27 +48,68 @@ const BUCKET_HELP: Record<ProductionBucket, string> = {
   Ready: "Ready for pickup or delivery",
 };
 
+const STAGE_OPTIONS: JobCardStage[] = [
+  "Unassigned",
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Trial",
+  "Alteration",
+  "Delayed",
+  "Ready",
+];
+
+function nextStageAfterCompletion(stage: JobCardStage): JobCardStage {
+  if (stage === "Unassigned") return "Cutting";
+  if (stage === "Cutting") return "Stitching";
+  if (stage === "Stitching" || stage === "Embroidery" || stage === "Alteration") {
+    return "Finishing";
+  }
+  if (stage === "Trial" || stage === "Finishing") return "Ready";
+  return "Ready";
+}
+
+function completeActionLabel(card: JobCard): string {
+  if (!card.persisted) return "Complete";
+  const nextStage = nextStageAfterCompletion(card.stage);
+  if (nextStage === "Ready") return "Mark Ready";
+  return `Send to ${nextStage}`;
+}
+
+function startActionLabel(card: JobCard): string {
+  if (card.stage !== "Unassigned" && card.stage !== "Delayed") return `Start ${card.stage}`;
+  if (card.taskType) return `Start ${card.taskType}`;
+  return "Start";
+}
+
 function ProductionCard({
   card,
   canUpdate,
+  canMoveStages,
   canViewOrders,
   todayIso,
   onUpdated,
 }: {
   card: JobCard;
   canUpdate: boolean;
+  canMoveStages: boolean;
   canViewOrders: boolean;
   todayIso: string;
   onUpdated: () => void;
 }) {
-  const [saving, setSaving] = useState<"start" | "complete" | null>(null);
+  const [saving, setSaving] = useState<"start" | "complete" | "move" | null>(null);
+  const [targetStage, setTargetStage] = useState<JobCardStage>(card.stage);
+  useEffect(() => {
+    setTargetStage(card.stage);
+  }, [card.stage]);
   const canStart = card.persisted
     ? Boolean(card.assignedStaffId && !card.startedDate && !card.completedDate)
     : Boolean(card.assignment && !card.assignment.startedDate && !card.assignment.completedDate);
   const canComplete = card.persisted
     ? Boolean(card.assignedStaffId && card.startedDate && !card.completedDate)
     : Boolean(card.assignment && card.assignment.startedDate && !card.assignment.completedDate);
-  const completeLabel = card.persisted && card.stage !== "Ready" ? "Complete Stage" : "Complete";
+  const completeLabel = completeActionLabel(card);
 
   async function handleStart() {
     if (!card.persisted && !card.assignment) return;
@@ -87,6 +135,18 @@ function ProductionCard({
       : await updateWorkAssignmentAction(card.assignment!.id, {
           completedDate: todayIso,
         });
+    setSaving(null);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onUpdated();
+  }
+
+  async function handleMoveStage() {
+    if (!card.persisted || targetStage === card.stage) return;
+    setSaving("move");
+    const result = await moveJobCardStageAction(card.id, targetStage, todayIso);
     setSaving(null);
     if (!result.success) {
       window.alert(result.error);
@@ -138,7 +198,7 @@ function ProductionCard({
             disabled={saving !== null}
             className="rounded border border-border px-2 py-1 text-xs font-semibold text-ink-muted hover:bg-surface"
           >
-            {saving === "start" ? "Starting..." : "Start"}
+            {saving === "start" ? "Starting..." : startActionLabel(card)}
           </button>
         )}
         {canUpdate && canComplete && (
@@ -152,6 +212,29 @@ function ProductionCard({
           </button>
         )}
       </div>
+      {canMoveStages && card.persisted && card.stage !== "Delivered" && card.stage !== "Cancelled" && (
+        <div className="mt-3 flex items-center gap-2 border-t border-border-soft pt-3">
+          <select
+            value={targetStage}
+            onChange={(event) => setTargetStage(event.target.value as JobCardStage)}
+            className="h-8 min-w-0 flex-1 rounded border border-border bg-white px-2 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+          >
+            {STAGE_OPTIONS.map((stage) => (
+              <option key={stage} value={stage}>
+                {stage}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleMoveStage}
+            disabled={saving !== null || targetStage === card.stage}
+            className="h-8 rounded border border-border px-2 text-xs font-semibold text-ink-muted hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving === "move" ? "Moving..." : "Move"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -200,6 +283,7 @@ function ProductionContent() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncingCards, setSyncingCards] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +329,22 @@ function ProductionContent() {
   const unassigned = cardsByBucket.get("Unassigned")?.length ?? 0;
   const delayed = activeCards.filter((card) => card.isDelayed).length;
   const ready = cardsByBucket.get("Ready")?.length ?? 0;
+  const activeOrderCount = orders.filter(
+    (order) => order.status !== "Delivered" && order.status !== "Cancelled"
+  ).length;
+  const canCreateMissingCards =
+    canManageStaff && persistedCards !== null && activeCards.length === 0 && activeOrderCount > 0;
+
+  async function createMissingJobCards() {
+    setSyncingCards(true);
+    const result = await syncMissingJobCardsAction();
+    setSyncingCards(false);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((key) => key + 1);
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -270,6 +370,26 @@ function ProductionContent() {
               ? "Production stages are shown from current order data until the job card migration is applied."
               : "Production stages are shown from garment-level job cards."}
           </div>
+
+          {canCreateMissingCards && (
+            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-chip-peach bg-chip-peach p-4 text-sm text-chip-peach-fg shadow-soft sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold">No job cards have been created yet.</div>
+                <div>
+                  Create garment-level job cards for {activeOrderCount} active order
+                  {activeOrderCount === 1 ? "" : "s"} so Production can be tracked.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={createMissingJobCards}
+                disabled={syncingCards}
+                className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {syncingCards ? "Creating..." : "Create Job Cards"}
+              </button>
+            </div>
+          )}
 
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Stat label="Active Work" value={activeCards.length} icon={Clock} />
@@ -300,6 +420,7 @@ function ProductionContent() {
                         key={card.id}
                         card={card}
                         canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
+                        canMoveStages={canManageStaff}
                         canViewOrders={canViewOrders}
                         todayIso={todayIso}
                         onUpdated={() => setRefreshKey((key) => key + 1)}

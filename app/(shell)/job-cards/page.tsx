@@ -6,6 +6,7 @@ import { AlertTriangle, ClipboardList, Scissors, Shirt, X } from "lucide-react";
 import {
   assignJobCardAction,
   getJobCardsAction,
+  syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
@@ -115,6 +116,7 @@ function JobCardsContent() {
   // distinct from persistedCards===null, which means "migration not applied"
   // after loading finishes, not "still loading".
   const [isLoading, setIsLoading] = useState(true);
+  const [syncingCards, setSyncingCards] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +161,22 @@ function JobCardsContent() {
   const unassignedCount = jobCards.filter((c) => c.stage === "Unassigned").length;
   const delayedCount = jobCards.filter((c) => c.isDelayed).length;
   const readyCount = jobCards.filter((c) => c.stage === "Ready").length;
+  const activeOrderCount = orders.filter(
+    (order) => order.status !== "Delivered" && order.status !== "Cancelled"
+  ).length;
+  const canCreateMissingCards =
+    canManageStaff && persistedCards !== null && activeCount === 0 && activeOrderCount > 0;
+
+  async function createMissingJobCards() {
+    setSyncingCards(true);
+    const result = await syncMissingJobCardsAction();
+    setSyncingCards(false);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((key) => key + 1);
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -183,6 +201,26 @@ function JobCardsContent() {
             <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
               Showing job cards generated from orders. Apply the job card migration to track each card as
               its own production record.
+            </div>
+          )}
+
+          {canCreateMissingCards && (
+            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-chip-peach bg-chip-peach p-4 text-sm text-chip-peach-fg shadow-soft sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold">No job cards have been created yet.</div>
+                <div>
+                  Create garment-level job cards for {activeOrderCount} active order
+                  {activeOrderCount === 1 ? "" : "s"}.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={createMissingJobCards}
+                disabled={syncingCards}
+                className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {syncingCards ? "Creating..." : "Create Job Cards"}
+              </button>
             </div>
           )}
 

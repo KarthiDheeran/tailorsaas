@@ -160,16 +160,17 @@ export async function completeJobCard(
   supabase: SupabaseClient,
   id: string,
   todayIso: string
-): Promise<void> {
+): Promise<string> {
   const { data: currentRow, error: fetchError } = await supabase
     .from("job_cards")
-    .select("current_stage")
+    .select("current_stage, order_id")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) throw fetchError;
   if (!currentRow) throw new Error("Job card not found.");
 
-  const currentStage = (currentRow as { current_stage: JobCardStage }).current_stage;
+  const current = currentRow as { current_stage: JobCardStage; order_id: string };
+  const currentStage = current.current_stage;
   const nextStage = getNextStageAfterCompletion(currentStage);
   const isFinalCompletion = nextStage === "Ready";
   const update: Record<string, unknown> = {
@@ -189,6 +190,81 @@ export async function completeJobCard(
     .update(update)
     .eq("id", id);
   if (error) throw error;
+  return current.order_id;
+}
+
+export async function moveJobCardStage(
+  supabase: SupabaseClient,
+  id: string,
+  stage: JobCardStage,
+  todayIso: string
+): Promise<string> {
+  const { data: currentRow, error: fetchError } = await supabase
+    .from("job_cards")
+    .select("order_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!currentRow) throw new Error("Job card not found.");
+
+  const isClosedStage =
+    stage === "Ready" || stage === "Delivered" || stage === "Cancelled";
+  const update: Record<string, unknown> = {
+    current_stage: stage,
+    cancelled: stage === "Cancelled",
+    updated_at: new Date().toISOString(),
+  };
+
+  if (stage === "Ready") {
+    update.completed_date = todayIso;
+  } else if (!isClosedStage) {
+    update.assigned_staff_id = null;
+    update.started_date = null;
+    update.completed_date = null;
+  }
+
+  const { error } = await supabase
+    .from("job_cards")
+    .update(update)
+    .eq("id", id);
+  if (error) throw error;
+  return (currentRow as { order_id: string }).order_id;
+}
+
+export async function syncOrderStatusFromJobCards(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<void> {
+  const { data: orderRow, error: orderError } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!orderRow) throw new Error("Order not found.");
+
+  const orderStatus = (orderRow as { status: OrderStatus }).status;
+  if (orderStatus === "Delivered" || orderStatus === "Cancelled") return;
+
+  const { data: rows, error } = await supabase
+    .from("job_cards")
+    .select("current_stage, cancelled")
+    .eq("order_id", orderId);
+  if (error) throw error;
+
+  const activeRows = ((rows as { current_stage: JobCardStage; cancelled: boolean }[]) ?? [])
+    .filter((row) => !row.cancelled && row.current_stage !== "Cancelled");
+  if (activeRows.length === 0) return;
+
+  const allReady = activeRows.every((row) => row.current_stage === "Ready");
+  const nextStatus: OrderStatus = allReady ? "Ready" : "In Progress";
+  if (orderStatus === nextStatus) return;
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ status: nextStatus, updated_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if (updateError) throw updateError;
 }
 
 function mapJobCardRow(
