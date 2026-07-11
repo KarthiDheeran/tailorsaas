@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
+import { getJobCardsAction } from "@/app/(shell)/job-cards/actions";
+import {
+  getCustomerFabricsAction,
+  getInventoryItemsAction,
+  getInventoryMovementsAction,
+} from "@/app/(shell)/inventory/actions";
 import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import {
@@ -20,7 +26,16 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
-import type { Customer, GarmentMeasurement, Order, OrderItem } from "@/lib/types";
+import type { JobCard } from "@/lib/job-cards";
+import type {
+  Customer,
+  CustomerFabric,
+  GarmentMeasurement,
+  InventoryItem,
+  InventoryMovement,
+  Order,
+  OrderItem,
+} from "@/lib/types";
 
 
 const FIELD_LABELS: Record<string, string> = Object.fromEntries(
@@ -46,6 +61,36 @@ function resolveMeasurements(
   };
 }
 
+function numberValue(value: number) {
+  return Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+function groupJobCardsBySerialNo(jobCards: JobCard[]) {
+  const grouped = new Map<number, JobCard[]>();
+  for (const card of jobCards) {
+    const current = grouped.get(card.item.serialNo) ?? [];
+    current.push(card);
+    grouped.set(card.item.serialNo, current);
+  }
+  return grouped;
+}
+
+function getReferencedStockUsage(
+  order: Order,
+  orderJobCards: JobCard[],
+  movements: InventoryMovement[]
+) {
+  const tokens = [
+    order.orderNumber.toLowerCase(),
+    ...orderJobCards.map((card) => card.jobCardNumber.toLowerCase()),
+  ];
+  return movements.filter((movement) => {
+    if (movement.movementType !== "Stock Out") return false;
+    const reason = movement.reason?.toLowerCase() ?? "";
+    return tokens.some((token) => token && reason.includes(token));
+  });
+}
+
 function TailorJobCardPrintPageContent({
   params,
 }: {
@@ -63,6 +108,10 @@ function TailorJobCardPrintPageContent({
   const [measurementsByItem, setMeasurementsByItem] = useState<
     Record<number, GarmentMeasurement | undefined>
   >({});
+  const [jobCards, setJobCards] = useState<JobCard[]>([]);
+  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
@@ -93,6 +142,22 @@ function TailorJobCardPrintPageContent({
         if (cancelled) return;
         setMeasurementsByItem(Object.fromEntries(entries));
       });
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+      Promise.all([
+        getJobCardsAction(todayIso),
+        getCustomerFabricsAction(),
+        getInventoryItemsAction(),
+        getInventoryMovementsAction(),
+      ]).then(([cardsResult, fabricsResult, itemsResult, movementsResult]) => {
+        if (cancelled) return;
+        setJobCards((cardsResult ?? []).filter((card) => card.orderId === result.id));
+        setCustomerFabrics(
+          (fabricsResult ?? []).filter((fabric) => fabric.orderId === result.id)
+        );
+        setInventoryItems(itemsResult ?? []);
+        setInventoryMovements(movementsResult ?? []);
+      });
     });
     return () => {
       cancelled = true;
@@ -101,6 +166,10 @@ function TailorJobCardPrintPageContent({
 
   if (order === undefined) return null;
   if (order === null) notFound();
+
+  const jobCardsBySerialNo = groupJobCardsBySerialNo(jobCards);
+  const inventoryItemById = new Map(inventoryItems.map((item) => [item.id, item]));
+  const stockUsage = getReferencedStockUsage(order, jobCards, inventoryMovements);
 
   return (
     <PrintPageFrame backHref="/orders">
@@ -191,6 +260,33 @@ function TailorJobCardPrintPageContent({
                 </p>
               )}
 
+              {(jobCardsBySerialNo.get(item.serialNo)?.length ?? 0) > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Job Cards
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {jobCardsBySerialNo.get(item.serialNo)!.map((card) => (
+                      <div key={card.id} className="border border-gray-300 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{card.jobCardNumber}</span>
+                          <span>{card.stage}</span>
+                        </div>
+                        <div className="mt-1 text-gray-600">
+                          Unit {card.unitNo} of {card.totalUnits} | Assigned: {card.assignedTo}
+                        </div>
+                        {card.fabricSource && card.fabricSource !== "Not specified" && (
+                          <div className="mt-1 text-gray-600">
+                            Fabric: {card.fabricSource}
+                            {card.fabricNotes ? ` - ${card.fabricNotes}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-3">
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {t("print.measurements")}
@@ -233,6 +329,54 @@ function TailorJobCardPrintPageContent({
           );
         })}
       </div>
+
+      {(customerFabrics.length > 0 || stockUsage.length > 0) && (
+        <div className="mt-6 break-inside-avoid border border-gray-400 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Materials
+          </p>
+          <div className="grid grid-cols-2 gap-5 text-sm">
+            <div>
+              <p className="mb-1 font-semibold">Customer Fabric</p>
+              {customerFabrics.length > 0 ? (
+                <div className="space-y-1">
+                  {customerFabrics.map((fabric) => (
+                    <div key={fabric.id} className="border-b border-dotted border-gray-300 pb-1">
+                      <span className="font-medium">{fabric.fabricDescription}</span>
+                      {fabric.color ? `, ${fabric.color}` : ""} - {numberValue(fabric.quantity)} {fabric.unit} - {fabric.status}
+                      {fabric.notes ? <div className="text-xs text-gray-600">{fabric.notes}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="italic text-gray-500">No customer fabric linked.</p>
+              )}
+            </div>
+            <div>
+              <p className="mb-1 font-semibold">Shop Stock Used</p>
+              {stockUsage.length > 0 ? (
+                <div className="space-y-1">
+                  {stockUsage.map((movement) => {
+                    const item = inventoryItemById.get(movement.itemId);
+                    return (
+                      <div key={movement.id} className="border-b border-dotted border-gray-300 pb-1">
+                        <span className="font-medium">{item?.name ?? "Stock item"}</span>
+                        {item?.color ? `, ${item.color}` : ""} - {numberValue(movement.quantity)} {item?.unit ?? ""}
+                        <div className="text-xs text-gray-600">
+                          {formatDate(movement.movementDate)}
+                          {movement.reason ? ` - ${movement.reason}` : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="italic text-gray-500">No stock usage linked.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-10 grid grid-cols-3 gap-8 border-t border-black pt-6 text-sm">
         <div>

@@ -6,6 +6,7 @@ import {
   createCustomerFabric,
   createInventoryItem,
   getCustomerFabrics,
+  getInventoryMovements,
   getInventoryItems,
   isMissingInventorySchemaError,
   updateCustomerFabricStatus,
@@ -25,6 +26,7 @@ import type {
   CustomerFabricStatus,
   InventoryItem,
   InventoryItemType,
+  InventoryMovement,
   InventoryMovementType,
   InventoryUnit,
 } from "@/lib/types";
@@ -45,6 +47,18 @@ export async function getInventoryItemsAction(): Promise<InventoryItem[] | null>
   if (!guard.ok) return [];
   try {
     return await getInventoryItems(supabase);
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getInventoryMovementsAction(): Promise<InventoryMovement[] | null> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.view");
+  if (!guard.ok) return [];
+  try {
+    return await getInventoryMovements(supabase);
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
     throw error;
