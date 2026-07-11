@@ -4,26 +4,17 @@ import Link from "next/link";
 import {
   Languages,
   Layers,
-  ReceiptText,
   Ruler,
   Settings,
   Shirt,
-  Store,
   UserCog,
 } from "lucide-react";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { cn } from "@/lib/utils";
+import type { Permission } from "@/lib/permissions";
 
 const SETTINGS_SECTIONS = [
-  {
-    title: "Shop Profile",
-    description: "Shop name, contact details, address, and receipt branding.",
-    href: "",
-    icon: Store,
-    status: "Later",
-    permission: "shopSettings.view",
-  },
   {
     title: "Catalog / Garment Types",
     description: "Garments, base prices, required measurements, and add-ons.",
@@ -54,15 +45,7 @@ const SETTINGS_SECTIONS = [
     href: "/users-access",
     icon: UserCog,
     status: "Available",
-    permission: "settings.view",
-  },
-  {
-    title: "Receipt / Invoice Settings",
-    description: "Print format, invoice labels, terms, and footer notes.",
-    href: "",
-    icon: ReceiptText,
-    status: "Later",
-    permission: "shopSettings.view",
+    anyOf: ["settings.manageUsers", "settings.manageRoles"],
   },
   {
     title: "Language",
@@ -73,8 +56,6 @@ const SETTINGS_SECTIONS = [
     permission: "settings.view",
   },
 ] as const;
-
-type PermissionKey = (typeof SETTINGS_SECTIONS)[number]["permission"];
 
 function SettingsCard({
   section,
@@ -116,10 +97,11 @@ function SettingsCard({
 }
 
 function SettingsContent() {
-  const { hasPermission } = useCurrentUser();
-  const visibleSections = SETTINGS_SECTIONS.filter((section) =>
-    hasPermission(section.permission as PermissionKey)
-  );
+  const { hasPermission, hasAnyPermission } = useCurrentUser();
+  const visibleSections = SETTINGS_SECTIONS.filter((section) => {
+    if ("anyOf" in section) return hasAnyPermission([...section.anyOf] as Permission[]);
+    return hasPermission(section.permission as Permission);
+  });
 
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -130,7 +112,7 @@ function SettingsContent() {
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Settings</h1>
           <p className="text-sm text-ink-muted">
-            Shop setup, catalog rules, users, and configuration.
+            Catalog rules, users, and configuration.
           </p>
         </div>
       </div>
