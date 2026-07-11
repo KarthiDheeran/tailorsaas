@@ -209,6 +209,16 @@ export async function getCustomerMeasurements(
   return data ? mapCustomerMeasurements(data as CustomerMeasurementsRow) : undefined;
 }
 
+export async function getAllCustomerMeasurements(
+  supabase: SupabaseClient
+): Promise<CustomerMeasurements[]> {
+  const { data, error } = await supabase
+    .from("customer_measurements")
+    .select(CUSTOMER_MEASUREMENTS_COLUMNS);
+  if (error) throw error;
+  return ((data as CustomerMeasurementsRow[]) ?? []).map(mapCustomerMeasurements);
+}
+
 // Merge-upsert by customer_id — the DB's jsonb `||` operator is the exact
 // equivalent of the mock's `{...existing.values, ...data.values}` spread, so
 // an untouched field on a previous save is never clobbered by a partial one.
@@ -299,6 +309,17 @@ export async function getGarmentMeasurementsForCustomer(
     .from("garment_measurements")
     .select(GARMENT_MEASUREMENTS_COLUMNS)
     .eq("customer_id", customerId);
+  if (error) throw error;
+  return ((data as GarmentMeasurementRow[]) ?? []).map(mapGarmentMeasurement);
+}
+
+export async function getAllGarmentMeasurements(
+  supabase: SupabaseClient
+): Promise<GarmentMeasurement[]> {
+  const { data, error } = await supabase
+    .from("garment_measurements")
+    .select(GARMENT_MEASUREMENTS_COLUMNS)
+    .order("updated_at", { ascending: false });
   if (error) throw error;
   return ((data as GarmentMeasurementRow[]) ?? []).map(mapGarmentMeasurement);
 }
