@@ -147,13 +147,32 @@ export async function completeJobCard(
   id: string,
   todayIso: string
 ): Promise<void> {
+  const { data: currentRow, error: fetchError } = await supabase
+    .from("job_cards")
+    .select("current_stage")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!currentRow) throw new Error("Job card not found.");
+
+  const currentStage = (currentRow as { current_stage: JobCardStage }).current_stage;
+  const nextStage = getNextStageAfterCompletion(currentStage);
+  const isFinalCompletion = nextStage === "Ready";
+  const update: Record<string, unknown> = {
+    current_stage: nextStage,
+    updated_at: new Date().toISOString(),
+  };
+  if (isFinalCompletion) {
+    update.completed_date = todayIso;
+  } else {
+    update.assigned_staff_id = null;
+    update.started_date = null;
+    update.completed_date = null;
+  }
+
   const { error } = await supabase
     .from("job_cards")
-    .update({
-      current_stage: "Ready",
-      completed_date: todayIso,
-      updated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", id);
   if (error) throw error;
 }
@@ -265,4 +284,14 @@ function stageToTaskType(stage: JobCardStage): TaskType | undefined {
   if (stage === "Alteration") return "Alteration";
   if (stage === "Ready") return "Delivery";
   return undefined;
+}
+
+function getNextStageAfterCompletion(stage: JobCardStage): JobCardStage {
+  if (stage === "Unassigned") return "Cutting";
+  if (stage === "Cutting") return "Stitching";
+  if (stage === "Stitching" || stage === "Embroidery" || stage === "Alteration") {
+    return "Finishing";
+  }
+  if (stage === "Trial" || stage === "Finishing") return "Ready";
+  return "Ready";
 }

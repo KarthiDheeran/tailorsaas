@@ -57,6 +57,7 @@ function ProductionCard({
   const canComplete = card.persisted
     ? Boolean(card.assignedStaffId && card.startedDate && !card.completedDate)
     : Boolean(card.assignment && card.assignment.startedDate && !card.assignment.completedDate);
+  const completeLabel = card.persisted && card.stage !== "Ready" ? "Complete Stage" : "Complete";
 
   async function handleStart() {
     if (!card.persisted && !card.assignment) return;
@@ -141,7 +142,7 @@ function ProductionCard({
             disabled={saving !== null}
             className="rounded border border-primary bg-primary-tint px-2 py-1 text-xs font-semibold text-primary"
           >
-            {saving === "complete" ? "Completing..." : "Complete"}
+            {saving === "complete" ? "Completing..." : completeLabel}
           </button>
         )}
       </div>
