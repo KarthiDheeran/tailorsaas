@@ -57,6 +57,7 @@ function CalendarContent() {
     "Production",
     "Payment",
   ]);
+  const [staffFilter, setStaffFilter] = useState("all");
   const [data, setData] = useState<CalendarData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -90,8 +91,22 @@ function CalendarContent() {
 
   const visibleEvents = useMemo(() => {
     const allowed = new Set(enabledTypes);
-    return (data?.events ?? []).filter((event) => allowed.has(event.type));
-  }, [data?.events, enabledTypes]);
+    return (data?.events ?? []).filter((event) => {
+      if (!allowed.has(event.type)) return false;
+      if (staffFilter === "all") return true;
+      return event.assignedTo === staffFilter;
+    });
+  }, [data?.events, enabledTypes, staffFilter]);
+
+  const staffOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        (data?.events ?? [])
+          .map((event) => event.assignedTo)
+          .filter((value): value is string => Boolean(value && value !== "Unassigned"))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [data?.events]);
 
   const eventsByDate = useMemo(() => {
     const grouped = new Map<string, CalendarEvent[]>();
@@ -202,6 +217,20 @@ function CalendarContent() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {staffOptions.length > 0 && (
+            <select
+              value={staffFilter}
+              onChange={(event) => setStaffFilter(event.target.value)}
+              className="h-9 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            >
+              <option value="all">All staff</option>
+              {staffOptions.map((staffName) => (
+                <option key={staffName} value={staffName}>
+                  {staffName}
+                </option>
+              ))}
+            </select>
+          )}
           {EVENT_FILTERS.map((filter) => (
             <label
               key={filter.type}
@@ -368,7 +397,7 @@ function CalendarEventItem({
 
       <div className="flex items-center justify-between gap-2">
         <Link
-          href={event.jobCardId ? "/job-cards" : "/orders"}
+          href={event.jobCardId ? `/job-cards?view=${event.jobCardId}` : `/orders?view=${event.orderId}`}
           className="text-xs font-semibold text-primary hover:underline"
         >
           Open

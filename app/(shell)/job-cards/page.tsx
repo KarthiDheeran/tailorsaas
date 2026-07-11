@@ -149,6 +149,7 @@ function JobCardsContent() {
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState<JobCardStage | "all" | "active">("active");
+  const [focusedJobCardId, setFocusedJobCardId] = useState<string | null>(null);
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
   const [stockCard, setStockCard] = useState<JobCard | null>(null);
@@ -160,6 +161,15 @@ function JobCardsContent() {
   // after loading finishes, not "still loading".
   const [isLoading, setIsLoading] = useState(true);
   const [syncingCards, setSyncingCards] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewJobCardId = params.get("view");
+    if (!viewJobCardId) return;
+    setFocusedJobCardId(viewJobCardId);
+    setFilter("all");
+    window.history.replaceState({}, "", "/job-cards");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,6 +222,13 @@ function JobCardsContent() {
     if (filter === "active") return card.stage !== "Delivered" && card.stage !== "Cancelled";
     return card.stage === filter;
   });
+
+  useEffect(() => {
+    if (!focusedJobCardId || isLoading) return;
+    const row = document.querySelector(`[data-job-card-id="${focusedJobCardId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [filteredCards, focusedJobCardId, isLoading]);
   const customerFabricsByOrder = useMemo(() => {
     const byOrder = new Map<string, CustomerFabric[]>();
     for (const fabric of customerFabrics) {
@@ -373,7 +390,14 @@ function JobCardsContent() {
                 {filteredCards.map((card: JobCard) => {
                   const linkedFabrics = customerFabricsByOrder.get(card.orderId) ?? [];
                   return (
-                  <tr key={card.id} className="border-t border-border-soft hover:bg-surface">
+                  <tr
+                    key={card.id}
+                    data-job-card-id={card.id}
+                    className={cn(
+                      "border-t border-border-soft hover:bg-surface",
+                      focusedJobCardId === card.id && "bg-primary-tint ring-2 ring-primary/30"
+                    )}
+                  >
                     <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                       {card.jobCardNumber}
                     </td>
