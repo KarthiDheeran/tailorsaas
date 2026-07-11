@@ -18,7 +18,14 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { formatDate, OrderStatusChip } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards";
-import type { Order, Staff, TaskPriority, TaskType, WorkAssignment } from "@/lib/types";
+import type {
+  Order,
+  Staff,
+  StaffRole,
+  TaskPriority,
+  TaskType,
+  WorkAssignment,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -45,6 +52,21 @@ const TASK_TYPES: TaskType[] = [
 ];
 
 const PRIORITIES: TaskPriority[] = ["Low", "Normal", "High"];
+
+const TASK_ROLE_MATCH: Record<TaskType, StaffRole[]> = {
+  Measurement: ["Master Tailor", "Manager", "Owner/Admin"],
+  Cutting: ["Cutter", "Master Tailor"],
+  Stitching: ["Stitching Staff", "Master Tailor"],
+  Embroidery: ["Embroidery Staff", "Master Tailor"],
+  Finishing: ["Finishing Staff", "Master Tailor"],
+  Alteration: ["Alteration Staff", "Master Tailor"],
+  "Ironing/Packing": ["Finishing Staff", "Delivery Staff", "Master Tailor"],
+  Delivery: ["Delivery Staff", "Manager", "Owner/Admin"],
+};
+
+function isRecommendedStaffForTask(member: Staff, taskType: TaskType) {
+  return TASK_ROLE_MATCH[taskType].includes(member.role);
+}
 
 function StageBadge({ stage }: { stage: JobCardStage }) {
   const styles: Record<JobCardStage, string> = {
@@ -402,6 +424,10 @@ function AssignWorkDrawer({
   const [workNotes, setWorkNotes] = useState(card.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const recommendedStaff = staff.filter((member) =>
+    isRecommendedStaffForTask(member, taskType)
+  );
+  const otherStaff = staff.filter((member) => !isRecommendedStaffForTask(member, taskType));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -485,11 +511,32 @@ function AssignWorkDrawer({
               className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
             >
               <option value="">Select staff</option>
-              {staff.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name} - {member.role}
-                </option>
-              ))}
+              {recommendedStaff.length > 0 ? (
+                <>
+                  <optgroup label={`Recommended for ${taskType}`}>
+                    {recommendedStaff.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} - {member.role}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {otherStaff.length > 0 && (
+                    <optgroup label="Other active staff">
+                      {otherStaff.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} - {member.role}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </>
+              ) : (
+                staff.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name} - {member.role}
+                  </option>
+                ))
+              )}
             </select>
           </label>
 
