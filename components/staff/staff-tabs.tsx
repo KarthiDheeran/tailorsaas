@@ -14,14 +14,18 @@ export type StaffTab = (typeof TABS)[number]["key"];
 export function StaffTabs({
   active,
   onChange,
+  canManage,
 }: {
   active: StaffTab;
   onChange: (tab: StaffTab) => void;
+  canManage: boolean;
 }) {
   const { t } = useLanguage();
+  const tabs = canManage ? TABS : TABS.filter((tab) => tab.key === "work-queue");
+
   return (
     <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab.key}
           type="button"

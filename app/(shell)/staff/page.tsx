@@ -36,7 +36,7 @@ const EMPTY_FILTERS: StaffFilterState = {
 };
 
 function StaffPageContent() {
-  const { hasPermission } = useCurrentUser();
+  const { hasPermission, isLoading } = useCurrentUser();
   const { t } = useLanguage();
   const canManage = hasPermission("staff.manage");
   const [tab, setTab] = useState<StaffTab>("list");
@@ -51,14 +51,17 @@ function StaffPageContent() {
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  // Phase 5C: reads now go through a Server Action
-  // (app/(shell)/staff/actions.ts) against the same server-side copy of the
-  // mock staff array that the mutations write to, instead of a direct
-  // client-side lib/staff.ts/lib/data/stub-data.ts import.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!canManage && tab === "list") {
+      setTab("work-queue");
+    }
+  }, [canManage, isLoading, tab]);
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      getStaffListRowsAction(todayIso),
+      canManage ? getStaffListRowsAction(todayIso) : Promise.resolve([]),
       getWorkQueueRowsAction(todayIso),
       getJobCardsAction(todayIso),
     ])
@@ -77,8 +80,7 @@ function StaffPageContent() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [canManage, refreshKey, todayIso]);
 
   const rows = allRows.filter(({ staff }) => {
     const nameQuery = filters.nameQuery.trim().toLowerCase();
@@ -118,7 +120,9 @@ function StaffPageContent() {
         <div>
           <h1 className="text-[26px] font-semibold text-ink">{t("staff.title")}</h1>
           <p className="text-sm text-ink-muted">
-            {allRows.length} {t("staff.onRecord")}
+            {canManage
+              ? `${allRows.length} ${t("staff.onRecord")}`
+              : t("staff.workQueue")}
           </p>
         </div>
         {tab === "list" && canManage && (
@@ -132,7 +136,7 @@ function StaffPageContent() {
         )}
       </div>
 
-      <StaffTabs active={tab} onChange={setTab} />
+      <StaffTabs active={tab} onChange={setTab} canManage={canManage} />
 
       {loadError && (
         <div className="mb-5">
@@ -140,7 +144,7 @@ function StaffPageContent() {
         </div>
       )}
 
-      {tab === "list" && (
+      {tab === "list" && canManage && (
         <>
           <StaffFilters filters={filters} onChange={setFilters} />
           <StaffTable rows={rows} canManage={canManage} onDeactivate={handleDeactivate} />
