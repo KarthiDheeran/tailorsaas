@@ -21,6 +21,7 @@ import {
   ChevronsUpDown,
   Check,
   Languages,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -41,6 +42,7 @@ const navItems: {
 }[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/calendar", labelKey: "nav.calendar", icon: CalendarDays, permission: "calendar.view" },
+  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, anyOf: ["calendar.view", "orders.view", "customers.view"] },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
   { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
   { href: "/production", labelKey: "nav.production", icon: Workflow, anyOf: ["orders.view", "staff.view"] },

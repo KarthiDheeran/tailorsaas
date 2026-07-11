@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Clock,
   IndianRupee,
+  MessageCircle,
   Scissors,
   Send,
   Truck,
@@ -23,6 +24,7 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 import type { CalendarData, CalendarEvent, CalendarEventType } from "@/lib/calendar";
+import { buildWhatsAppUrl } from "@/lib/whatsapp";
 
 type CalendarMode = "today" | "week" | "month";
 
@@ -148,6 +150,7 @@ function CalendarContent() {
         targetId: event.reminderTargetId,
         reminderDate: event.date,
         message: event.reminderMessage,
+        phone: event.customerPhone,
       });
       setPendingEventKey(null);
       if (!result.success) {
@@ -404,6 +407,26 @@ function CalendarEventItem({
         </Link>
         {event.reminderSentAt ? (
           <span className="text-xs font-semibold text-chip-mint-fg">Sent</span>
+        ) : event.customerPhone ? (
+          <a
+            href={buildWhatsAppUrl(event.customerPhone, event.reminderMessage)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(clickEvent) => {
+              if (!remindersEnabled || pending) {
+                clickEvent.preventDefault();
+                return;
+              }
+              onMarkSent(event);
+            }}
+            className={cn(
+              "flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-semibold text-ink-muted hover:bg-surface",
+              (!remindersEnabled || pending) && "pointer-events-none opacity-50"
+            )}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            {pending ? "Saving" : "WhatsApp"}
+          </a>
         ) : (
           <button
             type="button"

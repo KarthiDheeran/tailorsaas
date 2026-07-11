@@ -219,6 +219,28 @@ export interface CustomerFabric {
   updatedAt: string;
 }
 
+export type WhatsAppMessageContextType =
+  | "Calendar"
+  | "Order"
+  | "Job Card"
+  | "Customer"
+  | "Delivery"
+  | "Payment";
+
+export type WhatsAppMessageStatus = "Opened" | "Marked Sent";
+
+export interface WhatsAppMessage {
+  id: string;
+  phone: string;
+  message: string;
+  contextType: WhatsAppMessageContextType;
+  contextId?: string;
+  status: WhatsAppMessageStatus;
+  sentBy?: string;
+  sentAt: string;
+  createdAt: string;
+}
+
 export type StaffRole =
   | "Master Tailor"
   | "Cutter"

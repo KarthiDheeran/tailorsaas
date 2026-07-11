@@ -23,6 +23,7 @@ export interface CalendarEvent {
   title: string;
   subtitle: string;
   customerName?: string;
+  customerPhone?: string;
   orderId?: string;
   orderNumber?: string;
   jobCardId?: string;
@@ -74,6 +75,7 @@ export async function getCalendarData(
         title: order.orderNumber,
         subtitle: `Delivery - ${customerName} - ${itemSummary(order.items.length)}`,
         customerName,
+        customerPhone,
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
@@ -95,6 +97,7 @@ export async function getCalendarData(
         title: order.orderNumber,
         subtitle: `Trial - ${customerName}`,
         customerName,
+        customerPhone,
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
@@ -120,6 +123,7 @@ export async function getCalendarData(
         title: order.orderNumber,
         subtitle: `Payment - ${customerName} - Rs ${Number(order.balance).toLocaleString("en-IN")}`,
         customerName,
+        customerPhone,
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: order.paymentStatus ?? "Due",
@@ -144,6 +148,7 @@ export async function getCalendarData(
       title: card.jobCardNumber,
       subtitle: `${card.taskType ?? card.stage} - ${card.garment}`,
       customerName: card.customer?.name,
+      customerPhone: card.customer?.phone,
       orderId: card.orderId,
       orderNumber: card.orderNumber,
       jobCardId: card.id,

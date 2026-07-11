@@ -14,6 +14,10 @@ import {
   type CalendarReminderTargetType,
   type CalendarReminderType,
 } from "@/lib/data/calendar-reminders-db";
+import {
+  isMissingWhatsAppMessagesSchemaError,
+  logWhatsAppMessage,
+} from "@/lib/data/whatsapp-messages-db";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -59,6 +63,7 @@ export async function markReminderSentAction(input: {
   targetId?: string;
   reminderDate: string;
   message: string;
+  phone?: string;
 }): Promise<ActionResult> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "calendar.view");
@@ -69,6 +74,9 @@ export async function markReminderSentAction(input: {
 
   try {
     await markCalendarReminderSent(supabase, input);
+    if (input.phone?.trim()) {
+      await logWhatsAppReminderIfEnabled(supabase, input);
+    }
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingCalendarRemindersSchemaError(error)) {
@@ -81,6 +89,29 @@ export async function markReminderSentAction(input: {
       success: false,
       error: error instanceof Error ? error.message : "Failed to mark reminder sent.",
     };
+  }
+}
+
+async function logWhatsAppReminderIfEnabled(
+  supabase: ReturnType<typeof createServerClient>,
+  input: {
+    targetId?: string;
+    targetType: CalendarReminderTargetType;
+    message: string;
+    phone?: string;
+  }
+) {
+  try {
+    await logWhatsAppMessage(supabase, {
+      phone: input.phone ?? "",
+      message: input.message,
+      contextType: input.targetType === "Job Card" ? "Job Card" : "Order",
+      contextId: input.targetId,
+      status: "Marked Sent",
+    });
+  } catch (error) {
+    if (isMissingWhatsAppMessagesSchemaError(error)) return;
+    throw error;
   }
 }
 

@@ -1,4 +1,5 @@
 import { Phone, MessageCircle } from "lucide-react";
+import { buildWhatsAppUrl } from "@/lib/whatsapp";
 
 export function ContactActions({
   phone,
@@ -17,7 +18,7 @@ export function ContactActions({
         <Phone className="h-3.5 w-3.5" />
       </a>
       <a
-        href={`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`}
+        href={buildWhatsAppUrl(phone, message)}
         target="_blank"
         rel="noopener noreferrer"
         title="WhatsApp"
