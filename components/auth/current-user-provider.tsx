@@ -144,27 +144,48 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   // Full roles list — Users & Access Roles tab, and the Users tab's role
   // dropdown/name lookup.
   useEffect(() => {
+    if (!authUserId) {
+      setRoles([]);
+      return;
+    }
+
     let cancelled = false;
-    getRoles(createClient()).then((r) => {
-      if (!cancelled) setRoles(r);
-    });
+    getRoles(createClient())
+      .then((r) => {
+        if (!cancelled) setRoles(r);
+      })
+      .catch(() => {
+        if (!cancelled) setRoles([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [refreshTick]);
+  }, [authUserId, refreshTick]);
 
   // Full users list — Users & Access Users tab, and the last-Admin check's
   // client-side immediate feedback (the server action re-checks this
   // authoritatively with its own fresh fetch, never trusting this copy).
   useEffect(() => {
+    const canLoadUsers =
+      !!authUserId && !!profile?.active && !!role?.permissions.includes("settings.manageUsers");
+
+    if (!canLoadUsers) {
+      setUsers([]);
+      return;
+    }
+
     let cancelled = false;
-    getAppUsers(createClient()).then((u) => {
-      if (!cancelled) setUsers(u);
-    });
+    getAppUsers(createClient())
+      .then((u) => {
+        if (!cancelled) setUsers(u);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [refreshTick]);
+  }, [authUserId, profile?.active, role?.permissions, refreshTick]);
 
   const createRole = useCallback(async (input: RoleInput): Promise<ActionResult> => {
     const result = await createRoleAction(input);
