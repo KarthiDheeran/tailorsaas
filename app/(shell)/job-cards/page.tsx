@@ -19,6 +19,7 @@ import { formatDate, OrderStatusChip } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards";
 import type { Order, Staff, TaskPriority, TaskType, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" }[] = [
   { label: "Active", value: "active" },
@@ -106,6 +107,7 @@ function JobCardsContent() {
   const [filter, setFilter] = useState<JobCardStage | "all" | "active">("active");
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,15 +116,20 @@ function JobCardsContent() {
       getOrdersAction(),
       getStaffAction(),
       getWorkAssignmentsAction(),
-    ]).then(
-      ([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
+    ])
+      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
         if (cancelled) return;
         setPersistedCards(jobCardsResult);
         setOrders(ordersResult);
         setStaff(staffResult.filter((member) => member.status === "Active"));
         setAssignments(assignmentsResult);
-      }
-    );
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load job cards."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -151,6 +158,12 @@ function JobCardsContent() {
           Garment-level work cards for assignment, production, and delivery tracking.
         </p>
       </div>
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+        </div>
+      )}
 
       {persistedCards === null && (
         <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">

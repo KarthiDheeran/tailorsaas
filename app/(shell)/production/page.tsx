@@ -20,6 +20,7 @@ import { formatDate } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type ProductionBucket } from "@/lib/job-cards";
 import type { Order, Staff, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const BUCKETS: ProductionBucket[] = [
   "Unassigned",
@@ -190,6 +191,7 @@ function ProductionContent() {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,15 +200,20 @@ function ProductionContent() {
       getOrdersAction(),
       getStaffAction(),
       getWorkAssignmentsAction(),
-    ]).then(
-      ([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
+    ])
+      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult]) => {
         if (cancelled) return;
         setPersistedCards(jobCardsResult);
         setOrders(ordersResult);
         setStaff(staffResult);
         setAssignments(assignmentsResult);
-      }
-    );
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load production board."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -236,6 +243,12 @@ function ProductionContent() {
           Workshop board for garment-level job cards.
         </p>
       </div>
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+        </div>
+      )}
 
       <div className="mb-4 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
         {persistedCards === null

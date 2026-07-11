@@ -30,6 +30,7 @@ import {
 import { expenseCategories, paymentModes } from "@/lib/constants";
 import type { Expense, ExpenseCategory, Order, PaymentMode, PaymentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 // Phase 7G: a deliberately simpler date-filter set than Reports' full
@@ -75,7 +76,7 @@ function PaymentsPageContent() {
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
   const [paymentType, setPaymentType] = useState<PaymentType | "">("");
   const [query, setQuery] = useState("");
-  const [refreshTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [report, setReport] = useState<PaymentsReport>(EMPTY_REPORT);
   // Phase 7G: the 4 operational summary cards are a fixed "how's today
   // going" pulse — always scoped to today's date, independent of whatever
@@ -101,6 +102,7 @@ function PaymentsPageContent() {
   const [expenseRefreshKey, setExpenseRefreshKey] = useState(0);
   const [expensesMigrationMissing, setExpensesMigrationMissing] = useState(false);
   const [tab, setTab] = useState<PaymentsTab>(canViewPayments ? "collections" : "expenses");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
 
@@ -126,6 +128,11 @@ function PaymentsPageContent() {
       todayIso
     ).then((result) => {
       if (!cancelled && result) setReport(result);
+      if (!cancelled) setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load payment collections."));
+      }
     });
     return () => {
       cancelled = true;
@@ -139,8 +146,13 @@ function PaymentsPageContent() {
     getPaymentsLedgerAction({ range: { from: todayIso, to: todayIso } }, todayIso).then(
       (result) => {
         if (!cancelled && result) setTodayReport(result);
+        if (!cancelled) setLoadError(null);
       }
-    );
+    ).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load today's collections."));
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -152,6 +164,11 @@ function PaymentsPageContent() {
     let cancelled = false;
     getPendingDuesAction().then((result) => {
       if (!cancelled && result !== null) setPendingDues(result);
+      if (!cancelled) setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load pending dues."));
+      }
     });
     return () => {
       cancelled = true;
@@ -163,6 +180,11 @@ function PaymentsPageContent() {
     let cancelled = false;
     getPendingDuesOrdersAction().then((result) => {
       if (!cancelled && result !== null) setPendingDuesOrders(result);
+      if (!cancelled) setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load pending due orders."));
+      }
     });
     return () => {
       cancelled = true;
@@ -183,6 +205,11 @@ function PaymentsPageContent() {
       if (cancelled) return;
       setExpensesMigrationMissing(result === null);
       setExpenses(result ?? []);
+      setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load expenses."));
+      }
     });
     return () => {
       cancelled = true;
@@ -207,6 +234,11 @@ function PaymentsPageContent() {
       if (cancelled) return;
       setExpensesMigrationMissing(result === null);
       setTodayExpenses(result ?? 0);
+      setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load today's expenses."));
+      }
     });
     return () => {
       cancelled = true;
@@ -264,6 +296,18 @@ function PaymentsPageContent() {
         canViewPayments={canViewPayments}
         canViewExpenses={canViewExpenses}
       />
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError
+            message={loadError}
+            onRetry={() => {
+              setRefreshTick((key) => key + 1);
+              setExpenseRefreshKey((key) => key + 1);
+            }}
+          />
+        </div>
+      )}
 
       {tab === "pending-dues" && <PendingDuesTable orders={pendingDuesOrders} />}
 

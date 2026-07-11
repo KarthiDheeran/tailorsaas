@@ -24,6 +24,7 @@ import { TrialQueue } from "@/components/dashboard/trial-queue";
 import { PaymentPending } from "@/components/dashboard/payment-pending";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const STAT_ICONS = {
   "Orders Today": ShoppingBag,
@@ -57,17 +58,34 @@ function DashboardContent() {
   // unguarded lib/dashboard.ts call) — starts null and fills in a moment
   // after mount, same cost already accepted by every other migrated page.
   const [data, setData] = useState<DashboardData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getDashboardDataAction(todayIso).then((result) => {
-      if (!cancelled) setData(result);
-    });
+    getDashboardDataAction(todayIso)
+      .then((result) => {
+        if (cancelled) return;
+        setData(result);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load dashboard."));
+        }
+      });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (loadError && !data) {
+    return (
+      <div className="mx-auto max-w-7xl p-8">
+        <LoadError message={loadError} onRetry={() => window.location.reload()} />
+      </div>
+    );
+  }
 
   if (!data) return null;
 
@@ -96,6 +114,12 @@ function DashboardContent() {
           </Link>
         )}
       </div>
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => window.location.reload()} />
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {visibleStats.map((stat) => (

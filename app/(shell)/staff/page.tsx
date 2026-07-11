@@ -27,6 +27,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { formatDate } from "@/components/orders/orders-table";
 import type { JobCard } from "@/lib/job-cards";
 import { cn } from "@/lib/utils";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const EMPTY_FILTERS: StaffFilterState = {
   nameQuery: "",
@@ -44,6 +45,7 @@ function StaffPageContent() {
   const [allRows, setAllRows] = useState<StaffListRow[]>([]);
   const [workQueueRows, setWorkQueueRows] = useState<WorkQueueRow[]>([]);
   const [jobCardQueueRows, setJobCardQueueRows] = useState<JobCard[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
@@ -59,14 +61,19 @@ function StaffPageContent() {
       getStaffListRowsAction(todayIso),
       getWorkQueueRowsAction(todayIso),
       getJobCardsAction(todayIso),
-    ]).then(
-      ([staffRows, queueRows, jobCards]) => {
+    ])
+      .then(([staffRows, queueRows, jobCards]) => {
         if (cancelled) return;
         setAllRows(staffRows);
         setWorkQueueRows(queueRows);
         setJobCardQueueRows(jobCards);
-      }
-    );
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load staff data."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -126,6 +133,12 @@ function StaffPageContent() {
       </div>
 
       <StaffTabs active={tab} onChange={setTab} />
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => setRefreshKey((k) => k + 1)} />
+        </div>
+      )}
 
       {tab === "list" && (
         <>

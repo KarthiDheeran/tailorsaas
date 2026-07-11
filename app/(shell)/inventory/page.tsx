@@ -28,6 +28,7 @@ import type {
   InventoryUnit,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 type InventoryTab = "stock" | "customer-fabric";
 
@@ -52,16 +53,22 @@ function InventoryContent() {
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [showCustomerFabricDrawer, setShowCustomerFabricDrawer] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getInventoryItemsAction(), getCustomerFabricsAction()]).then(
-      ([stockRows, fabricRows]) => {
+    Promise.all([getInventoryItemsAction(), getCustomerFabricsAction()])
+      .then(([stockRows, fabricRows]) => {
         if (cancelled) return;
         setItems(stockRows);
         setCustomerFabrics(fabricRows);
-      }
-    );
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load inventory."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -125,6 +132,12 @@ function InventoryContent() {
         <Stat label="Low Stock" value={lowStockCount.toString()} icon={AlertTriangle} tone="warning" />
         <Stat label="Stock Value" value={money(stockValue)} icon={Shirt} />
       </div>
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+        </div>
+      )}
 
       {inventoryMigrationMissing && (
         <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">

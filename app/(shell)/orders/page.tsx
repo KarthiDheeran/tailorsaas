@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -62,6 +63,7 @@ function OrdersPageContent() {
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Phase 5A: orders + customers now come from Server Actions (both reads
   // and writes go through app/(shell)/orders/actions.ts and
@@ -73,13 +75,18 @@ function OrdersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getOrdersAction(), getCustomersAction()]).then(
-      ([ordersResult, customersResult]) => {
+    Promise.all([getOrdersAction(), getCustomersAction()])
+      .then(([ordersResult, customersResult]) => {
         if (cancelled) return;
         setOrders(ordersResult);
         setCustomersById(Object.fromEntries(customersResult.map((c) => [c.id, c])));
-      }
-    );
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load orders."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -91,9 +98,17 @@ function OrdersPageContent() {
       return;
     }
     let cancelled = false;
-    getOrdersForCustomerAction(selectedCustomer.id).then((result) => {
-      if (!cancelled) setCustomerOrders(result);
-    });
+    getOrdersForCustomerAction(selectedCustomer.id)
+      .then((result) => {
+        if (cancelled) return;
+        setCustomerOrders(result);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load customer orders."));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -111,9 +126,13 @@ function OrdersPageContent() {
     if (created) {
       setShowCreatedToast(true);
       if (orderId) {
-        getOrderByIdAction(orderId).then((order) => {
-          if (order) setDetailsOrder(order);
-        });
+        getOrderByIdAction(orderId)
+          .then((order) => {
+            if (order) setDetailsOrder(order);
+          })
+          .catch((error) => {
+            setLoadError(getErrorMessage(error, "Failed to open the created order."));
+          });
       }
       window.history.replaceState({}, "", "/orders");
       const timer = setTimeout(() => setShowCreatedToast(false), 4000);
@@ -126,9 +145,13 @@ function OrdersPageContent() {
     // the created-toast case above.
     const viewOrderId = params.get("view");
     if (viewOrderId) {
-      getOrderByIdAction(viewOrderId).then((order) => {
-        if (order) setDetailsOrder(order);
-      });
+      getOrderByIdAction(viewOrderId)
+        .then((order) => {
+          if (order) setDetailsOrder(order);
+        })
+        .catch((error) => {
+          setLoadError(getErrorMessage(error, "Failed to open the selected order."));
+        });
       window.history.replaceState({}, "", "/orders");
     }
   }, []);
@@ -314,6 +337,12 @@ function OrdersPageContent() {
           </Link>
         )}
       </div>
+
+      {loadError && (
+        <div className="mb-5">
+          <LoadError message={loadError} onRetry={() => setRefreshTick((t) => t + 1)} />
+        </div>
+      )}
 
       {!selectedCustomer && (
         <OrderListFilters
