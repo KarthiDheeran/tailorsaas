@@ -43,11 +43,13 @@ const BUCKET_HELP: Record<ProductionBucket, string> = {
 function ProductionCard({
   card,
   canUpdate,
+  canViewOrders,
   todayIso,
   onUpdated,
 }: {
   card: JobCard;
   canUpdate: boolean;
+  canViewOrders: boolean;
   todayIso: string;
   onUpdated: () => void;
 }) {
@@ -120,12 +122,14 @@ function ProductionCard({
         )}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Link
-          href={`/orders?view=${card.orderId}`}
-          className="text-xs font-semibold text-primary hover:underline"
-        >
-          View Order
-        </Link>
+        {canViewOrders && (
+          <Link
+            href={`/orders?view=${card.orderId}`}
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            View Order
+          </Link>
+        )}
         {canUpdate && canStart && (
           <button
             type="button"
@@ -185,6 +189,7 @@ function Stat({
 function ProductionContent() {
   const { currentUser, hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
+  const canViewOrders = hasPermission("orders.view");
   const currentStaffId = currentUser?.staff_id ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -286,6 +291,7 @@ function ProductionContent() {
                     key={card.id}
                     card={card}
                     canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
+                    canViewOrders={canViewOrders}
                     todayIso={todayIso}
                     onUpdated={() => setRefreshKey((key) => key + 1)}
                   />

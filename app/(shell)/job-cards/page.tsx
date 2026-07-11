@@ -99,6 +99,7 @@ function SummaryCard({
 function JobCardsContent() {
   const { hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
+  const canViewOrders = hasPermission("orders.view");
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -233,9 +234,16 @@ function JobCardsContent() {
                   )}
                 </td>
                 <td className="whitespace-nowrap px-5 py-3">
-                  <Link href={`/orders?view=${card.orderId}`} className="font-medium text-primary hover:underline">
-                    {card.orderNumber}
-                  </Link>
+                  {canViewOrders ? (
+                    <Link
+                      href={`/orders?view=${card.orderId}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {card.orderNumber}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-ink-muted">{card.orderNumber}</span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{card.assignedTo}</td>
                 <td className="whitespace-nowrap px-5 py-3">
