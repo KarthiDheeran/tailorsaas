@@ -13,6 +13,7 @@
 
 export type Permission =
   | "dashboard.view"
+  | "calendar.view"
   | "orders.view"
   | "orders.create"
   | "orders.edit"
@@ -52,6 +53,7 @@ export interface PermissionDefinition {
 // permissions get listed (Roles checklist, etc).
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "dashboard.view", label: "View dashboard", group: "Dashboard" },
+  { key: "calendar.view", label: "View calendar", group: "Calendar" },
 
   { key: "orders.view", label: "View orders", group: "Orders" },
   { key: "orders.create", label: "Create orders", group: "Orders" },

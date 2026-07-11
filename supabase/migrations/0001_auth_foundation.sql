@@ -182,6 +182,7 @@ insert into roles (id, name, description, type, permissions) values
     'system',
     array[
       'dashboard.view',
+      'calendar.view',
       'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.changeStatus',
       'orders.viewPayments', 'orders.recordPayment', 'orders.voidPayment',
       'orders.printCustomerReceipt', 'orders.printJobCard',
@@ -202,6 +203,7 @@ insert into roles (id, name, description, type, permissions) values
     'system',
     array[
       'dashboard.view',
+      'calendar.view',
       'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.changeStatus',
       'orders.viewPayments', 'orders.recordPayment',
       'orders.printCustomerReceipt', 'orders.printJobCard',

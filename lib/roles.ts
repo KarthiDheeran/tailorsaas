@@ -44,6 +44,7 @@ export const SYSTEM_ROLE_IDS = {
 // database level too).
 export const DEFAULT_MANAGER_PERMISSIONS: Permission[] = [
   "dashboard.view",
+  "calendar.view",
   "orders.view",
   "orders.create",
   "orders.edit",

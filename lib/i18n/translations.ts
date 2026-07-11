@@ -60,6 +60,7 @@ const en = {
 
   // ---- navigation ------------------------------------------------------
   "nav.dashboard": "Dashboard",
+  "nav.calendar": "Calendar",
   "nav.orders": "Orders",
   "nav.jobCards": "Job Cards",
   "nav.production": "Production",
@@ -605,6 +606,7 @@ const ta: Record<TranslationKey, string> = {
 
   // ---- navigation ------------------------------------------------------
   "nav.dashboard": "டாஷ்போர்டு",
+  "nav.calendar": "நாட்காட்டி",
   "nav.orders": "ஆர்டர்கள்",
   "nav.jobCards": "ஜாப் கார்டுகள்",
   "nav.production": "உற்பத்தி",

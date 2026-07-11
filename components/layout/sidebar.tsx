@@ -11,6 +11,7 @@ import {
   Users,
   Users2,
   BarChart3,
+  CalendarDays,
   Shirt,
   FileText,
   Workflow,
@@ -37,6 +38,7 @@ const navItems: {
   activePrefixes?: string[];
 }[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+  { href: "/calendar", labelKey: "nav.calendar", icon: CalendarDays, permission: "calendar.view" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
   { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
   { href: "/production", labelKey: "nav.production", icon: Workflow, anyOf: ["orders.view", "staff.view"] },
