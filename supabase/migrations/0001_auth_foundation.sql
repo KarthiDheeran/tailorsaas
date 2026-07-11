@@ -219,7 +219,6 @@ insert into roles (id, name, description, type, permissions) values
     'Production-floor access: order status and job cards only — no money, no customer browsing.',
     'system',
     array[
-      'dashboard.view',
       'staff.view',
       'customers.viewMeasurements'
     ]

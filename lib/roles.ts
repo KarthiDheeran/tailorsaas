@@ -67,7 +67,6 @@ export const DEFAULT_MANAGER_PERMISSIONS: Permission[] = [
 ];
 
 export const DEFAULT_STAFF_PERMISSIONS: Permission[] = [
-  "dashboard.view",
   "staff.view",
   "customers.viewMeasurements",
 ];

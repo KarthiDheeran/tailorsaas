@@ -10,8 +10,8 @@ import { getDashboardData, type DashboardData } from "@/lib/dashboard";
 // lib/dashboard.ts directly, client-side, with zero permission check at all).
 //
 // Dashboard is a derived, read-only summary — intentionally decoupled from
-// orders.view (a role with only dashboard.view, e.g. the built-in Staff
-// preset, must not need orders.view separately just to load this page).
+// orders.view, so owner/manager roles can load operational signals without
+// needing the raw Orders screen as an extra dependency.
 // Once dashboard.view is confirmed via the normal cookie-based client, the
 // actual order data is fetched with the admin client (see
 // lib/supabase/admin.ts's updated comment) — bypassing orders' RLS — rather
