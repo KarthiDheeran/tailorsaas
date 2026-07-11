@@ -10,6 +10,7 @@ import {
 } from "@/app/(shell)/job-cards/actions";
 import {
   getCustomerFabricsAction,
+  getInventoryItemsAction,
   updateCustomerFabricStatusAction,
 } from "@/app/(shell)/inventory/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
@@ -25,6 +26,7 @@ import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards"
 import type {
   CustomerFabric,
   CustomerFabricStatus,
+  InventoryItem,
   Order,
   Staff,
   StaffRole,
@@ -41,6 +43,7 @@ import {
   type JobCardFabricSourceValue,
 } from "@/components/job-cards/fabric-info";
 import { CustomerFabricDrawer } from "@/components/job-cards/customer-fabric-drawer";
+import { StockConsumptionDrawer } from "@/components/job-cards/stock-consumption-drawer";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" }[] = [
   { label: "Active", value: "active" },
@@ -144,9 +147,11 @@ function JobCardsContent() {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState<JobCardStage | "all" | "active">("active");
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
+  const [stockCard, setStockCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Only gates the very first load — refreshKey-triggered refetches (assign
@@ -164,16 +169,27 @@ function JobCardsContent() {
       getStaffAction(),
       getWorkAssignmentsAction(),
       canViewInventory ? getCustomerFabricsAction() : Promise.resolve([]),
+      canViewInventory ? getInventoryItemsAction() : Promise.resolve([]),
     ])
-      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult, fabricsResult]) => {
-        if (cancelled) return;
-        setPersistedCards(jobCardsResult);
-        setOrders(ordersResult);
-        setStaff(staffResult.filter((member) => member.status === "Active"));
-        setAssignments(assignmentsResult);
-        setCustomerFabrics(fabricsResult ?? []);
-        setLoadError(null);
-      })
+      .then(
+        ([
+          jobCardsResult,
+          ordersResult,
+          staffResult,
+          assignmentsResult,
+          fabricsResult,
+          inventoryItemsResult,
+        ]) => {
+          if (cancelled) return;
+          setPersistedCards(jobCardsResult);
+          setOrders(ordersResult);
+          setStaff(staffResult.filter((member) => member.status === "Active"));
+          setAssignments(assignmentsResult);
+          setCustomerFabrics(fabricsResult ?? []);
+          setInventoryItems(inventoryItemsResult ?? []);
+          setLoadError(null);
+        }
+      )
       .catch((error) => {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load job cards."));
@@ -415,13 +431,22 @@ function JobCardsContent() {
                       <td className="whitespace-nowrap px-5 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           {canManageInventory && (
-                            <button
-                              type="button"
-                              onClick={() => setFabricCard(card)}
-                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
-                            >
-                              Add Fabric
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setStockCard(card)}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                              >
+                                Use Stock
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFabricCard(card)}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                              >
+                                Add Fabric
+                              </button>
+                            </>
                           )}
                           {canManageStaff && (
                             <button
@@ -470,6 +495,19 @@ function JobCardsContent() {
           onClose={() => setFabricCard(null)}
           onSaved={() => {
             setFabricCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {stockCard && (
+        <StockConsumptionDrawer
+          card={stockCard}
+          items={inventoryItems}
+          todayIso={todayIso}
+          onClose={() => setStockCard(null)}
+          onSaved={() => {
+            setStockCard(null);
             setRefreshKey((key) => key + 1);
           }}
         />

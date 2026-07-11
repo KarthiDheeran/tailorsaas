@@ -26,7 +26,7 @@ export function CustomerFabricDrawer({
   const [unit, setUnit] = useState<InventoryUnit>("meter");
   const [receivedDate, setReceivedDate] = useState(todayIso);
   const [notes, setNotes] = useState(
-    `${card.jobCardNumber} · ${card.garment} · ${card.orderNumber}`
+    `${card.jobCardNumber} - ${card.garment} - ${card.orderNumber}`
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -73,7 +73,7 @@ export function CustomerFabricDrawer({
           <div>
             <h2 className="text-lg font-semibold text-ink">Record Customer Fabric</h2>
             <p className="text-sm text-ink-muted">
-              {card.jobCardNumber} · {card.garment}
+              {card.jobCardNumber} - {card.garment}
             </p>
           </div>
           <button
