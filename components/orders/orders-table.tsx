@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { ArrowUp, ArrowDown, ChevronsUpDown, Inbox } from "lucide-react";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
@@ -71,10 +71,24 @@ export function OrderStatusEditor({
   onStatusChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const { effectivePermissions } = useCurrentUser();
   const { t } = useLanguage();
   const style = ORDER_STATUS_STYLES[order.status];
   const availableStatuses = getAvailableOrderStatuses(effectivePermissions);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleDocumentClick(event: globalThis.MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("click", handleDocumentClick);
+    return () => document.removeEventListener("click", handleDocumentClick);
+  }, [open]);
 
   // No status this user is allowed to set — fall back to a read-only chip
   // rather than an editor with an empty menu.
@@ -94,7 +108,7 @@ export function OrderStatusEditor({
   }
 
   return (
-    <div className="relative inline-block">
+    <div ref={rootRef} className="relative inline-block">
       <button
         type="button"
         onClick={(e) => {
@@ -106,28 +120,22 @@ export function OrderStatusEditor({
         {t(ORDER_STATUS_LABEL_KEYS[order.status])}
       </button>
       {open && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-            }}
-          />
-          <ul className="absolute left-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
-            {availableStatuses.map((s) => (
-              <li key={s}>
-                <button
-                  type="button"
-                  onClick={(e) => handleSelect(s, e)}
-                  className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
-                >
-                  {t(ORDER_STATUS_LABEL_KEYS[s])}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
+        <ul
+          className="absolute left-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {availableStatuses.map((s) => (
+            <li key={s}>
+              <button
+                type="button"
+                onClick={(e) => handleSelect(s, e)}
+                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+              >
+                {t(ORDER_STATUS_LABEL_KEYS[s])}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
