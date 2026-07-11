@@ -39,9 +39,7 @@ export type Permission =
   | "reports.view"
   | "settings.view"
   | "settings.manageUsers"
-  | "settings.manageRoles"
-  | "shopSettings.view"
-  | "shopSettings.edit";
+  | "settings.manageRoles";
 
 export interface PermissionDefinition {
   key: Permission;
@@ -89,8 +87,6 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "settings.view", label: "View settings", group: "Settings" },
   { key: "settings.manageUsers", label: "Manage users", group: "Settings" },
   { key: "settings.manageRoles", label: "Manage roles and permissions", group: "Settings" },
-  { key: "shopSettings.view", label: "View shop settings", group: "Settings" },
-  { key: "shopSettings.edit", label: "Edit shop settings", group: "Settings" },
 ];
 
 export const ALL_PERMISSIONS: Permission[] = PERMISSION_DEFINITIONS.map((p) => p.key);
@@ -183,7 +179,6 @@ export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
   "staff.manage": "staff.view",
   "settings.manageUsers": "settings.view",
   "settings.manageRoles": "settings.view",
-  "shopSettings.edit": "shopSettings.view",
 };
 
 // Applies one checkbox toggle plus its cascade effect. Ordering matches the
