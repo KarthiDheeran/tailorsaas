@@ -69,3 +69,31 @@ export async function getServerCallerPermissions(
     .maybeSingle();
   return (role?.permissions as Permission[]) ?? [];
 }
+
+export async function getServerCallerContext(
+  supabase: SupabaseClient
+): Promise<{ userId: string; staffId: string | null; permissions: Permission[] } | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role_id, active, staff_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profile || !profile.active) return null;
+
+  const { data: role } = await supabase
+    .from("roles")
+    .select("permissions")
+    .eq("id", profile.role_id)
+    .maybeSingle();
+
+  return {
+    userId: user.id,
+    staffId: (profile.staff_id as string | null) ?? null,
+    permissions: (role?.permissions as Permission[]) ?? [],
+  };
+}

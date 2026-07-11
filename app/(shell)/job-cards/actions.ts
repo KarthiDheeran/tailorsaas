@@ -1,12 +1,14 @@
 "use server";
 
 import {
+  getServerCallerContext,
   getServerCallerPermissions,
   requireServerPermission,
 } from "@/lib/auth/require-server-permission";
 import {
   assignJobCard,
   completeJobCard,
+  getJobCardAssignedStaffId,
   getJobCards,
   isMissingJobCardsSchemaError,
   startJobCard,
@@ -15,8 +17,9 @@ import {
 } from "@/lib/data/job-cards-db";
 import { getStaff } from "@/lib/data/staff-db";
 import type { JobCard } from "@/lib/job-cards";
-import { hasAnyPermission } from "@/lib/permissions";
+import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type { TaskPriority, TaskType } from "@/lib/types";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 type ActionResult<T = undefined> =
@@ -80,12 +83,12 @@ export async function startJobCardAction(
   todayIso: string
 ): Promise<ActionResult> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.manage");
+  const guard = await requireJobCardProgressAccess(supabase, id);
   if (!guard.ok) return { success: false, error: guard.error };
   if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
 
   try {
-    await startJobCard(supabase, id, todayIso);
+    await startJobCard(createAdminClient(), id, todayIso);
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -103,12 +106,12 @@ export async function completeJobCardAction(
   todayIso: string
 ): Promise<ActionResult> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.manage");
+  const guard = await requireJobCardProgressAccess(supabase, id);
   if (!guard.ok) return { success: false, error: guard.error };
   if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
 
   try {
-    await completeJobCard(supabase, id, todayIso);
+    await completeJobCard(createAdminClient(), id, todayIso);
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -146,4 +149,23 @@ function validateAssignment(data: JobCardAssignmentInput): string | null {
   if (!ISO_DATE.test(data.dueDate)) return "A valid due date is required.";
   if (!VALID_PRIORITIES.has(data.priority)) return "Invalid priority.";
   return null;
+}
+
+async function requireJobCardProgressAccess(
+  supabase: ReturnType<typeof createServerClient>,
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const context = await getServerCallerContext(supabase);
+  if (!context) return { ok: false, error: "Not signed in." };
+  if (hasPermission(context.permissions, "staff.manage")) return { ok: true };
+  if (!hasPermission(context.permissions, "staff.view") || !context.staffId) {
+    return { ok: false, error: "You don't have permission to update this job card." };
+  }
+
+  const assignedStaffId = await getJobCardAssignedStaffId(supabase, id);
+  if (assignedStaffId === undefined) return { ok: false, error: "Job card not found." };
+  if (assignedStaffId !== context.staffId) {
+    return { ok: false, error: "You can only update job cards assigned to you." };
+  }
+  return { ok: true };
 }

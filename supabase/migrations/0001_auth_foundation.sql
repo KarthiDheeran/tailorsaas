@@ -183,14 +183,16 @@ insert into roles (id, name, description, type, permissions) values
     array[
       'dashboard.view',
       'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.changeStatus',
-      'orders.viewPayments', 'orders.printCustomerReceipt', 'orders.printJobCard',
+      'orders.viewPayments', 'orders.recordPayment', 'orders.voidPayment',
+      'orders.printCustomerReceipt', 'orders.printJobCard',
+      'expenses.view', 'expenses.manage',
+      'inventory.view', 'inventory.manage',
       'customers.view', 'customers.create', 'customers.edit',
       'customers.viewMeasurements', 'customers.editMeasurements',
       'catalog.view', 'catalog.manage',
       'staff.view', 'staff.manage',
       'reports.view',
-      'settings.view', 'settings.manageUsers', 'settings.manageRoles',
-      'shopSettings.view', 'shopSettings.edit'
+      'settings.view', 'settings.manageUsers', 'settings.manageRoles'
     ]
   ),
   (
@@ -201,7 +203,10 @@ insert into roles (id, name, description, type, permissions) values
     array[
       'dashboard.view',
       'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.changeStatus',
-      'orders.viewPayments', 'orders.printCustomerReceipt', 'orders.printJobCard',
+      'orders.viewPayments', 'orders.recordPayment',
+      'orders.printCustomerReceipt', 'orders.printJobCard',
+      'expenses.view', 'expenses.manage',
+      'inventory.view', 'inventory.manage',
       'customers.view', 'customers.create', 'customers.edit',
       'customers.viewMeasurements', 'customers.editMeasurements',
       'catalog.view',
@@ -215,7 +220,7 @@ insert into roles (id, name, description, type, permissions) values
     'system',
     array[
       'dashboard.view',
-      'orders.view', 'orders.changeStatus', 'orders.printJobCard',
+      'staff.view',
       'customers.viewMeasurements'
     ]
   );

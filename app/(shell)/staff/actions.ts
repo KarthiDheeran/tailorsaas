@@ -1,13 +1,18 @@
 "use server";
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getServerCallerContext,
+  requireServerPermission,
+} from "@/lib/auth/require-server-permission";
 import {
   createStaff,
   createWorkAssignment,
   getStaff,
   getStaffById,
   getStaffPaymentsForStaff,
+  getWorkAssignmentAssignedStaffId,
   getWorkAssignments,
   getWorkAssignmentsForStaff,
   recordStaffPayment,
@@ -23,6 +28,7 @@ import {
   type StaffListRow,
   type WorkQueueRow,
 } from "@/lib/staff";
+import { hasPermission } from "@/lib/permissions";
 import type {
   PaymentMode,
   Staff,
@@ -233,7 +239,7 @@ export async function updateWorkAssignmentAction(
   patch: WorkAssignmentPatch
 ): Promise<ActionResult<WorkAssignment>> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.manage");
+  const guard = await requireWorkAssignmentUpdateAccess(supabase, id, patch);
   if (!guard.ok) return { success: false, error: guard.error };
 
   if (patch.assignedStaffId && !(await getStaffById(supabase, patch.assignedStaffId))) {
@@ -248,9 +254,38 @@ export async function updateWorkAssignmentAction(
     }
   }
 
-  const assignment = await updateWorkAssignment(supabase, id, patch);
+  const assignment = await updateWorkAssignment(createAdminClient(), id, patch);
   if (!assignment) return { success: false, error: "Work assignment not found." };
   return { success: true, data: assignment };
+}
+
+async function requireWorkAssignmentUpdateAccess(
+  supabase: ReturnType<typeof createServerClient>,
+  id: string,
+  patch: WorkAssignmentPatch
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const context = await getServerCallerContext(supabase);
+  if (!context) return { ok: false, error: "Not signed in." };
+  if (hasPermission(context.permissions, "staff.manage")) return { ok: true };
+
+  const progressOnly =
+    patch.assignedStaffId === undefined &&
+    patch.dueDate === undefined &&
+    patch.priority === undefined &&
+    patch.cancelled === undefined &&
+    patch.workNotes === undefined &&
+    (patch.startedDate !== undefined || patch.completedDate !== undefined);
+
+  if (!progressOnly || !hasPermission(context.permissions, "staff.view") || !context.staffId) {
+    return { ok: false, error: "You don't have permission to update this assignment." };
+  }
+
+  const assignedStaffId = await getWorkAssignmentAssignedStaffId(supabase, id);
+  if (!assignedStaffId) return { ok: false, error: "Work assignment not found." };
+  if (assignedStaffId !== context.staffId) {
+    return { ok: false, error: "You can only update work assigned to you." };
+  }
+  return { ok: true };
 }
 
 export interface StaffPaymentInput {

@@ -238,6 +238,19 @@ export async function getWorkAssignmentsForOrder(
   return ((data as unknown as WorkAssignmentRow[]) ?? []).map(mapWorkAssignment);
 }
 
+export async function getWorkAssignmentAssignedStaffId(
+  supabase: SupabaseClient,
+  id: string
+): Promise<string | undefined> {
+  const { data, error } = await supabase
+    .from("work_assignments")
+    .select("assigned_staff_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? (data as { assigned_staff_id: string }).assigned_staff_id : undefined;
+}
+
 export interface WorkAssignmentInput {
   orderId: string;
   orderItemSerialNo: number;

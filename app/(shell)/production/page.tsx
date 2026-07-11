@@ -42,12 +42,12 @@ const BUCKET_HELP: Record<ProductionBucket, string> = {
 
 function ProductionCard({
   card,
-  canManage,
+  canUpdate,
   todayIso,
   onUpdated,
 }: {
   card: JobCard;
-  canManage: boolean;
+  canUpdate: boolean;
   todayIso: string;
   onUpdated: () => void;
 }) {
@@ -126,7 +126,7 @@ function ProductionCard({
         >
           View Order
         </Link>
-        {canManage && canStart && (
+        {canUpdate && canStart && (
           <button
             type="button"
             onClick={handleStart}
@@ -136,7 +136,7 @@ function ProductionCard({
             {saving === "start" ? "Starting..." : "Start"}
           </button>
         )}
-        {canManage && canComplete && (
+        {canUpdate && canComplete && (
           <button
             type="button"
             onClick={handleComplete}
@@ -183,8 +183,9 @@ function Stat({
 }
 
 function ProductionContent() {
-  const { hasPermission } = useCurrentUser();
+  const { currentUser, hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
+  const currentStaffId = currentUser?.staff_id ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -284,7 +285,7 @@ function ProductionContent() {
                   <ProductionCard
                     key={card.id}
                     card={card}
-                    canManage={canManageStaff}
+                    canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
                     todayIso={todayIso}
                     onUpdated={() => setRefreshKey((key) => key + 1)}
                   />

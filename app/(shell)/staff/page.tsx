@@ -36,9 +36,10 @@ const EMPTY_FILTERS: StaffFilterState = {
 };
 
 function StaffPageContent() {
-  const { hasPermission, isLoading } = useCurrentUser();
+  const { currentUser, hasPermission, isLoading } = useCurrentUser();
   const { t } = useLanguage();
   const canManage = hasPermission("staff.manage");
+  const currentStaffId = currentUser?.staff_id ?? null;
   const [tab, setTab] = useState<StaffTab>("list");
   const [filters, setFilters] = useState<StaffFilterState>(EMPTY_FILTERS);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -156,6 +157,7 @@ function StaffPageContent() {
           <JobCardWorkQueueTable
             rows={jobCardQueueRows}
             canManage={canManage}
+            currentStaffId={currentStaffId}
             todayIso={todayIso}
             onChanged={() => setRefreshKey((k) => k + 1)}
           />
@@ -163,6 +165,7 @@ function StaffPageContent() {
           <WorkQueueTable
             rows={workQueueRows}
             canManage={canManage}
+            currentStaffId={currentStaffId}
             todayIso={todayIso}
             onChanged={() => setRefreshKey((k) => k + 1)}
           />
@@ -176,11 +179,13 @@ function StaffPageContent() {
 function JobCardWorkQueueTable({
   rows,
   canManage,
+  currentStaffId,
   todayIso,
   onChanged,
 }: {
   rows: JobCard[];
   canManage: boolean;
+  currentStaffId: string | null;
   todayIso: string;
   onChanged: () => void;
 }) {
@@ -188,6 +193,7 @@ function JobCardWorkQueueTable({
     .filter(
       (row) =>
         row.assignedStaffId &&
+        (canManage || row.assignedStaffId === currentStaffId) &&
         row.productionBucket !== "Closed" &&
         row.stage !== "Ready"
     )
@@ -231,7 +237,7 @@ function JobCardWorkQueueTable({
             <th className="whitespace-nowrap px-5 py-3">Due Date</th>
             <th className="whitespace-nowrap px-5 py-3">Priority</th>
             <th className="whitespace-nowrap px-5 py-3">Status</th>
-            {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
+            <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="text-[13px]">
@@ -274,9 +280,10 @@ function JobCardWorkQueueTable({
                   {row.taskStatus ?? "Assigned"}
                 </span>
               </td>
-              {canManage && (
-                <td className="whitespace-nowrap px-5 py-3 text-right">
-                  {!row.startedDate && !row.completedDate && (
+              <td className="whitespace-nowrap px-5 py-3 text-right">
+                {canManage || row.assignedStaffId === currentStaffId ? (
+                  <>
+                    {!row.startedDate && !row.completedDate && (
                     <button
                       type="button"
                       onClick={() => markStarted(row)}
@@ -284,8 +291,8 @@ function JobCardWorkQueueTable({
                     >
                       Start
                     </button>
-                  )}
-                  {row.startedDate && !row.completedDate && (
+                    )}
+                    {row.startedDate && !row.completedDate && (
                     <button
                       type="button"
                       onClick={() => markCompleted(row)}
@@ -293,9 +300,12 @@ function JobCardWorkQueueTable({
                     >
                       {row.stage === "Ready" ? "Complete" : "Complete Stage"}
                     </button>
-                  )}
-                </td>
-              )}
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-ink-faint">-</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -307,14 +317,20 @@ function JobCardWorkQueueTable({
 function WorkQueueTable({
   rows,
   canManage,
+  currentStaffId,
   todayIso,
   onChanged,
 }: {
   rows: WorkQueueRow[];
   canManage: boolean;
+  currentStaffId: string | null;
   todayIso: string;
   onChanged: () => void;
 }) {
+  const visibleRows = canManage
+    ? rows
+    : rows.filter((row) => row.assignment.assignedStaffId === currentStaffId);
+
   async function markStarted(row: WorkQueueRow) {
     const result = await updateWorkAssignmentAction(row.assignment.id, {
       startedDate: todayIso,
@@ -337,7 +353,7 @@ function WorkQueueTable({
     onChanged();
   }
 
-  if (rows.length === 0) {
+  if (visibleRows.length === 0) {
     return (
       <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
         <p className="text-sm text-ink-muted">No work assigned yet.</p>
@@ -357,11 +373,11 @@ function WorkQueueTable({
             <th className="whitespace-nowrap px-5 py-3">Due Date</th>
             <th className="whitespace-nowrap px-5 py-3">Priority</th>
             <th className="whitespace-nowrap px-5 py-3">Status</th>
-            {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
+            <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="text-[13px]">
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <tr key={row.assignment.id} className="border-t border-border-soft hover:bg-surface">
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                 {row.order.orderNumber}
@@ -402,9 +418,10 @@ function WorkQueueTable({
                   {row.status}
                 </span>
               </td>
-              {canManage && (
-                <td className="whitespace-nowrap px-5 py-3 text-right">
-                  {!row.assignment.startedDate && !row.assignment.completedDate && (
+              <td className="whitespace-nowrap px-5 py-3 text-right">
+                {canManage || row.assignment.assignedStaffId === currentStaffId ? (
+                  <>
+                    {!row.assignment.startedDate && !row.assignment.completedDate && (
                     <button
                       type="button"
                       onClick={() => markStarted(row)}
@@ -412,8 +429,8 @@ function WorkQueueTable({
                     >
                       Start
                     </button>
-                  )}
-                  {row.assignment.startedDate && !row.assignment.completedDate && (
+                    )}
+                    {row.assignment.startedDate && !row.assignment.completedDate && (
                     <button
                       type="button"
                       onClick={() => markCompleted(row)}
@@ -421,9 +438,12 @@ function WorkQueueTable({
                     >
                       Complete
                     </button>
-                  )}
-                </td>
-              )}
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-ink-faint">-</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

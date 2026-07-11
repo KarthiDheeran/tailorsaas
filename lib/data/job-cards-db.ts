@@ -126,6 +126,20 @@ export async function assignJobCard(
   if (error) throw error;
 }
 
+export async function getJobCardAssignedStaffId(
+  supabase: SupabaseClient,
+  id: string
+): Promise<string | null | undefined> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("assigned_staff_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return undefined;
+  return (data as { assigned_staff_id: string | null }).assigned_staff_id;
+}
+
 export async function startJobCard(
   supabase: SupabaseClient,
   id: string,
