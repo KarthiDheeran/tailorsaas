@@ -18,7 +18,7 @@ const SETTINGS_SECTIONS = [
   {
     title: "Catalog / Garment Types",
     description: "Garments, base prices, required measurements, and add-ons.",
-    href: "/catalog",
+    href: "/catalog?tab=garment-types",
     icon: Layers,
     status: "Available",
     permission: "catalog.view",
@@ -26,7 +26,7 @@ const SETTINGS_SECTIONS = [
   {
     title: "Add-ons / Extras",
     description: "Reusable extras like lining, pockets, urgent delivery, and more.",
-    href: "/catalog",
+    href: "/catalog?tab=addons",
     icon: Shirt,
     status: "Available",
     permission: "catalog.view",
@@ -34,7 +34,7 @@ const SETTINGS_SECTIONS = [
   {
     title: "Measurement Templates",
     description: "Template fields used when measuring each garment type.",
-    href: "/catalog",
+    href: "/catalog?tab=garment-types",
     icon: Ruler,
     status: "Available",
     permission: "catalog.view",

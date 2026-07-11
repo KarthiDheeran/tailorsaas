@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import type {
   AddOnInput,
@@ -28,11 +29,21 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 
+function isCatalogTab(value: string | null): value is CatalogTab {
+  return value === "garment-types" || value === "addons";
+}
+
 function CatalogPageContent() {
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const canManage = hasPermission("catalog.manage");
-  const [tab, setTab] = useState<CatalogTab>("garment-types");
+  const tabParam = searchParams.get("tab");
+  const [tab, setTab] = useState<CatalogTab>(
+    isCatalogTab(tabParam) ? tabParam : "garment-types"
+  );
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [editingGarment, setEditingGarment] =
@@ -50,6 +61,12 @@ function CatalogPageContent() {
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [activeAddOns, setActiveAddOns] = useState<CatalogAddOn[]>([]);
+
+  useEffect(() => {
+    if (isCatalogTab(tabParam) && tabParam !== tab) {
+      setTab(tabParam);
+    }
+  }, [tab, tabParam]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,7 +161,13 @@ function CatalogPageContent() {
           ))}
       </div>
 
-      <CatalogTabs active={tab} onChange={setTab} />
+      <CatalogTabs
+        active={tab}
+        onChange={(nextTab) => {
+          setTab(nextTab);
+          router.replace(`${pathname}?tab=${nextTab}`, { scroll: false });
+        }}
+      />
 
       {tab === "garment-types" ? (
         <CatalogTable
@@ -191,7 +214,9 @@ function CatalogPageContent() {
 export default function CatalogPage() {
   return (
     <RequirePermission permission="catalog.view">
-      <CatalogPageContent />
+      <Suspense fallback={null}>
+        <CatalogPageContent />
+      </Suspense>
     </RequirePermission>
   );
 }
