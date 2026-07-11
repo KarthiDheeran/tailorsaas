@@ -63,6 +63,7 @@ function OrdersPageContent() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [pendingOpenOrderId, setPendingOpenOrderId] = useState<string | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -137,15 +138,7 @@ function OrdersPageContent() {
     const orderId = params.get("orderId");
     if (created) {
       setShowCreatedToast(true);
-      if (orderId) {
-        getOrderByIdAction(orderId)
-          .then((order) => {
-            if (order) setDetailsOrder(order);
-          })
-          .catch((error) => {
-            setLoadError(getErrorMessage(error, "Failed to open the created order."));
-          });
-      }
+      if (orderId) setPendingOpenOrderId(orderId);
       window.history.replaceState({}, "", "/orders");
       const timer = setTimeout(() => setShowCreatedToast(false), 4000);
       return () => clearTimeout(timer);
@@ -157,16 +150,38 @@ function OrdersPageContent() {
     // the created-toast case above.
     const viewOrderId = params.get("view");
     if (viewOrderId) {
-      getOrderByIdAction(viewOrderId)
-        .then((order) => {
-          if (order) setDetailsOrder(order);
-        })
-        .catch((error) => {
-          setLoadError(getErrorMessage(error, "Failed to open the selected order."));
-        });
+      setPendingOpenOrderId(viewOrderId);
       window.history.replaceState({}, "", "/orders");
     }
   }, []);
+
+  useEffect(() => {
+    if (!pendingOpenOrderId || isLoading) return;
+
+    const loadedOrder = orders.find((order) => order.id === pendingOpenOrderId);
+    if (loadedOrder) {
+      setDetailsOrder(loadedOrder);
+      setPendingOpenOrderId(null);
+      return;
+    }
+
+    let cancelled = false;
+    getOrderByIdAction(pendingOpenOrderId)
+      .then((order) => {
+        if (cancelled) return;
+        if (order) setDetailsOrder(order);
+        setPendingOpenOrderId(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(getErrorMessage(error, "Failed to open the selected order."));
+        setPendingOpenOrderId(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingOpenOrderId, isLoading, orders]);
 
   function handleStatusChanged() {
     setRefreshTick((t) => t + 1);
