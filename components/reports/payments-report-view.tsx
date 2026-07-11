@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, IndianRupee, Wallet } from "lucide-react";
+import { AlertTriangle, IndianRupee, TrendingUp, Wallet } from "lucide-react";
 import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
-import { getPaymentsReportAction } from "@/app/(shell)/reports/actions";
+import {
+  getPaymentsReportAction,
+  getReportExpensesTotalAction,
+} from "@/app/(shell)/reports/actions";
 import {
   getDateRangeForPreset,
   type DateRange,
@@ -59,6 +62,11 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   // Phase 6E: fetched via a Server Action now — see sales-report-view.tsx's
   // comment for why this is an effect + state instead of useMemo.
   const [report, setReport] = useState<PaymentsReport>(EMPTY_REPORT);
+  // Profit stat: Collections (report.totalCollected) minus Expenses in the
+  // same date range. null (not 0) means the expenses migration isn't
+  // applied yet — the Profit card just doesn't render in that case, same
+  // convention as lib/dashboard.ts's optional stat cards.
+  const [expensesTotal, setExpensesTotal] = useState<number | null>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +97,17 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
     overdueOnly,
     todayIso,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getReportExpensesTotalAction(range).then((result) => {
+      if (!cancelled) setExpensesTotal(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to]);
 
   function handleExport() {
     downloadCsv(
@@ -188,7 +207,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
         <ReportActions onExport={handleExport} />
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportStatCard
           label={t("reports.totalCollected")}
           value={money(report.totalCollected)}
@@ -205,6 +224,15 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
           icon={AlertTriangle}
           tone={report.overdueBalance > 0 ? "warning" : "default"}
         />
+        {expensesTotal !== null && (
+          <ReportStatCard
+            label={t("reports.profit")}
+            value={money(report.totalCollected - expensesTotal)}
+            sublabel={t("reports.collectionsMinusExpenses")}
+            icon={TrendingUp}
+            tone={report.totalCollected - expensesTotal < 0 ? "warning" : "default"}
+          />
+        )}
       </div>
 
       {report.byMode.length > 0 && (

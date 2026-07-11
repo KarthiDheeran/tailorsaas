@@ -5,22 +5,33 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { getCustomerAreas } from "@/lib/customers-db";
+import { getStaff } from "@/lib/data/staff-db";
 import {
   getCustomersReport,
+  getExpensesTotal,
   getGarmentTypes,
+  getInventoryReport,
   getOrdersReport,
   getPaymentsReport,
+  getProductionReport,
   getSalesReport,
+  getStaffReport,
   type CustomersReport,
   type CustomersReportFilters,
   type DateRange,
+  type InventoryReport,
+  type InventoryReportFilters,
   type OrdersFilters,
   type OrdersReport,
   type PaymentsFilters,
   type PaymentsReport,
+  type ProductionFilters,
+  type ProductionReport,
   type SalesReport,
+  type StaffReport,
+  type StaffReportFilters,
 } from "@/lib/reports";
-import type { PaymentMode } from "@/lib/types";
+import type { PaymentMode, Staff } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Phase 6E: Reports' first-ever Server Action layer (previously every report
@@ -107,4 +118,52 @@ export async function getReportCustomerAreasAction(): Promise<string[]> {
   const guard = await requireReportsView();
   if (!guard.ok) return [];
   return getCustomerAreas(guard.admin);
+}
+
+// Expenses total for the Payments tab's "Profit" stat — see
+// lib/reports.ts#getExpensesTotal for why this stays a single number
+// instead of a full report.
+export async function getReportExpensesTotalAction(
+  range: DateRange
+): Promise<number | null> {
+  const guard = await requireReportsView();
+  if (!guard.ok) return null;
+  return getExpensesTotal(guard.admin, range);
+}
+
+export async function getProductionReportAction(
+  filters: ProductionFilters,
+  todayIso: string
+): Promise<ProductionReport | null> {
+  const guard = await requireReportsView();
+  if (!guard.ok) return null;
+  return getProductionReport(guard.admin, filters, todayIso);
+}
+
+export async function getStaffReportAction(
+  filters: StaffReportFilters,
+  todayIso: string
+): Promise<StaffReport | null> {
+  const guard = await requireReportsView();
+  if (!guard.ok) return null;
+  return getStaffReport(guard.admin, filters, todayIso);
+}
+
+export async function getInventoryReportAction(
+  filters: InventoryReportFilters
+): Promise<InventoryReport | null> {
+  const guard = await requireReportsView();
+  if (!guard.ok) return null;
+  return getInventoryReport(guard.admin, filters);
+}
+
+// Staff roster for the Production tab's Staff filter dropdown — reuses
+// lib/data/staff-db.ts directly (admin client), same lib-to-lib-only
+// pattern as getReportCustomerAreasAction above, not
+// app/(shell)/staff/actions.ts's own getStaffAction (gated on staff.view
+// separately).
+export async function getReportStaffListAction(): Promise<Staff[]> {
+  const guard = await requireReportsView();
+  if (!guard.ok) return [];
+  return getStaff(guard.admin);
 }

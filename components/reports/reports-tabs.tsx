@@ -9,6 +9,9 @@ const TABS = [
   { key: "payments", labelKey: "reports.payments" },
   { key: "orders", labelKey: "reports.orders" },
   { key: "customers", labelKey: "reports.customers" },
+  { key: "production", labelKey: "reports.production" },
+  { key: "staff", labelKey: "reports.staff" },
+  { key: "inventory", labelKey: "reports.inventory" },
 ] as const satisfies { key: string; labelKey: TranslationKey }[];
 
 export type ReportTab = (typeof TABS)[number]["key"];

@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { CustomersReportView } from "@/components/reports/customers-report-view";
+import { InventoryReportView } from "@/components/reports/inventory-report-view";
 import { OrdersReportView } from "@/components/reports/orders-report-view";
 import { PaymentsReportView } from "@/components/reports/payments-report-view";
+import { ProductionReportView } from "@/components/reports/production-report-view";
 import { ReportsTabs, type ReportTab } from "@/components/reports/reports-tabs";
 import { SalesReportView } from "@/components/reports/sales-report-view";
+import { StaffReportView } from "@/components/reports/staff-report-view";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -14,8 +17,20 @@ import { useLanguage } from "@/components/i18n/language-provider";
 // without orders.viewPayments (Staff-like access), per the brief's "don't
 // show financial reports/cards" rule. STAFF's preset also lacks reports.view
 // outright, so this mainly guards a custom permission combination.
-const ALL_TABS: ReportTab[] = ["sales", "payments", "orders", "customers"];
-const NO_PAYMENTS_TABS: ReportTab[] = ["orders", "customers"];
+// Production/Staff/Inventory are operational, not financial, so they stay
+// visible either way — Inventory's own view hides its money columns
+// (Cost/Unit, Value, Total Stock Value) internally via the same
+// canViewPayments flag instead of hiding the whole tab.
+const ALL_TABS: ReportTab[] = [
+  "sales",
+  "payments",
+  "orders",
+  "customers",
+  "production",
+  "staff",
+  "inventory",
+];
+const NO_PAYMENTS_TABS: ReportTab[] = ["orders", "customers", "production", "staff", "inventory"];
 
 function ReportsPageContent() {
   const { hasPermission } = useCurrentUser();
@@ -43,6 +58,11 @@ function ReportsPageContent() {
       {activeTab === "payments" && <PaymentsReportView todayIso={todayIso} />}
       {activeTab === "orders" && <OrdersReportView todayIso={todayIso} />}
       {activeTab === "customers" && <CustomersReportView todayIso={todayIso} />}
+      {activeTab === "production" && <ProductionReportView todayIso={todayIso} />}
+      {activeTab === "staff" && <StaffReportView todayIso={todayIso} />}
+      {activeTab === "inventory" && (
+        <InventoryReportView canViewPayments={canViewPayments} />
+      )}
     </div>
   );
 }

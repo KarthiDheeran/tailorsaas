@@ -2,13 +2,29 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Customer,
   CustomerSnapshot,
+  InventoryItem,
+  InventoryItemType,
   Order,
   Payment,
   PaymentMode,
   PaymentType,
+  Staff,
 } from "@/lib/types";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { getAllPayments } from "@/lib/data/payments-db";
+import {
+  getExpenses,
+  isMissingExpensesSchemaError,
+} from "@/lib/data/expenses-db";
+import {
+  getJobCards,
+  isMissingJobCardsSchemaError,
+} from "@/lib/data/job-cards-db";
+import {
+  getInventoryItems,
+  isMissingInventorySchemaError,
+} from "@/lib/data/inventory-db";
+import { getStaff } from "@/lib/data/staff-db";
 import { getAppUsers } from "@/lib/profiles";
 import { paymentModes } from "@/lib/constants";
 import {
@@ -16,6 +32,7 @@ import {
   getCustomerDetail,
   type CustomerStatus,
 } from "@/lib/customers-db";
+import type { JobCard, JobCardStage } from "@/lib/job-cards";
 
 // ---------------------------------------------------------------------------
 // Phase 6E: real, Supabase-backed report selectors — every function now
@@ -216,6 +233,27 @@ export interface PaymentsFilters {
   customerQuery?: string;
   pendingOnly?: boolean;
   overdueOnly?: boolean;
+}
+
+// Expenses total for a date range, on payment_date — powers the Payments
+// tab's "Profit" stat (Collections − Expenses). Kept minimal (just a total,
+// not a full report) since Expenses already has its own full ledger view on
+// the Accounts page; this is only ever combined with getPaymentsReport's
+// totalCollected. Returns null if the expenses migration hasn't been
+// applied yet, same convention as lib/dashboard.ts's optional stat cards —
+// the Profit stat just doesn't render in that case rather than showing 0
+// and implying zero spend.
+export async function getExpensesTotal(
+  supabase: SupabaseClient,
+  range: DateRange
+): Promise<number | null> {
+  try {
+    const expenses = await getExpenses(supabase, { from: range.from, to: range.to });
+    return expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  } catch (error) {
+    if (isMissingExpensesSchemaError(error)) return null;
+    throw error;
+  }
 }
 
 export async function getPaymentsReport(
@@ -518,4 +556,236 @@ export async function getCustomersReport(
     },
     rows,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Production report — the "Delayed job report" item from the Phase 8
+// follow-up plan. Reuses lib/job-cards.ts's JobCard shape and the same
+// isDelayed/stage computation already powering /job-cards and /production,
+// so this stays a genuinely read-only view over the same ground truth
+// rather than a second copy of the delay logic. Following the Orders tab's
+// own precedent (one filterable table covers what the brainstormed spec
+// called three separate reports), this single tab covers delayed jobs,
+// unassigned work, and stage breakdown via one Stage filter rather than
+// three separate tabs.
+// ---------------------------------------------------------------------------
+
+export type ProductionStageFilter = "all" | "unassigned" | "inProgress" | "delayed" | "ready";
+
+export interface ProductionFilters {
+  range: DateRange; // filters on the job card's due date
+  stage: ProductionStageFilter;
+  staffId?: string;
+}
+
+export interface ProductionReportSummary {
+  totalActive: number;
+  unassigned: number;
+  delayed: number;
+  ready: number;
+}
+
+export interface ProductionReport {
+  summary: ProductionReportSummary;
+  rows: JobCard[];
+}
+
+const IN_PROGRESS_STAGES: JobCardStage[] = [
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Trial",
+  "Alteration",
+];
+
+// Returns null if the job cards migration hasn't been applied yet — same
+// convention as lib/dashboard.ts's optional operational stat cards.
+export async function getProductionReport(
+  supabase: SupabaseClient,
+  filters: ProductionFilters,
+  todayIso: string
+): Promise<ProductionReport | null> {
+  try {
+    const staffList = await getStaff(supabase);
+    const allCards = await getJobCards(supabase, todayIso, staffList);
+
+    const active = allCards.filter(
+      (c) => c.stage !== "Delivered" && c.stage !== "Cancelled"
+    );
+    const summary: ProductionReportSummary = {
+      totalActive: active.length,
+      unassigned: active.filter((c) => c.stage === "Unassigned").length,
+      delayed: active.filter((c) => c.isDelayed).length,
+      ready: active.filter((c) => c.stage === "Ready").length,
+    };
+
+    let rows = allCards.filter((c) => inRange(c.deliveryDate, filters.range));
+    if (filters.stage === "unassigned") {
+      rows = rows.filter((c) => c.stage === "Unassigned");
+    } else if (filters.stage === "delayed") {
+      rows = rows.filter((c) => c.isDelayed);
+    } else if (filters.stage === "ready") {
+      rows = rows.filter((c) => c.stage === "Ready");
+    } else if (filters.stage === "inProgress") {
+      rows = rows.filter((c) => IN_PROGRESS_STAGES.includes(c.stage));
+    }
+    if (filters.staffId) {
+      rows = rows.filter((c) => c.assignedStaffId === filters.staffId);
+    }
+
+    return { summary, rows };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Staff report — the "Staff workload/productivity" item. Deliberately built
+// over job_cards.assigned_staff_id (via getJobCards), not the older
+// work_assignments table lib/staff.ts's getStaffListRows reads — Job
+// Cards/Production's Assign Work flow (app/(shell)/job-cards/actions.ts)
+// only ever writes assigned_staff_id directly onto job_cards, so
+// work_assignments stays empty for any order created after Phase 8. job_cards
+// has no historical assignment log, so "completed in range" uses each card's
+// own completed_date rather than a separate events table.
+// ---------------------------------------------------------------------------
+
+export interface StaffReportFilters {
+  range: DateRange; // filters "completed in range" via the job card's completed date
+}
+
+export interface StaffReportRow {
+  staff: Staff;
+  activeJobs: number;
+  delayedJobs: number;
+  completedInRange: number;
+  totalAssigned: number;
+}
+
+export interface StaffReportSummary {
+  staffWithActiveWork: number;
+  totalDelayedJobs: number;
+  totalCompletedInRange: number;
+}
+
+export interface StaffReport {
+  summary: StaffReportSummary;
+  rows: StaffReportRow[];
+}
+
+// Returns null if the job cards migration hasn't been applied yet.
+export async function getStaffReport(
+  supabase: SupabaseClient,
+  filters: StaffReportFilters,
+  todayIso: string
+): Promise<StaffReport | null> {
+  try {
+    const staffList = await getStaff(supabase);
+    const allCards = await getJobCards(supabase, todayIso, staffList);
+
+    const rows: StaffReportRow[] = staffList.map((member) => {
+      const cardsForStaff = allCards.filter((c) => c.assignedStaffId === member.id);
+      const activeJobs = cardsForStaff.filter(
+        (c) => c.stage !== "Delivered" && c.stage !== "Cancelled" && c.stage !== "Ready"
+      ).length;
+      const delayedJobs = cardsForStaff.filter((c) => c.isDelayed).length;
+      const completedInRange = cardsForStaff.filter(
+        (c) => c.completedDate && inRange(c.completedDate, filters.range)
+      ).length;
+      return {
+        staff: member,
+        activeJobs,
+        delayedJobs,
+        completedInRange,
+        totalAssigned: cardsForStaff.length,
+      };
+    });
+
+    const summary: StaffReportSummary = {
+      staffWithActiveWork: rows.filter((r) => r.activeJobs > 0).length,
+      totalDelayedJobs: rows.reduce((sum, r) => sum + r.delayedJobs, 0),
+      totalCompletedInRange: rows.reduce((sum, r) => sum + r.completedInRange, 0),
+    };
+
+    return { summary, rows };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inventory report — the "Low-stock report" item. A point-in-time stock
+// snapshot, not date-ranged (inventory_movements has dates, but on-hand
+// quantity is a running total, not a per-day figure worth bucketing here).
+// ---------------------------------------------------------------------------
+
+export interface InventoryReportFilters {
+  itemType?: InventoryItemType;
+  lowStockOnly?: boolean;
+  query?: string;
+}
+
+export interface InventoryReportRow {
+  item: InventoryItem;
+  value: number;
+  lowStock: boolean;
+}
+
+export interface InventoryReportSummary {
+  totalActiveItems: number;
+  lowStockCount: number;
+  totalStockValue: number;
+}
+
+export interface InventoryReport {
+  summary: InventoryReportSummary;
+  rows: InventoryReportRow[];
+}
+
+// Returns null if the inventory migration hasn't been applied yet.
+export async function getInventoryReport(
+  supabase: SupabaseClient,
+  filters: InventoryReportFilters
+): Promise<InventoryReport | null> {
+  try {
+    const allItems = await getInventoryItems(supabase);
+    const active = allItems.filter((i) => i.active);
+
+    const summary: InventoryReportSummary = {
+      totalActiveItems: active.length,
+      lowStockCount: active.filter((i) => i.quantityOnHand <= i.reorderLevel).length,
+      totalStockValue: active.reduce(
+        (sum, i) => sum + i.quantityOnHand * (i.costPerUnit ?? 0),
+        0
+      ),
+    };
+
+    let filtered = active;
+    if (filters.itemType) filtered = filtered.filter((i) => i.itemType === filters.itemType);
+    if (filters.lowStockOnly) {
+      filtered = filtered.filter((i) => i.quantityOnHand <= i.reorderLevel);
+    }
+    if (filters.query?.trim()) {
+      const q = filters.query.trim().toLowerCase();
+      filtered = filtered.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (i.sku ?? "").toLowerCase().includes(q)
+      );
+    }
+
+    const rows: InventoryReportRow[] = filtered.map((item) => ({
+      item,
+      value: item.quantityOnHand * (item.costPerUnit ?? 0),
+      lowStock: item.quantityOnHand <= item.reorderLevel,
+    }));
+
+    return { summary, rows };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) return null;
+    throw error;
+  }
 }
