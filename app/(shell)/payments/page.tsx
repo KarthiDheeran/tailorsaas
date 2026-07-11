@@ -2,15 +2,26 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { AlertCircle, Banknote, IndianRupee, Plus, Smartphone, X } from "lucide-react";
+import {
+  AlertCircle,
+  Banknote,
+  Calculator,
+  CreditCard,
+  IndianRupee,
+  Plus,
+  Smartphone,
+  X,
+} from "lucide-react";
 import {
   createExpenseAction,
+  getDailyClosingAction,
   getExpensesAction,
   getExpenseTotalAction,
   getPaymentsLedgerAction,
   getPendingDuesAction,
   getPendingDuesOrdersAction,
   voidExpenseAction,
+  type DailyClosingSummary,
 } from "@/app/(shell)/payments/actions";
 import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { PendingDuesTable } from "@/components/payments/pending-dues-table";
@@ -86,6 +97,7 @@ function PaymentsPageContent() {
   // lie. Fetched via the same getPaymentsLedgerAction, just with its own
   // always-today range and no other filters.
   const [todayReport, setTodayReport] = useState<PaymentsReport>(EMPTY_REPORT);
+  const [dailyClosing, setDailyClosing] = useState<DailyClosingSummary | null>(null);
   // "Pending Dues" card: total outstanding balance across ALL orders (not
   // scoped to today or any filter) — see getPendingDuesAction's own comment
   // for why this is a separate fetch from todayReport above.
@@ -109,6 +121,7 @@ function PaymentsPageContent() {
   // paint empty tables/zeroed stat cards before the first real fetch lands.
   const [reportLoaded, setReportLoaded] = useState(false);
   const [todayReportLoaded, setTodayReportLoaded] = useState(false);
+  const [dailyClosingLoaded, setDailyClosingLoaded] = useState(false);
   const [pendingDuesLoaded, setPendingDuesLoaded] = useState(false);
   const [pendingDuesOrdersLoaded, setPendingDuesOrdersLoaded] = useState(false);
   const [expensesLoaded, setExpensesLoaded] = useState(false);
@@ -172,6 +185,24 @@ function PaymentsPageContent() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewPayments, todayIso, refreshTick]);
+
+  useEffect(() => {
+    if (!canViewPayments) return;
+    let cancelled = false;
+    getDailyClosingAction(todayIso).then((result) => {
+      if (!cancelled) setDailyClosing(result);
+      if (!cancelled) setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load daily closing."));
+      }
+    }).finally(() => {
+      if (!cancelled) setDailyClosingLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewPayments, todayIso, refreshTick, expenseRefreshKey]);
 
   useEffect(() => {
     if (!canViewPayments) return;
@@ -273,7 +304,13 @@ function PaymentsPageContent() {
 
   const isLoading =
     (canViewPayments &&
-      !(reportLoaded && todayReportLoaded && pendingDuesLoaded && pendingDuesOrdersLoaded)) ||
+      !(
+        reportLoaded &&
+        todayReportLoaded &&
+        dailyClosingLoaded &&
+        pendingDuesLoaded &&
+        pendingDuesOrdersLoaded
+      )) ||
     (canViewExpenses && !(expensesLoaded && todayExpensesLoaded));
 
   return (
@@ -332,6 +369,10 @@ function PaymentsPageContent() {
               />
             )}
           </div>
+
+          {canViewPayments && dailyClosing && (
+            <DailyClosingPanel summary={dailyClosing} />
+          )}
 
           <PaymentsTabs
             active={tab}
@@ -482,6 +523,144 @@ function PaymentsPageContent() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
+  const cashCollected = summary.byMode.find((row) => row.mode === "Cash")?.collected ?? 0;
+  const digitalCollected = summary.totalCollected - cashCollected;
+  const visibleRows = summary.byMode.filter(
+    (row) => row.collected > 0 || (row.expenses ?? 0) > 0
+  );
+
+  return (
+    <section className="mb-6 border border-border-soft bg-white shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h2 className="text-[17px] font-semibold text-ink">Daily Closing</h2>
+          <p className="text-sm text-ink-muted">
+            Cash, digital collections, expenses, and net position for today.
+          </p>
+        </div>
+        <div className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-ink-muted">
+          {formatDate(summary.date)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 border-b border-border-soft md:grid-cols-4">
+        <ClosingMetric
+          icon={IndianRupee}
+          label="Total Received"
+          value={money(summary.totalCollected)}
+        />
+        <ClosingMetric
+          icon={Banknote}
+          label="Cash in Hand"
+          value={summary.cashInHand === null ? money(cashCollected) : money(summary.cashInHand)}
+          sublabel={summary.expensesAvailable ? "Cash received minus cash expenses" : "Cash received today"}
+        />
+        <ClosingMetric
+          icon={CreditCard}
+          label="Digital Net"
+          value={summary.digitalNet === null ? money(digitalCollected) : money(summary.digitalNet)}
+          sublabel="UPI, card, bank, cheque, GPay"
+        />
+        <ClosingMetric
+          icon={Calculator}
+          label="Net After Expenses"
+          value={summary.netTotal === null ? "Pending" : money(summary.netTotal)}
+          warning={summary.netTotal !== null && summary.netTotal < 0}
+          sublabel={
+            summary.expensesAvailable
+              ? `${money(summary.totalExpenses ?? 0)} expenses today`
+              : "Expenses unavailable"
+          }
+        />
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead className="text-[13px] font-semibold text-ink-muted">
+            <tr className="border-b border-border-soft">
+              <th className="whitespace-nowrap px-5 py-3">Mode</th>
+              <th className="whitespace-nowrap px-5 py-3 text-right">Received</th>
+              <th className="whitespace-nowrap px-5 py-3 text-right">Expenses</th>
+              <th className="whitespace-nowrap px-5 py-3 text-right">Net</th>
+            </tr>
+          </thead>
+          <tbody className="text-[13px]">
+            {visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-6 text-center text-ink-muted">
+                  No collections or expenses recorded today.
+                </td>
+              </tr>
+            ) : (
+              visibleRows.map((row) => (
+                <tr key={row.mode} className="border-t border-border-soft">
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-ink">
+                    {row.mode}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                    {money(row.collected)}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                    {row.expenses === null ? "-" : money(row.expenses)}
+                  </td>
+                  <td
+                    className={cn(
+                      "whitespace-nowrap px-5 py-3 text-right font-semibold",
+                      row.net !== null && row.net < 0 ? "text-chip-red-fg" : "text-ink"
+                    )}
+                  >
+                    {row.net === null ? "-" : money(row.net)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ClosingMetric({
+  icon: Icon,
+  label,
+  value,
+  sublabel,
+  warning,
+}: {
+  icon: typeof IndianRupee;
+  label: string;
+  value: string;
+  sublabel?: string;
+  warning?: boolean;
+}) {
+  return (
+    <div className="flex gap-3 border-b border-border-soft px-5 py-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
+      <span
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+          warning ? "bg-chip-red text-chip-red-fg" : "bg-primary-tint text-primary"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-ink-muted">{label}</div>
+        <div
+          className={cn(
+            "text-[22px] font-semibold",
+            warning ? "text-chip-red-fg" : "text-ink"
+          )}
+        >
+          {value}
+        </div>
+        {sublabel && <div className="mt-0.5 text-xs text-ink-faint">{sublabel}</div>}
+      </div>
     </div>
   );
 }

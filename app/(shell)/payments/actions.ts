@@ -2,7 +2,10 @@
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import {
+  getServerCallerPermissions,
+  requireServerPermission,
+} from "@/lib/auth/require-server-permission";
 import {
   createExpense,
   getExpenses,
@@ -12,6 +15,7 @@ import {
 } from "@/lib/data/expenses-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { expenseCategories, paymentModes } from "@/lib/constants";
+import { hasPermission } from "@/lib/permissions";
 import type { Expense, ExpenseCategory, Order, PaymentMode } from "@/lib/types";
 import {
   getPaymentsReport,
@@ -26,6 +30,24 @@ type ActionResult<T = undefined> =
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const VALID_EXPENSE_CATEGORIES = new Set<ExpenseCategory>(expenseCategories);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
+
+export interface DailyClosingModeRow {
+  mode: PaymentMode;
+  collected: number;
+  expenses: number | null;
+  net: number | null;
+}
+
+export interface DailyClosingSummary {
+  date: string;
+  totalCollected: number;
+  totalExpenses: number | null;
+  netTotal: number | null;
+  cashInHand: number | null;
+  digitalNet: number | null;
+  byMode: DailyClosingModeRow[];
+  expensesAvailable: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Phase 7F: the Payments page is a dedicated, day-to-day operational screen
@@ -53,6 +75,74 @@ export async function getPaymentsLedgerAction(
   const guard = await requireServerPermission(supabase, "orders.viewPayments");
   if (!guard.ok) return null;
   return getPaymentsReport(createAdminClient(), filters, todayIso);
+}
+
+export async function getDailyClosingAction(todayIso: string): Promise<DailyClosingSummary | null> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  if (!guard.ok) return null;
+  if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
+
+  const permissions = await getServerCallerPermissions(supabase);
+  const canViewExpenses = hasPermission(permissions, "expenses.view");
+  const admin = createAdminClient();
+
+  const payments = await getPaymentsReport(
+    admin,
+    { range: { from: todayIso, to: todayIso } },
+    todayIso
+  );
+  const collectedByMode = new Map(payments.byMode.map((row) => [row.mode, row.amount]));
+
+  let expensesByMode: Map<PaymentMode, number> | null = null;
+  let totalExpenses: number | null = null;
+  let expensesAvailable = false;
+
+  if (canViewExpenses) {
+    try {
+      const expenses = await getExpenses(admin, { from: todayIso, to: todayIso });
+      expensesByMode = new Map<PaymentMode, number>();
+      for (const expense of expenses) {
+        expensesByMode.set(
+          expense.paymentMode,
+          (expensesByMode.get(expense.paymentMode) ?? 0) + Number(expense.amount)
+        );
+      }
+      totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+      expensesAvailable = true;
+    } catch (error) {
+      if (!isMissingExpensesSchemaError(error)) throw error;
+    }
+  }
+
+  const byMode: DailyClosingModeRow[] = paymentModes.map((mode) => {
+    const collected = collectedByMode.get(mode) ?? 0;
+    const expenses = expensesByMode?.get(mode) ?? 0;
+    return {
+      mode,
+      collected,
+      expenses: expensesByMode ? expenses : null,
+      net: expensesByMode ? collected - expenses : null,
+    };
+  });
+
+  const netTotal = totalExpenses === null ? null : payments.totalCollected - totalExpenses;
+  const cashRow = byMode.find((row) => row.mode === "Cash");
+  const digitalNet =
+    netTotal === null || cashRow?.net === null || cashRow?.net === undefined
+      ? null
+      : netTotal - cashRow.net;
+
+  return {
+    date: todayIso,
+    totalCollected: payments.totalCollected,
+    totalExpenses,
+    netTotal,
+    cashInHand: cashRow?.net ?? null,
+    digitalNet,
+    byMode,
+    expensesAvailable,
+  };
 }
 
 // Shared by both the "Pending Dues" summary card and the Pending Dues tab's
