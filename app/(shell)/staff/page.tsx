@@ -165,13 +165,6 @@ function StaffPageContent() {
         )
       )}
 
-      {tab === "payments" && (
-        <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border-soft bg-white text-center shadow-soft">
-          <p className="text-sm text-ink-muted">
-            {t("staff.paymentsComingSoon")}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
