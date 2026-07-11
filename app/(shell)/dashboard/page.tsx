@@ -25,6 +25,7 @@ import { PaymentPending } from "@/components/dashboard/payment-pending";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const STAT_ICONS = {
   "Orders Today": ShoppingBag,
@@ -87,7 +88,13 @@ function DashboardContent() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="mx-auto max-w-7xl p-8">
+        <LoadingState label="Loading dashboard..." />
+      </div>
+    );
+  }
 
   const visibleStats = data.stats.filter((stat) => {
     if (MONEY_STAT_LABELS.has(stat.label)) return canViewPayments;

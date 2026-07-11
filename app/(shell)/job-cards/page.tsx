@@ -20,6 +20,7 @@ import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards"
 import type { Order, Staff, TaskPriority, TaskType, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" }[] = [
   { label: "Active", value: "active" },
@@ -109,6 +110,11 @@ function JobCardsContent() {
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Only gates the very first load — refreshKey-triggered refetches (assign
+  // work, etc.) shouldn't re-blank the table with a spinner. Note this is
+  // distinct from persistedCards===null, which means "migration not applied"
+  // after loading finishes, not "still loading".
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +136,9 @@ function JobCardsContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load job cards."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -166,124 +175,130 @@ function JobCardsContent() {
         </div>
       )}
 
-      {persistedCards === null && (
-        <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
-          Showing job cards generated from orders. Apply the job card migration to track each card as
-          its own production record.
-        </div>
-      )}
+      {isLoading ? (
+        <LoadingState label="Loading job cards..." />
+      ) : (
+        <>
+          {persistedCards === null && (
+            <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+              Showing job cards generated from orders. Apply the job card migration to track each card as
+              its own production record.
+            </div>
+          )}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard label="Active Job Cards" value={activeCount} icon={ClipboardList} />
-        <SummaryCard label="Unassigned" value={unassignedCount} icon={Scissors} />
-        <SummaryCard label="Delayed" value={delayedCount} icon={AlertTriangle} tone="warning" />
-        <SummaryCard label="Ready" value={readyCount} icon={Shirt} />
-      </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard label="Active Job Cards" value={activeCount} icon={ClipboardList} />
+            <SummaryCard label="Unassigned" value={unassignedCount} icon={Scissors} />
+            <SummaryCard label="Delayed" value={delayedCount} icon={AlertTriangle} tone="warning" />
+            <SummaryCard label="Ready" value={readyCount} icon={Shirt} />
+          </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {FILTERS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => setFilter(option.value)}
-            className={cn(
-              "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
-              filter === option.value
-                ? "border-primary bg-primary-tint text-primary"
-                : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
-        <table className="w-full text-left">
-          <thead className="text-[13px] font-semibold text-ink-muted">
-            <tr className="border-b border-border-soft">
-              <th className="whitespace-nowrap px-5 py-3">Job Card</th>
-              <th className="whitespace-nowrap px-5 py-3">Customer</th>
-              <th className="whitespace-nowrap px-5 py-3">Garment</th>
-              <th className="whitespace-nowrap px-5 py-3">Order</th>
-              <th className="whitespace-nowrap px-5 py-3">Assigned To</th>
-              <th className="whitespace-nowrap px-5 py-3">Stage</th>
-              <th className="whitespace-nowrap px-5 py-3">Due Date</th>
-              <th className="whitespace-nowrap px-5 py-3">Order Status</th>
-              {canManageStaff && (
-                <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="text-[13px]">
-            {filteredCards.map((card: JobCard) => (
-              <tr key={card.id} className="border-t border-border-soft hover:bg-surface">
-                <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
-                  {card.jobCardNumber}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  <div className="font-medium text-ink">{card.customer?.name ?? "Unknown"}</div>
-                  <div className="text-xs text-ink-muted">{card.customer?.phone ?? ""}</div>
-                </td>
-                <td className="whitespace-nowrap px-5 py-3 text-ink">
-                  {card.garment}
-                  {card.totalUnits > 1 && (
-                    <span className="ml-1 text-xs text-ink-muted">
-                      #{card.unitNo} of {card.totalUnits}
-                    </span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  {canViewOrders ? (
-                    <Link
-                      href={`/orders?view=${card.orderId}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {card.orderNumber}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-ink-muted">{card.orderNumber}</span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{card.assignedTo}</td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  <StageBadge stage={card.stage} />
-                  {card.taskType && (
-                    <div className="mt-1 text-xs text-ink-muted">
-                      {card.taskType}
-                      {card.taskStatus ? ` - ${card.taskStatus}` : ""}
-                    </div>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
-                    {formatDate(card.deliveryDate)}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  <OrderStatusChip status={card.orderStatus} />
-                </td>
-                {canManageStaff && (
-                  <td className="whitespace-nowrap px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setAssigningCard(card)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
-                    >
-                      Assign Work
-                    </button>
-                  </td>
+          <div className="mb-5 flex flex-wrap gap-2">
+            {FILTERS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setFilter(option.value)}
+                className={cn(
+                  "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
+                  filter === option.value
+                    ? "border-primary bg-primary-tint text-primary"
+                    : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
                 )}
-              </tr>
+              >
+                {option.label}
+              </button>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
 
-      {filteredCards.length === 0 && (
-        <div className="mt-4 rounded-xl border border-dashed border-border-soft bg-white p-8 text-center text-sm text-ink-muted">
-          No job cards match this view.
-        </div>
+          <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+            <table className="w-full text-left">
+              <thead className="text-[13px] font-semibold text-ink-muted">
+                <tr className="border-b border-border-soft">
+                  <th className="whitespace-nowrap px-5 py-3">Job Card</th>
+                  <th className="whitespace-nowrap px-5 py-3">Customer</th>
+                  <th className="whitespace-nowrap px-5 py-3">Garment</th>
+                  <th className="whitespace-nowrap px-5 py-3">Order</th>
+                  <th className="whitespace-nowrap px-5 py-3">Assigned To</th>
+                  <th className="whitespace-nowrap px-5 py-3">Stage</th>
+                  <th className="whitespace-nowrap px-5 py-3">Due Date</th>
+                  <th className="whitespace-nowrap px-5 py-3">Order Status</th>
+                  {canManageStaff && (
+                    <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="text-[13px]">
+                {filteredCards.map((card: JobCard) => (
+                  <tr key={card.id} className="border-t border-border-soft hover:bg-surface">
+                    <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
+                      {card.jobCardNumber}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <div className="font-medium text-ink">{card.customer?.name ?? "Unknown"}</div>
+                      <div className="text-xs text-ink-muted">{card.customer?.phone ?? ""}</div>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-ink">
+                      {card.garment}
+                      {card.totalUnits > 1 && (
+                        <span className="ml-1 text-xs text-ink-muted">
+                          #{card.unitNo} of {card.totalUnits}
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      {canViewOrders ? (
+                        <Link
+                          href={`/orders?view=${card.orderId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {card.orderNumber}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-ink-muted">{card.orderNumber}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{card.assignedTo}</td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <StageBadge stage={card.stage} />
+                      {card.taskType && (
+                        <div className="mt-1 text-xs text-ink-muted">
+                          {card.taskType}
+                          {card.taskStatus ? ` - ${card.taskStatus}` : ""}
+                        </div>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
+                        {formatDate(card.deliveryDate)}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <OrderStatusChip status={card.orderStatus} />
+                    </td>
+                    {canManageStaff && (
+                      <td className="whitespace-nowrap px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setAssigningCard(card)}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                        >
+                          Assign Work
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredCards.length === 0 && (
+            <div className="mt-4 rounded-xl border border-dashed border-border-soft bg-white p-8 text-center text-sm text-ink-muted">
+              No job cards match this view.
+            </div>
+          )}
+        </>
       )}
 
       {assigningCard && (

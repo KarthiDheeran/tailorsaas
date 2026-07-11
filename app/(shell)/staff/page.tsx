@@ -28,6 +28,7 @@ import { formatDate } from "@/components/orders/orders-table";
 import type { JobCard } from "@/lib/job-cards";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const EMPTY_FILTERS: StaffFilterState = {
   nameQuery: "",
@@ -47,6 +48,9 @@ function StaffPageContent() {
   const [workQueueRows, setWorkQueueRows] = useState<WorkQueueRow[]>([]);
   const [jobCardQueueRows, setJobCardQueueRows] = useState<JobCard[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Named isDataLoading, not isLoading, since useCurrentUser() above already
+  // owns that name for the auth/session load.
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
@@ -77,6 +81,9 @@ function StaffPageContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load staff data."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsDataLoading(false);
       });
     return () => {
       cancelled = true;
@@ -147,33 +154,38 @@ function StaffPageContent() {
         </div>
       )}
 
-      {tab === "list" && canManage && (
+      {isDataLoading ? (
+        <LoadingState label={t("staff.title")} />
+      ) : (
         <>
-          <StaffFilters filters={filters} onChange={setFilters} />
-          <StaffTable rows={rows} canManage={canManage} onDeactivate={handleDeactivate} />
+          {tab === "list" && canManage && (
+            <>
+              <StaffFilters filters={filters} onChange={setFilters} />
+              <StaffTable rows={rows} canManage={canManage} onDeactivate={handleDeactivate} />
+            </>
+          )}
+
+          {tab === "work-queue" && (
+            jobCardQueueRows !== null ? (
+              <JobCardWorkQueueTable
+                rows={jobCardQueueRows}
+                canManage={canManage}
+                currentStaffId={currentStaffId}
+                todayIso={todayIso}
+                onChanged={() => setRefreshKey((k) => k + 1)}
+              />
+            ) : (
+              <WorkQueueTable
+                rows={workQueueRows}
+                canManage={canManage}
+                currentStaffId={currentStaffId}
+                todayIso={todayIso}
+                onChanged={() => setRefreshKey((k) => k + 1)}
+              />
+            )
+          )}
         </>
       )}
-
-      {tab === "work-queue" && (
-        jobCardQueueRows !== null ? (
-          <JobCardWorkQueueTable
-            rows={jobCardQueueRows}
-            canManage={canManage}
-            currentStaffId={currentStaffId}
-            todayIso={todayIso}
-            onChanged={() => setRefreshKey((k) => k + 1)}
-          />
-        ) : (
-          <WorkQueueTable
-            rows={workQueueRows}
-            canManage={canManage}
-            currentStaffId={currentStaffId}
-            todayIso={todayIso}
-            onChanged={() => setRefreshKey((k) => k + 1)}
-          />
-        )
-      )}
-
     </div>
   );
 }

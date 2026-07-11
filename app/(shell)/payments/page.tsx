@@ -31,6 +31,7 @@ import { expenseCategories, paymentModes } from "@/lib/constants";
 import type { Expense, ExpenseCategory, Order, PaymentMode, PaymentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 // Phase 7G: a deliberately simpler date-filter set than Reports' full
@@ -103,6 +104,15 @@ function PaymentsPageContent() {
   const [expensesMigrationMissing, setExpensesMigrationMissing] = useState(false);
   const [tab, setTab] = useState<PaymentsTab>(canViewPayments ? "collections" : "expenses");
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Each flips true once (never back) after its own fetch's first
+  // resolution — combined below into isLoading gates so the page doesn't
+  // paint empty tables/zeroed stat cards before the first real fetch lands.
+  const [reportLoaded, setReportLoaded] = useState(false);
+  const [todayReportLoaded, setTodayReportLoaded] = useState(false);
+  const [pendingDuesLoaded, setPendingDuesLoaded] = useState(false);
+  const [pendingDuesOrdersLoaded, setPendingDuesOrdersLoaded] = useState(false);
+  const [expensesLoaded, setExpensesLoaded] = useState(false);
+  const [todayExpensesLoaded, setTodayExpensesLoaded] = useState(false);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
 
@@ -133,6 +143,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load payment collections."));
       }
+    }).finally(() => {
+      if (!cancelled) setReportLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -152,6 +164,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load today's collections."));
       }
+    }).finally(() => {
+      if (!cancelled) setTodayReportLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -169,6 +183,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load pending dues."));
       }
+    }).finally(() => {
+      if (!cancelled) setPendingDuesLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -185,6 +201,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load pending due orders."));
       }
+    }).finally(() => {
+      if (!cancelled) setPendingDuesOrdersLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -210,6 +228,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load expenses."));
       }
+    }).finally(() => {
+      if (!cancelled) setExpensesLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -239,6 +259,8 @@ function PaymentsPageContent() {
       if (!cancelled) {
         setLoadError(getErrorMessage(error, "Failed to load today's expenses."));
       }
+    }).finally(() => {
+      if (!cancelled) setTodayExpensesLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -249,53 +271,17 @@ function PaymentsPageContent() {
   const cashToday = todayReport.byMode.find((b) => b.mode === "Cash")?.amount ?? 0;
   const upiToday = todayReport.byMode.find((b) => b.mode === "UPI")?.amount ?? 0;
 
+  const isLoading =
+    (canViewPayments &&
+      !(reportLoaded && todayReportLoaded && pendingDuesLoaded && pendingDuesOrdersLoaded)) ||
+    (canViewExpenses && !(expensesLoaded && todayExpensesLoaded));
+
   return (
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6">
         <h1 className="text-[26px] font-semibold text-ink">{t("payments.title")}</h1>
         <p className="text-sm text-ink-muted">{t("payments.subtitle")}</p>
       </div>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {canViewPayments && (
-          <>
-            <ReportStatCard
-              label={t("payments.todayCollected")}
-              value={money(todayCollected)}
-              icon={IndianRupee}
-            />
-            <ReportStatCard
-              label={t("payments.cashToday")}
-              value={money(cashToday)}
-              icon={Banknote}
-            />
-            <ReportStatCard
-              label={t("payments.upiToday")}
-              value={money(upiToday)}
-              icon={Smartphone}
-            />
-            <ReportStatCard
-              label={t("payments.pendingDues")}
-              value={money(pendingDues)}
-              icon={AlertCircle}
-            />
-          </>
-        )}
-        {canViewExpenses && (
-          <ReportStatCard
-            label={t("payments.expensesToday")}
-            value={money(todayExpenses)}
-            icon={Banknote}
-          />
-        )}
-      </div>
-
-      <PaymentsTabs
-        active={tab}
-        onChange={setTab}
-        canViewPayments={canViewPayments}
-        canViewExpenses={canViewExpenses}
-      />
 
       {loadError && (
         <div className="mb-5">
@@ -309,145 +295,192 @@ function PaymentsPageContent() {
         </div>
       )}
 
-      {tab === "pending-dues" && <PendingDuesTable orders={pendingDuesOrders} />}
-
-      {tab === "collections" && (
+      {isLoading ? (
+        <LoadingState label="Loading payments..." />
+      ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <DateRangeFilter
-              preset={preset}
-              custom={customRange}
-              onPresetChange={setPreset}
-              onCustomChange={setCustomRange}
-              presets={PAYMENT_PAGE_PRESETS}
-            />
-            <select
-              value={paymentMode}
-              onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
-              className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            >
-              <option value="">{t("payments.allCollectionModes")}</option>
-              {paymentModes.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              value={paymentType}
-              onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
-              className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            >
-              <option value="">{t("payments.allCollectionTypes")}</option>
-              {PAYMENT_TYPES.map((pt) => (
-                <option key={pt} value={pt}>
-                  {pt}
-                </option>
-              ))}
-            </select>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("payments.searchPlaceholder")}
-              className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            />
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {canViewPayments && (
+              <>
+                <ReportStatCard
+                  label={t("payments.todayCollected")}
+                  value={money(todayCollected)}
+                  icon={IndianRupee}
+                />
+                <ReportStatCard
+                  label={t("payments.cashToday")}
+                  value={money(cashToday)}
+                  icon={Banknote}
+                />
+                <ReportStatCard
+                  label={t("payments.upiToday")}
+                  value={money(upiToday)}
+                  icon={Smartphone}
+                />
+                <ReportStatCard
+                  label={t("payments.pendingDues")}
+                  value={money(pendingDues)}
+                  icon={AlertCircle}
+                />
+              </>
+            )}
+            {canViewExpenses && (
+              <ReportStatCard
+                label={t("payments.expensesToday")}
+                value={money(todayExpenses)}
+                icon={Banknote}
+              />
+            )}
           </div>
 
-          <PaymentLedgerTable
-            rows={report.rows}
-            emptyMessage={t("payments.noEntriesMatch")}
-            showNotes={false}
-            showRecordedBy={false}
-            renderActions={(row) => (
-              <div className="flex items-center justify-end gap-3">
-                <Link
-                  href={`/orders?view=${row.payment.orderId}`}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  {t("payments.viewOrder")}
-                </Link>
-              </div>
-            )}
+          <PaymentsTabs
+            active={tab}
+            onChange={setTab}
+            canViewPayments={canViewPayments}
+            canViewExpenses={canViewExpenses}
           />
+
+          {tab === "pending-dues" && <PendingDuesTable orders={pendingDuesOrders} />}
+
+          {tab === "collections" && (
+            <>
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <DateRangeFilter
+                  preset={preset}
+                  custom={customRange}
+                  onPresetChange={setPreset}
+                  onCustomChange={setCustomRange}
+                  presets={PAYMENT_PAGE_PRESETS}
+                />
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">{t("payments.allCollectionModes")}</option>
+                  {paymentModes.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={paymentType}
+                  onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">{t("payments.allCollectionTypes")}</option>
+                  {PAYMENT_TYPES.map((pt) => (
+                    <option key={pt} value={pt}>
+                      {pt}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("payments.searchPlaceholder")}
+                  className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+              </div>
+
+              <PaymentLedgerTable
+                rows={report.rows}
+                emptyMessage={t("payments.noEntriesMatch")}
+                showNotes={false}
+                showRecordedBy={false}
+                renderActions={(row) => (
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      href={`/orders?view=${row.payment.orderId}`}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      {t("payments.viewOrder")}
+                    </Link>
+                  </div>
+                )}
+              />
+            </>
+          )}
+
+          {tab === "expenses" && canViewExpenses && (
+            <>
+              {expensesMigrationMissing && (
+                <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+                  Expenses are ready in the app, but the database migration has not been applied yet.
+                  Apply <span className="font-semibold text-ink">supabase/migrations/0010_expenses.sql</span> to start saving expense records.
+                </div>
+              )}
+
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <DateRangeFilter
+                  preset={preset}
+                  custom={customRange}
+                  onPresetChange={setPreset}
+                  onCustomChange={setCustomRange}
+                  presets={PAYMENT_PAGE_PRESETS}
+                />
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">{t("payments.allExpenseCategories")}</option>
+                  {expenseCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={expenseMode}
+                  onChange={(e) => setExpenseMode(e.target.value as PaymentMode | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">{t("payments.allExpenseModes")}</option>
+                  {paymentModes.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={expenseQuery}
+                  onChange={(e) => setExpenseQuery(e.target.value)}
+                  placeholder={t("payments.expenseSearchPlaceholder")}
+                  className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                {canManageExpenses && !expensesMigrationMissing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowExpenseForm(true)}
+                    className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t("payments.addExpense")}
+                  </button>
+                )}
+              </div>
+
+              <ExpenseLedgerTable
+                rows={expenses}
+                canManage={canManageExpenses && !expensesMigrationMissing}
+                onVoided={() => setExpenseRefreshKey((key) => key + 1)}
+              />
+            </>
+          )}
         </>
       )}
 
-      {tab === "expenses" && canViewExpenses && (
-        <>
-          {expensesMigrationMissing && (
-            <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
-              Expenses are ready in the app, but the database migration has not been applied yet.
-              Apply <span className="font-semibold text-ink">supabase/migrations/0010_expenses.sql</span> to start saving expense records.
-            </div>
-          )}
-
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <DateRangeFilter
-              preset={preset}
-              custom={customRange}
-              onPresetChange={setPreset}
-              onCustomChange={setCustomRange}
-              presets={PAYMENT_PAGE_PRESETS}
-            />
-            <select
-              value={expenseCategory}
-              onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory | "")}
-              className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            >
-              <option value="">{t("payments.allExpenseCategories")}</option>
-              {expenseCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-            <select
-              value={expenseMode}
-              onChange={(e) => setExpenseMode(e.target.value as PaymentMode | "")}
-              className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            >
-              <option value="">{t("payments.allExpenseModes")}</option>
-              {paymentModes.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
-            <input
-              value={expenseQuery}
-              onChange={(e) => setExpenseQuery(e.target.value)}
-              placeholder={t("payments.expenseSearchPlaceholder")}
-              className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            />
-            {canManageExpenses && !expensesMigrationMissing && (
-              <button
-                type="button"
-                onClick={() => setShowExpenseForm(true)}
-                className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-              >
-                <Plus className="h-4 w-4" />
-                {t("payments.addExpense")}
-              </button>
-            )}
-          </div>
-
-          <ExpenseLedgerTable
-            rows={expenses}
-            canManage={canManageExpenses && !expensesMigrationMissing}
-            onVoided={() => setExpenseRefreshKey((key) => key + 1)}
-          />
-
-          {showExpenseForm && (
-            <ExpenseDrawer
-              todayIso={todayIso}
-              onClose={() => setShowExpenseForm(false)}
-              onSaved={() => {
-                setShowExpenseForm(false);
-                setExpenseRefreshKey((key) => key + 1);
-              }}
-            />
-          )}
-        </>
+      {showExpenseForm && (
+        <ExpenseDrawer
+          todayIso={todayIso}
+          onClose={() => setShowExpenseForm(false)}
+          onSaved={() => {
+            setShowExpenseForm(false);
+            setExpenseRefreshKey((key) => key + 1);
+          }}
+        />
       )}
     </div>
   );

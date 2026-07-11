@@ -30,6 +30,7 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -72,6 +73,10 @@ function OrdersPageContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customersById, setCustomersById] = useState<Record<string, Customer>>({});
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  // Only gates the very first load — refreshTick-triggered refetches (status
+  // change, edit save, etc.) shouldn't re-blank the table with a spinner.
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCustomerOrdersLoading, setIsCustomerOrdersLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +91,9 @@ function OrdersPageContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load orders."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -98,6 +106,7 @@ function OrdersPageContent() {
       return;
     }
     let cancelled = false;
+    setIsCustomerOrdersLoading(true);
     getOrdersForCustomerAction(selectedCustomer.id)
       .then((result) => {
         if (cancelled) return;
@@ -108,6 +117,9 @@ function OrdersPageContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load customer orders."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsCustomerOrdersLoading(false);
       });
     return () => {
       cancelled = true;
@@ -361,7 +373,9 @@ function OrdersPageContent() {
         />
       )}
 
-      {selectedCustomer ? (
+      {isLoading ? (
+        <LoadingState label={t("orders.title")} />
+      ) : selectedCustomer ? (
         <div>
           <div className="mb-4 flex items-center justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
             <div>
@@ -392,13 +406,17 @@ function OrdersPageContent() {
           <h2 className="mb-3 px-1 text-sm font-medium text-ink-muted">
             {t("orders.ordersFor")} {selectedCustomer.name}
           </h2>
-          <OrdersTable
-            orders={customerOrders}
-            customersById={customersById}
-            editableStatus
-            onStatusChange={handleStatusChanged}
-            onRowClick={setDetailsOrder}
-          />
+          {isCustomerOrdersLoading ? (
+            <LoadingState label={t("orders.title")} />
+          ) : (
+            <OrdersTable
+              orders={customerOrders}
+              customersById={customersById}
+              editableStatus
+              onStatusChange={handleStatusChanged}
+              onRowClick={setDetailsOrder}
+            />
+          )}
         </div>
       ) : (
         <>

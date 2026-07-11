@@ -29,6 +29,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 type InventoryTab = "stock" | "customer-fabric";
 
@@ -54,6 +55,7 @@ function InventoryContent() {
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [showCustomerFabricDrawer, setShowCustomerFabricDrawer] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +70,9 @@ function InventoryContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load inventory."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -127,86 +132,92 @@ function InventoryContent() {
         </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Stock Items" value={stockRows.length.toString()} icon={Package} />
-        <Stat label="Low Stock" value={lowStockCount.toString()} icon={AlertTriangle} tone="warning" />
-        <Stat label="Stock Value" value={money(stockValue)} icon={Shirt} />
-      </div>
-
       {loadError && (
         <div className="mb-5">
           <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
         </div>
       )}
 
-      {inventoryMigrationMissing && (
-        <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
-          Inventory is ready in the app, but the database migration has not been applied yet.
-          Apply <span className="font-semibold text-ink">supabase/migrations/0011_inventory.sql</span> to start saving stock and customer fabric records.
-        </div>
-      )}
-
-      <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
-        <TabButton label="Shop Stock" active={tab === "stock"} onClick={() => setTab("stock")} />
-        <TabButton
-          label={`Customer Fabric (${activeCustomerFabric})`}
-          active={tab === "customer-fabric"}
-          onClick={() => setTab("customer-fabric")}
-        />
-      </div>
-
-      {tab === "stock" && (
+      {isLoading ? (
+        <LoadingState label="Loading inventory..." />
+      ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search stock by name, SKU, color, or type"
-              className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            />
-            {canUseInventoryMutations && (
-              <button
-                type="button"
-                onClick={() => setShowItemDrawer(true)}
-                className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-              >
-                <Plus className="h-4 w-4" />
-                Add Stock Item
-              </button>
-            )}
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Stat label="Stock Items" value={stockRows.length.toString()} icon={Package} />
+            <Stat label="Low Stock" value={lowStockCount.toString()} icon={AlertTriangle} tone="warning" />
+            <Stat label="Stock Value" value={money(stockValue)} icon={Shirt} />
           </div>
 
-          <StockTable items={filteredItems} canManage={canUseInventoryMutations} onAdjust={setAdjustingItem} />
-        </>
-      )}
+          {inventoryMigrationMissing && (
+            <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+              Inventory is ready in the app, but the database migration has not been applied yet.
+              Apply <span className="font-semibold text-ink">supabase/migrations/0011_inventory.sql</span> to start saving stock and customer fabric records.
+            </div>
+          )}
 
-      {tab === "customer-fabric" && (
-        <>
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <input
-              value={fabricQuery}
-              onChange={(e) => setFabricQuery(e.target.value)}
-              placeholder="Search customer fabric by customer, phone, color, or status"
-              className="h-9 w-80 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+          <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
+            <TabButton label="Shop Stock" active={tab === "stock"} onClick={() => setTab("stock")} />
+            <TabButton
+              label={`Customer Fabric (${activeCustomerFabric})`}
+              active={tab === "customer-fabric"}
+              onClick={() => setTab("customer-fabric")}
             />
-            {canUseInventoryMutations && (
-              <button
-                type="button"
-                onClick={() => setShowCustomerFabricDrawer(true)}
-                className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-              >
-                <Plus className="h-4 w-4" />
-                Add Customer Fabric
-              </button>
-            )}
           </div>
 
-          <CustomerFabricTable
-            rows={filteredCustomerFabrics}
-            canManage={canUseInventoryMutations}
-            todayIso={todayIso}
-            onUpdated={() => setRefreshKey((key) => key + 1)}
-          />
+          {tab === "stock" && (
+            <>
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search stock by name, SKU, color, or type"
+                  className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                {canUseInventoryMutations && (
+                  <button
+                    type="button"
+                    onClick={() => setShowItemDrawer(true)}
+                    className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Stock Item
+                  </button>
+                )}
+              </div>
+
+              <StockTable items={filteredItems} canManage={canUseInventoryMutations} onAdjust={setAdjustingItem} />
+            </>
+          )}
+
+          {tab === "customer-fabric" && (
+            <>
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <input
+                  value={fabricQuery}
+                  onChange={(e) => setFabricQuery(e.target.value)}
+                  placeholder="Search customer fabric by customer, phone, color, or status"
+                  className="h-9 w-80 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                {canUseInventoryMutations && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerFabricDrawer(true)}
+                    className="ml-auto flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Customer Fabric
+                  </button>
+                )}
+              </div>
+
+              <CustomerFabricTable
+                rows={filteredCustomerFabrics}
+                canManage={canUseInventoryMutations}
+                todayIso={todayIso}
+                onUpdated={() => setRefreshKey((key) => key + 1)}
+              />
+            </>
+          )}
         </>
       )}
 

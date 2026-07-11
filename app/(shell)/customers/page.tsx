@@ -16,6 +16,7 @@ import {
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const EMPTY_FILTERS: CustomerFilterState = {
   query: "",
@@ -30,6 +31,7 @@ function CustomersPageContent() {
   const [filters, setFilters] = useState<CustomerFilterState>(EMPTY_FILTERS);
   const [allRows, setAllRows] = useState<CustomerListRow[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
@@ -37,13 +39,15 @@ function CustomersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getCustomerListRowsAction(todayIso), getCustomerAreasAction()]).then(
-      ([rows, areaList]) => {
+    Promise.all([getCustomerListRowsAction(todayIso), getCustomerAreasAction()])
+      .then(([rows, areaList]) => {
         if (cancelled) return;
         setAllRows(rows);
         setAreas(areaList);
-      }
-    );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -95,7 +99,7 @@ function CustomersPageContent() {
 
       <CustomerFilters filters={filters} areas={areas} onChange={setFilters} />
 
-      <CustomersTable rows={rows} />
+      {isLoading ? <LoadingState label={t("customers.title")} /> : <CustomersTable rows={rows} />}
     </div>
   );
 }

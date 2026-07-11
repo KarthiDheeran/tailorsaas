@@ -21,6 +21,7 @@ import { buildJobCards, type JobCard, type ProductionBucket } from "@/lib/job-ca
 import type { Order, Staff, WorkAssignment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const BUCKETS: ProductionBucket[] = [
   "Unassigned",
@@ -198,6 +199,7 @@ function ProductionContent() {
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +221,9 @@ function ProductionContent() {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load production board."));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -256,62 +261,68 @@ function ProductionContent() {
         </div>
       )}
 
-      <div className="mb-4 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
-        {persistedCards === null
-          ? "Production stages are shown from current order data until the job card migration is applied."
-          : "Production stages are shown from garment-level job cards."}
-      </div>
+      {isLoading ? (
+        <LoadingState label="Loading production board..." />
+      ) : (
+        <>
+          <div className="mb-4 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+            {persistedCards === null
+              ? "Production stages are shown from current order data until the job card migration is applied."
+              : "Production stages are shown from garment-level job cards."}
+          </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Active Work" value={activeCards.length} icon={Clock} />
-        <Stat label="Unassigned" value={unassigned} icon={Scissors} />
-        <Stat label="Delayed" value={delayed} icon={AlertTriangle} tone="warning" />
-      </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Stat label="Active Work" value={activeCards.length} icon={Clock} />
+            <Stat label="Unassigned" value={unassigned} icon={Scissors} />
+            <Stat label="Delayed" value={delayed} icon={AlertTriangle} tone="warning" />
+          </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
-        {BUCKETS.map((bucket) => {
-          const cards = cardsByBucket.get(bucket) ?? [];
-          return (
-            <section
-              key={bucket}
-              className="min-h-[260px] rounded-xl border border-border-soft bg-white/70 shadow-soft"
-            >
-              <div className="border-b border-border-soft p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-semibold text-ink">{bucket}</h2>
-                  <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-ink-muted">
-                    {cards.length}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-ink-muted">{BUCKET_HELP[bucket]}</p>
-              </div>
-              <div className="space-y-3 p-3">
-                {cards.map((card) => (
-                  <ProductionCard
-                    key={card.id}
-                    card={card}
-                    canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
-                    canViewOrders={canViewOrders}
-                    todayIso={todayIso}
-                    onUpdated={() => setRefreshKey((key) => key + 1)}
-                  />
-                ))}
-                {cards.length === 0 && (
-                  <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-border-soft text-center text-xs text-ink-faint">
-                    No job cards
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
+            {BUCKETS.map((bucket) => {
+              const cards = cardsByBucket.get(bucket) ?? [];
+              return (
+                <section
+                  key={bucket}
+                  className="min-h-[260px] rounded-xl border border-border-soft bg-white/70 shadow-soft"
+                >
+                  <div className="border-b border-border-soft p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-semibold text-ink">{bucket}</h2>
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-ink-muted">
+                        {cards.length}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-ink-muted">{BUCKET_HELP[bucket]}</p>
                   </div>
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+                  <div className="space-y-3 p-3">
+                    {cards.map((card) => (
+                      <ProductionCard
+                        key={card.id}
+                        card={card}
+                        canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
+                        canViewOrders={canViewOrders}
+                        todayIso={todayIso}
+                        onUpdated={() => setRefreshKey((key) => key + 1)}
+                      />
+                    ))}
+                    {cards.length === 0 && (
+                      <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-border-soft text-center text-xs text-ink-faint">
+                        No job cards
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
 
-      {ready > 0 && (
-        <div className="mt-5 flex items-center gap-2 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
-          <CheckCircle2 className="h-4 w-4 text-primary" />
-          {ready} job card{ready === 1 ? " is" : "s are"} ready for pickup or delivery.
-        </div>
+          {ready > 0 && (
+            <div className="mt-5 flex items-center gap-2 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              {ready} job card{ready === 1 ? " is" : "s are"} ready for pickup or delivery.
+            </div>
+          )}
+        </>
       )}
     </div>
   );
