@@ -8,7 +8,10 @@ import {
   getJobCardsAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
-import { getCustomerFabricsAction } from "@/app/(shell)/inventory/actions";
+import {
+  getCustomerFabricsAction,
+  updateCustomerFabricStatusAction,
+} from "@/app/(shell)/inventory/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
   createWorkAssignmentAction,
@@ -21,6 +24,7 @@ import { formatDate, OrderStatusChip } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards";
 import type {
   CustomerFabric,
+  CustomerFabricStatus,
   Order,
   Staff,
   StaffRole,
@@ -36,6 +40,7 @@ import {
   JOB_CARD_FABRIC_SOURCES,
   type JobCardFabricSourceValue,
 } from "@/components/job-cards/fabric-info";
+import { CustomerFabricDrawer } from "@/components/job-cards/customer-fabric-drawer";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" }[] = [
   { label: "Active", value: "active" },
@@ -132,6 +137,7 @@ function JobCardsContent() {
   const canManageStaff = hasPermission("staff.manage");
   const canViewOrders = hasPermission("orders.view");
   const canViewInventory = hasPermission("inventory.view");
+  const canManageInventory = hasPermission("inventory.manage");
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -140,6 +146,7 @@ function JobCardsContent() {
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
   const [filter, setFilter] = useState<JobCardStage | "all" | "active">("active");
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
+  const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Only gates the very first load — refreshKey-triggered refetches (assign
@@ -222,6 +229,15 @@ function JobCardsContent() {
     setSyncingCards(true);
     const result = await syncMissingJobCardsAction();
     setSyncingCards(false);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((key) => key + 1);
+  }
+
+  async function updateFabricStatus(fabric: CustomerFabric, status: CustomerFabricStatus) {
+    const result = await updateCustomerFabricStatusAction(fabric.id, status, todayIso);
     if (!result.success) {
       window.alert(result.error);
       return;
@@ -332,7 +348,7 @@ function JobCardsContent() {
                   <th className="whitespace-nowrap px-5 py-3">Fabric</th>
                   <th className="whitespace-nowrap px-5 py-3">Due Date</th>
                   <th className="whitespace-nowrap px-5 py-3">Order Status</th>
-                  {canManageStaff && (
+                  {(canManageStaff || canManageInventory) && (
                     <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
                   )}
                 </tr>
@@ -380,7 +396,12 @@ function JobCardsContent() {
                       )}
                     </td>
                     <td className="px-5 py-3 align-top">
-                      <FabricInfo card={card} linkedFabrics={linkedFabrics} />
+                      <FabricInfo
+                        card={card}
+                        linkedFabrics={linkedFabrics}
+                        canManageStatus={canManageInventory}
+                        onStatusChange={updateFabricStatus}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-5 py-3">
                       <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
@@ -390,15 +411,28 @@ function JobCardsContent() {
                     <td className="whitespace-nowrap px-5 py-3">
                       <OrderStatusChip status={card.orderStatus} />
                     </td>
-                    {canManageStaff && (
+                    {(canManageStaff || canManageInventory) && (
                       <td className="whitespace-nowrap px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setAssigningCard(card)}
-                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
-                        >
-                          Assign Work
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          {canManageInventory && (
+                            <button
+                              type="button"
+                              onClick={() => setFabricCard(card)}
+                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                            >
+                              Add Fabric
+                            </button>
+                          )}
+                          {canManageStaff && (
+                            <button
+                              type="button"
+                              onClick={() => setAssigningCard(card)}
+                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                            >
+                              Assign Work
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -424,6 +458,18 @@ function JobCardsContent() {
           onClose={() => setAssigningCard(null)}
           onAssigned={() => {
             setAssigningCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {fabricCard && (
+        <CustomerFabricDrawer
+          card={fabricCard}
+          todayIso={todayIso}
+          onClose={() => setFabricCard(null)}
+          onSaved={() => {
+            setFabricCard(null);
             setRefreshKey((key) => key + 1);
           }}
         />

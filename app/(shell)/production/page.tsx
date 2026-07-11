@@ -10,7 +10,10 @@ import {
   startJobCardAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
-import { getCustomerFabricsAction } from "@/app/(shell)/inventory/actions";
+import {
+  getCustomerFabricsAction,
+  updateCustomerFabricStatusAction,
+} from "@/app/(shell)/inventory/actions";
 import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
   getStaffAction,
@@ -26,7 +29,13 @@ import {
   type JobCardStage,
   type ProductionBucket,
 } from "@/lib/job-cards";
-import type { CustomerFabric, Order, Staff, WorkAssignment } from "@/lib/types";
+import type {
+  CustomerFabric,
+  CustomerFabricStatus,
+  Order,
+  Staff,
+  WorkAssignment,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -91,6 +100,8 @@ function ProductionCard({
   canMoveStages,
   canViewOrders,
   linkedFabrics,
+  canManageFabricStatus,
+  onFabricStatusChange,
   todayIso,
   onUpdated,
 }: {
@@ -99,6 +110,8 @@ function ProductionCard({
   canMoveStages: boolean;
   canViewOrders: boolean;
   linkedFabrics: CustomerFabric[];
+  canManageFabricStatus: boolean;
+  onFabricStatusChange: (fabric: CustomerFabric, status: CustomerFabricStatus) => void;
   todayIso: string;
   onUpdated: () => void;
 }) {
@@ -185,7 +198,13 @@ function ProductionCard({
             {card.taskStatus ? ` - ${card.taskStatus}` : ""}
           </div>
         )}
-        <FabricInfo card={card} linkedFabrics={linkedFabrics} compact />
+        <FabricInfo
+          card={card}
+          linkedFabrics={linkedFabrics}
+          compact
+          canManageStatus={canManageFabricStatus}
+          onStatusChange={onFabricStatusChange}
+        />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canViewOrders && (
@@ -280,6 +299,7 @@ function ProductionContent() {
   const canManageStaff = hasPermission("staff.manage");
   const canViewOrders = hasPermission("orders.view");
   const canViewInventory = hasPermission("inventory.view");
+  const canManageInventory = hasPermission("inventory.manage");
   const currentStaffId = currentUser?.staff_id ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -366,6 +386,15 @@ function ProductionContent() {
     setSyncingCards(true);
     const result = await syncMissingJobCardsAction();
     setSyncingCards(false);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((key) => key + 1);
+  }
+
+  async function updateFabricStatus(fabric: CustomerFabric, status: CustomerFabricStatus) {
+    const result = await updateCustomerFabricStatusAction(fabric.id, status, todayIso);
     if (!result.success) {
       window.alert(result.error);
       return;
@@ -469,6 +498,8 @@ function ProductionContent() {
                         canMoveStages={canManageStaff}
                         canViewOrders={canViewOrders}
                         linkedFabrics={customerFabricsByOrder.get(card.orderId) ?? []}
+                        canManageFabricStatus={canManageInventory}
+                        onFabricStatusChange={updateFabricStatus}
                         todayIso={todayIso}
                         onUpdated={() => setRefreshKey((key) => key + 1)}
                       />
