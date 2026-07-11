@@ -102,6 +102,69 @@ export async function syncJobCardsForOrder(
     p_order_id: orderId,
   });
   if (error) throw error;
+  await reconcileJobCardsForOrderStatus(supabase, orderId);
+}
+
+export async function reconcileJobCardsForOrderStatus(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<void> {
+  const { data: orderRow, error: orderError } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!orderRow) throw new Error("Order not found.");
+
+  const status = (orderRow as { status: OrderStatus }).status;
+  const baseUpdate: Record<string, unknown> = {
+    order_status: status,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (status === "Ready") {
+    await updateJobCardsForOrder(supabase, orderId, {
+      ...baseUpdate,
+      current_stage: "Ready",
+      completed_date: new Date().toISOString().slice(0, 10),
+      cancelled: false,
+    });
+    return;
+  }
+
+  if (status === "Delivered") {
+    await updateJobCardsForOrder(supabase, orderId, {
+      ...baseUpdate,
+      current_stage: "Delivered",
+      completed_date: new Date().toISOString().slice(0, 10),
+      cancelled: false,
+    });
+    return;
+  }
+
+  if (status === "Cancelled") {
+    await updateJobCardsForOrder(supabase, orderId, {
+      ...baseUpdate,
+      current_stage: "Cancelled",
+      cancelled: true,
+    });
+    return;
+  }
+
+  await updateJobCardsForOrder(supabase, orderId, baseUpdate);
+}
+
+async function updateJobCardsForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+  update: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase
+    .from("job_cards")
+    .update(update)
+    .eq("order_id", orderId);
+  if (error) throw error;
 }
 
 export async function assignJobCard(

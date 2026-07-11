@@ -332,8 +332,16 @@ function ProductionContent() {
   const activeOrderCount = orders.filter(
     (order) => order.status !== "Delivered" && order.status !== "Cancelled"
   ).length;
+  const statusMismatchCount = jobCards.filter(
+    (card) =>
+      (card.orderStatus === "Ready" && card.stage !== "Ready") ||
+      (card.orderStatus === "Delivered" && card.stage !== "Delivered") ||
+      (card.orderStatus === "Cancelled" && card.stage !== "Cancelled")
+  ).length;
   const canCreateMissingCards =
     canManageStaff && persistedCards !== null && activeCards.length === 0 && activeOrderCount > 0;
+  const canSyncStatusMismatch =
+    canManageStaff && persistedCards !== null && statusMismatchCount > 0;
 
   async function createMissingJobCards() {
     setSyncingCards(true);
@@ -387,6 +395,25 @@ function ProductionContent() {
                 className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {syncingCards ? "Creating..." : "Create Job Cards"}
+              </button>
+            </div>
+          )}
+
+          {canSyncStatusMismatch && (
+            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-chip-peach bg-chip-peach p-4 text-sm text-chip-peach-fg shadow-soft sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold">Some job cards need status sync.</div>
+                <div>
+                  {statusMismatchCount} job card{statusMismatchCount === 1 ? "" : "s"} do not match their order status.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={createMissingJobCards}
+                disabled={syncingCards}
+                className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {syncingCards ? "Syncing..." : "Sync Job Cards"}
               </button>
             </div>
           )}
