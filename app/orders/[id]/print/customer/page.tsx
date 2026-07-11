@@ -6,6 +6,7 @@ import {
   getOrderByIdAction,
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
+import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
 import {
   formatDate,
@@ -15,11 +16,14 @@ import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
 import type { Customer, Order, Payment } from "@/lib/types";
 
 // No shop-settings module exists yet (see CLAUDE.md) — using the app's own
 // name as a stand-in until a real shop profile/name field is introduced.
-const SHOP_NAME = "TailorSaaS";
 
 // Phase 7E: the receipt used to show order.paymentMode directly, as if an
 // order only ever had one payment — not true once an order can have an
@@ -73,9 +77,15 @@ function CustomerReceiptPrintPageContent({
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
+    DEFAULT_SHOP_BILLING_SETTINGS
+  );
 
   useEffect(() => {
     let cancelled = false;
+    getPrintableBillingSettingsAction().then((settings) => {
+      if (!cancelled) setBillingSettings(settings);
+    });
     getOrderByIdAction(params.id).then((result) => {
       if (cancelled) return;
       setOrder(result ?? null);
@@ -116,8 +126,38 @@ function CustomerReceiptPrintPageContent({
   return (
     <PrintPageFrame backHref="/orders">
       <div className="border-b-2 border-black pb-4">
-        <h1 className="text-2xl font-bold">{SHOP_NAME}</h1>
-        <p className="text-sm text-gray-600">{t("print.customerReceipt")}</p>
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-bold">{billingSettings.shopName}</h1>
+            {billingSettings.tagline && (
+              <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
+            )}
+            {(billingSettings.phone || billingSettings.email) && (
+              <p className="text-xs text-gray-600">
+                {[billingSettings.phone, billingSettings.email].filter(Boolean).join(" | ")}
+              </p>
+            )}
+            {billingSettings.address && (
+              <p className="mt-1 max-w-md whitespace-pre-line text-xs text-gray-600">
+                {billingSettings.address}
+              </p>
+            )}
+            {billingSettings.gstin && (
+              <p className="mt-1 text-xs font-semibold text-gray-700">
+                GSTIN: {billingSettings.gstin}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+              {t("print.customerReceipt")}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Receipt No</p>
+            <p className="font-semibold">
+              {billingSettings.receiptPrefix}-{order.orderNumber}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
@@ -222,7 +262,7 @@ function CustomerReceiptPrintPageContent({
       )}
 
       <p className="mt-10 border-t border-gray-300 pt-4 text-center text-xs text-gray-600">
-        {t("print.bringReceipt")}
+        {billingSettings.footerNote || t("print.bringReceipt")}
       </p>
     </PrintPageFrame>
   );

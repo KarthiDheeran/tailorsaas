@@ -39,6 +39,7 @@ export type Permission =
   | "staff.manage"
   | "reports.view"
   | "settings.view"
+  | "settings.manageShop"
   | "settings.manageUsers"
   | "settings.manageRoles";
 
@@ -87,6 +88,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "reports.view", label: "View reports", group: "Reports" },
 
   { key: "settings.view", label: "View settings", group: "Settings" },
+  { key: "settings.manageShop", label: "Manage shop billing settings", group: "Settings" },
   { key: "settings.manageUsers", label: "Manage users", group: "Settings" },
   { key: "settings.manageRoles", label: "Manage roles and permissions", group: "Settings" },
 ];
@@ -179,6 +181,7 @@ export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
   "customers.editMeasurements": "customers.viewMeasurements",
   "catalog.manage": "catalog.view",
   "staff.manage": "staff.view",
+  "settings.manageShop": "settings.view",
   "settings.manageUsers": "settings.view",
   "settings.manageRoles": "settings.view",
 };

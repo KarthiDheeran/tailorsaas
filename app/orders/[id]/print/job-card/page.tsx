@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
+import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import {
   getCustomerByIdAction,
   getGarmentMeasurementAction,
@@ -15,9 +16,12 @@ import {
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
 import type { Customer, GarmentMeasurement, Order, OrderItem } from "@/lib/types";
 
-const SHOP_NAME = "TailorSaaS";
 
 const FIELD_LABELS: Record<string, string> = Object.fromEntries(
   measurementFields.map((f) => [f.id, f.label])
@@ -59,9 +63,15 @@ function TailorJobCardPrintPageContent({
   const [measurementsByItem, setMeasurementsByItem] = useState<
     Record<number, GarmentMeasurement | undefined>
   >({});
+  const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
+    DEFAULT_SHOP_BILLING_SETTINGS
+  );
 
   useEffect(() => {
     let cancelled = false;
+    getPrintableBillingSettingsAction().then((settings) => {
+      if (!cancelled) setBillingSettings(settings);
+    });
     getOrderByIdAction(params.id).then((result) => {
       if (cancelled) return;
       setOrder(result ?? null);
@@ -95,10 +105,31 @@ function TailorJobCardPrintPageContent({
   return (
     <PrintPageFrame backHref="/orders">
       <div className="border-b-2 border-black pb-4">
-        <h1 className="text-2xl font-bold">{SHOP_NAME}</h1>
-        <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
-          {t("print.tailorJobCard")}
-        </p>
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-bold">{billingSettings.shopName}</h1>
+            {billingSettings.tagline && (
+              <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
+            )}
+            {(billingSettings.phone || billingSettings.email) && (
+              <p className="text-xs text-gray-600">
+                {[billingSettings.phone, billingSettings.email].filter(Boolean).join(" | ")}
+              </p>
+            )}
+            {billingSettings.address && (
+              <p className="mt-1 max-w-md whitespace-pre-line text-xs text-gray-600">
+                {billingSettings.address}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+              {t("print.tailorJobCard")}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">{t("print.orderNo")}</p>
+            <p className="font-semibold">{order.orderNumber}</p>
+          </div>
+        </div>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-4 text-sm">

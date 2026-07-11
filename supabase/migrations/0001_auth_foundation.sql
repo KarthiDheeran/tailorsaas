@@ -193,7 +193,7 @@ insert into roles (id, name, description, type, permissions) values
       'catalog.view', 'catalog.manage',
       'staff.view', 'staff.manage',
       'reports.view',
-      'settings.view', 'settings.manageUsers', 'settings.manageRoles'
+      'settings.view', 'settings.manageShop', 'settings.manageUsers', 'settings.manageRoles'
     ]
   ),
   (

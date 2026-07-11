@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Languages,
   Layers,
+  Receipt,
   Ruler,
   Settings,
   Shirt,
@@ -15,6 +16,14 @@ import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
 
 const SETTINGS_SECTIONS = [
+  {
+    title: "Billing / Receipt",
+    description: "Shop name, GSTIN, contact details, receipt prefix, and print footer.",
+    href: "/settings/billing",
+    icon: Receipt,
+    status: "Available",
+    permission: "settings.view",
+  },
   {
     title: "Catalog / Garment Types",
     description: "Garments, base prices, required measurements, and add-ons.",
