@@ -27,7 +27,10 @@ export async function getBillingSettingsAction(): Promise<{
   if (!guard.ok) return { settings: DEFAULT_SHOP_BILLING_SETTINGS, enabled: false };
 
   try {
-    return { settings: await getShopBillingSettings(supabase), enabled: true };
+    return {
+      settings: await getShopBillingSettings(supabase, { allowLegacy: false }),
+      enabled: true,
+    };
   } catch (error) {
     if (isMissingShopBillingSettingsSchemaError(error)) {
       return { settings: DEFAULT_SHOP_BILLING_SETTINGS, enabled: false };
@@ -83,6 +86,17 @@ export async function saveBillingSettingsAction(
 function validateBillingSettings(input: ShopBillingSettings): string | null {
   if (!input.shopName.trim()) return "Shop name is required.";
   if (!input.receiptPrefix.trim()) return "Receipt prefix is required.";
+  if (!input.invoicePrefix.trim()) return "Invoice prefix is required.";
+  if (!Number.isInteger(input.nextInvoiceSequence) || input.nextInvoiceSequence < 1) {
+    return "Next invoice number must be 1 or higher.";
+  }
+  if (!Number.isInteger(input.invoiceSequenceYear) || input.invoiceSequenceYear < 2000) {
+    return "Invoice year is invalid.";
+  }
+  if (!input.taxLabel.trim()) return "Tax label is required.";
+  if (input.taxRatePercent < 0 || input.taxRatePercent > 100) {
+    return "Tax rate must be between 0 and 100.";
+  }
   if (!input.footerNote.trim()) return "Footer note is required.";
   if (input.email?.trim() && !input.email.includes("@")) return "Enter a valid email address.";
   return null;

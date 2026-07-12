@@ -52,6 +52,16 @@ function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   };
 }
 
+function getIncludedTaxSplit(total: number, settings: ShopBillingSettings) {
+  const rate = Number(settings.taxRatePercent);
+  if (!settings.taxEnabled || rate <= 0) return null;
+  const taxableValue = total / (1 + rate / 100);
+  return {
+    taxableValue,
+    taxAmount: total - taxableValue,
+  };
+}
+
 function CustomerReceiptPrintPageContent({
   params,
 }: {
@@ -122,6 +132,9 @@ function CustomerReceiptPrintPageContent({
   if (order === null) notFound();
 
   const modeSummary = summarizePaymentModes(payments);
+  const invoiceNumber =
+    order.invoiceNumber ?? `${billingSettings.receiptPrefix}-${order.orderNumber}`;
+  const taxSplit = getIncludedTaxSplit(order.totalAmount, billingSettings);
 
   return (
     <PrintPageFrame backHref="/orders">
@@ -152,10 +165,8 @@ function CustomerReceiptPrintPageContent({
             <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
               {t("print.customerReceipt")}
             </p>
-            <p className="mt-1 text-xs text-gray-500">Receipt No</p>
-            <p className="font-semibold">
-              {billingSettings.receiptPrefix}-{order.orderNumber}
-            </p>
+            <p className="mt-1 text-xs text-gray-500">Invoice No</p>
+            <p className="font-semibold">{invoiceNumber}</p>
           </div>
         </div>
       </div>
@@ -228,6 +239,28 @@ function CustomerReceiptPrintPageContent({
                 ₹{order.totalAmount.toLocaleString("en-IN")}
               </span>
             </div>
+            {taxSplit && (
+              <>
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-500">Taxable Value</span>
+                  <span className="font-semibold">
+                    ₹{taxSplit.taxableValue.toLocaleString("en-IN", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-500">
+                    {billingSettings.taxLabel} included ({billingSettings.taxRatePercent}%)
+                  </span>
+                  <span className="font-semibold">
+                    ₹{taxSplit.taxAmount.toLocaleString("en-IN", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between py-1">
               <span className="text-gray-500">{t("print.paid")}</span>
               <span className="font-semibold">

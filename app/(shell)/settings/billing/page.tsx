@@ -60,6 +60,10 @@ function BillingSettingsContent() {
     setSaved(false);
   }
 
+  function patchNumber<K extends keyof ShopBillingSettings>(key: K, value: string) {
+    patch(key, Math.max(0, Number(value) || 0) as ShopBillingSettings[K]);
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -106,7 +110,7 @@ function BillingSettingsContent() {
       {!enabled && (
         <div className="mb-5 rounded-lg border border-chip-peach bg-chip-peach px-4 py-3 text-sm font-medium text-chip-peach-fg">
           Billing settings migration is pending. Receipts will use default shop
-          details until <span className="font-semibold">supabase/migrations/0013_shop_billing_settings.sql</span> is applied.
+          details until <span className="font-semibold">supabase/migrations/0013_shop_billing_settings.sql</span> and <span className="font-semibold">supabase/migrations/0017_invoice_billing_hardening.sql</span> are applied.
         </div>
       )}
 
@@ -120,6 +124,9 @@ function BillingSettingsContent() {
         onSubmit={handleSubmit}
         className="border border-border-soft bg-white p-6 shadow-soft"
       >
+        <div className="mb-5 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Shop Details</h2>
+        </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-ink-muted">Shop Name</span>
@@ -166,15 +173,6 @@ function BillingSettingsContent() {
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-ink-muted">Receipt Prefix</span>
-            <input
-              value={settings.receiptPrefix}
-              onChange={(e) => patch("receiptPrefix", e.target.value.toUpperCase())}
-              disabled={!enabled || !canManage}
-              className={inputClass}
-            />
-          </label>
           <label className="flex flex-col gap-1.5 md:col-span-2">
             <span className="text-sm font-medium text-ink-muted">Address</span>
             <textarea
@@ -185,6 +183,105 @@ function BillingSettingsContent() {
               className={textareaClass}
             />
           </label>
+        </div>
+
+        <div className="mb-5 mt-8 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Invoice Numbering</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Receipt Prefix</span>
+            <input
+              value={settings.receiptPrefix}
+              onChange={(e) => patch("receiptPrefix", e.target.value.toUpperCase())}
+              disabled={!enabled || !canManage}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Invoice Prefix</span>
+            <input
+              value={settings.invoicePrefix}
+              onChange={(e) => patch("invoicePrefix", e.target.value.toUpperCase())}
+              disabled={!enabled || !canManage}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Next Invoice No</span>
+            <input
+              type="number"
+              min={1}
+              value={settings.nextInvoiceSequence}
+              onChange={(e) => patchNumber("nextInvoiceSequence", e.target.value)}
+              disabled={!enabled || !canManage}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Invoice Year</span>
+            <input
+              type="number"
+              min={2000}
+              value={settings.invoiceSequenceYear}
+              onChange={(e) => patchNumber("invoiceSequenceYear", e.target.value)}
+              disabled={!enabled || !canManage}
+              className={inputClass}
+            />
+          </label>
+          <div className="flex flex-col justify-end gap-1.5 md:col-span-2">
+            <span className="text-sm font-medium text-ink-muted">Next Invoice Preview</span>
+            <div className="flex h-11 items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-semibold text-ink">
+              {settings.invoicePrefix}-{settings.invoiceSequenceYear}-{String(settings.nextInvoiceSequence).padStart(4, "0")}
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5 mt-8 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Tax Display</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3.5 text-sm font-medium text-ink-muted">
+            <input
+              type="checkbox"
+              checked={settings.taxEnabled}
+              onChange={(e) => patch("taxEnabled", e.target.checked)}
+              disabled={!enabled || !canManage}
+              className="h-4 w-4 accent-primary"
+            />
+            Show tax split on receipt
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Tax Label</span>
+            <input
+              value={settings.taxLabel}
+              onChange={(e) => patch("taxLabel", e.target.value.toUpperCase())}
+              disabled={!enabled || !canManage || !settings.taxEnabled}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Tax Rate %</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={settings.taxRatePercent}
+              onChange={(e) => patchNumber("taxRatePercent", e.target.value)}
+              disabled={!enabled || !canManage || !settings.taxEnabled}
+              className={inputClass}
+            />
+          </label>
+          <p className="rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-ink-muted md:col-span-3">
+            Tax is shown as an included split of the order total, so payment balances stay consistent.
+          </p>
+        </div>
+
+        <div className="mb-5 mt-8 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Print Footer</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-4">
           <label className="flex flex-col gap-1.5 md:col-span-2">
             <span className="text-sm font-medium text-ink-muted">Receipt Footer Note</span>
             <textarea

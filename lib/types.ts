@@ -348,6 +348,7 @@ export type PaymentStatus = "Not calculated" | "Paid" | "Due" | "Overdue";
 export interface Order {
   id: string;
   orderNumber: string;
+  invoiceNumber?: string;
   customerId: string;
   // Denormalized copy of the customer's name/phone/area as of order
   // creation. Not used for live display anywhere — every existing view

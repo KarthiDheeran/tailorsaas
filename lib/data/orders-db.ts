@@ -61,6 +61,13 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 }
 
 const ORDER_COLUMNS = `
+  id, order_number, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+  delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+  payment_status, created_at, updated_at,
+  order_items ( ${ORDER_ITEM_COLUMNS} )
+`;
+
+const LEGACY_ORDER_COLUMNS = `
   id, order_number, customer_id, customer_snapshot, order_date, trial_date,
   delivery_date, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_at, updated_at,
@@ -70,6 +77,7 @@ const ORDER_COLUMNS = `
 interface OrderRow {
   id: string;
   order_number: string;
+  invoice_number?: string | null;
   customer_id: string;
   customer_snapshot: CustomerSnapshot | null;
   order_date: string;
@@ -90,6 +98,7 @@ function mapOrder(row: OrderRow): Order {
   return {
     id: row.id,
     orderNumber: row.order_number,
+    invoiceNumber: row.invoice_number ?? undefined,
     customerId: row.customer_id,
     customerSnapshot: row.customer_snapshot ?? undefined,
     orderDate: row.order_date,
@@ -109,11 +118,25 @@ function mapOrder(row: OrderRow): Order {
   };
 }
 
+function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return candidate.code === "PGRST204" || message.includes("invoice_number");
+}
+
 export async function getAllOrders(supabase: SupabaseClient): Promise<Order[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("orders")
     .select(ORDER_COLUMNS)
     .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(LEGACY_ORDER_COLUMNS)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
 }
@@ -122,11 +145,20 @@ export async function getOrderById(
   supabase: SupabaseClient,
   id: string
 ): Promise<Order | undefined> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("orders")
     .select(ORDER_COLUMNS)
     .eq("id", id)
     .maybeSingle();
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(LEGACY_ORDER_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return data ? mapOrder(data as unknown as OrderRow) : undefined;
 }
@@ -135,11 +167,20 @@ export async function getOrdersForCustomer(
   supabase: SupabaseClient,
   customerId: string
 ): Promise<Order[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("orders")
     .select(ORDER_COLUMNS)
     .eq("customer_id", customerId)
     .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(LEGACY_ORDER_COLUMNS)
+      .eq("customer_id", customerId)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
 }
