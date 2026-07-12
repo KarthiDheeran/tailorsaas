@@ -3,10 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
-import {
-  getCustomerAreasAction,
-  getCustomerListRowsAction,
-} from "@/app/(shell)/customers/actions";
+import { getCustomerListRowsAction } from "@/app/(shell)/customers/actions";
 import type { CustomerListRow } from "@/lib/customers-db";
 import { CustomersTable } from "@/components/customers/customers-table";
 import {
@@ -39,11 +36,15 @@ function CustomersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getCustomerListRowsAction(todayIso), getCustomerAreasAction()])
-      .then(([rows, areaList]) => {
+    getCustomerListRowsAction(todayIso)
+      .then((rows) => {
         if (cancelled) return;
         setAllRows(rows);
-        setAreas(areaList);
+        setAreas(
+          Array.from(
+            new Set(rows.map((row) => row.customer.area).filter(Boolean))
+          ).sort()
+        );
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);

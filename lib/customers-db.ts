@@ -41,6 +41,13 @@ export interface CustomerListRow {
   status: CustomerStatus;
 }
 
+interface CustomerOrderSummaryRow {
+  customer_id: string;
+  order_date: string;
+  balance: number;
+  status: Order["status"];
+}
+
 function computeStatus(
   outstandingBalance: number,
   lastOrderDate: string | null,
@@ -60,25 +67,60 @@ export async function getCustomerListRows(
   supabase: SupabaseClient,
   todayIso: string
 ): Promise<CustomerListRow[]> {
-  const customers = await getCustomers(supabase);
-  return Promise.all(
-    customers.map(async (customer) => {
-      const customerOrders = await getOrdersForCustomer(supabase, customer.id);
-      const activeOrders = customerOrders.filter(isActiveOrder);
-      const lastOrderDate = activeOrders[0]?.orderDate ?? null;
-      const outstandingBalance = customerOrders.reduce(
-        (sum, o) => sum + orderBalance(o),
-        0
-      );
-      return {
-        customer,
-        totalOrders: customerOrders.length,
-        lastOrderDate,
-        outstandingBalance,
-        status: computeStatus(outstandingBalance, lastOrderDate, todayIso),
-      };
-    })
-  );
+  const [customers, orderSummaryRows] = await Promise.all([
+    getCustomers(supabase),
+    getCustomerOrderSummaryRows(supabase),
+  ]);
+
+  const summariesByCustomerId = new Map<
+    string,
+    { totalOrders: number; lastOrderDate: string | null; outstandingBalance: number }
+  >();
+
+  for (const row of orderSummaryRows) {
+    const current = summariesByCustomerId.get(row.customer_id) ?? {
+      totalOrders: 0,
+      lastOrderDate: null,
+      outstandingBalance: 0,
+    };
+    current.totalOrders += 1;
+    if (isActiveOrder({ status: row.status })) {
+      current.lastOrderDate =
+        !current.lastOrderDate || row.order_date > current.lastOrderDate
+          ? row.order_date
+          : current.lastOrderDate;
+    }
+    current.outstandingBalance += orderBalance({
+      status: row.status,
+      balance: row.balance,
+    });
+    summariesByCustomerId.set(row.customer_id, current);
+  }
+
+  return customers.map((customer) => {
+    const summary = summariesByCustomerId.get(customer.id) ?? {
+      totalOrders: 0,
+      lastOrderDate: null,
+      outstandingBalance: 0,
+    };
+    return {
+      customer,
+      totalOrders: summary.totalOrders,
+      lastOrderDate: summary.lastOrderDate,
+      outstandingBalance: summary.outstandingBalance,
+      status: computeStatus(summary.outstandingBalance, summary.lastOrderDate, todayIso),
+    };
+  });
+}
+
+async function getCustomerOrderSummaryRows(
+  supabase: SupabaseClient
+): Promise<CustomerOrderSummaryRow[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("customer_id, order_date, balance, status");
+  if (error) throw error;
+  return ((data as unknown as CustomerOrderSummaryRow[]) ?? []);
 }
 
 export async function getCustomerAreas(supabase: SupabaseClient): Promise<string[]> {
