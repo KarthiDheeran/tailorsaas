@@ -5,6 +5,67 @@
 -- backfilled with a stable invoice number based on the old receipt convention;
 -- new orders receive a yearly, sequential invoice number at creation time.
 
+create table if not exists shop_billing_settings (
+  id boolean primary key default true check (id),
+  shop_name text not null default 'TailorSaaS',
+  tagline text,
+  phone text,
+  email text,
+  address text,
+  gstin text,
+  receipt_prefix text not null default 'INV',
+  footer_note text not null default 'Please bring this receipt during pickup.',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into shop_billing_settings (id, shop_name, tagline, receipt_prefix, footer_note)
+values (true, 'TailorSaaS', 'Tailoring. Simplified.', 'INV', 'Please bring this receipt during pickup.')
+on conflict (id) do nothing;
+
+alter table shop_billing_settings enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'shop_billing_settings'
+      and policyname = 'shop_billing_settings_select'
+  ) then
+    create policy shop_billing_settings_select on shop_billing_settings for select
+      using (auth_has_permission('settings.view') or auth_has_permission('orders.printCustomerReceipt') or auth_has_permission('orders.printJobCard'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'shop_billing_settings'
+      and policyname = 'shop_billing_settings_insert'
+  ) then
+    create policy shop_billing_settings_insert on shop_billing_settings for insert
+      with check (auth_has_permission('settings.manageShop'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'shop_billing_settings'
+      and policyname = 'shop_billing_settings_update'
+  ) then
+    create policy shop_billing_settings_update on shop_billing_settings for update
+      using (auth_has_permission('settings.manageShop'))
+      with check (auth_has_permission('settings.manageShop'));
+  end if;
+end $$;
+
+grant select, insert, update on shop_billing_settings to authenticated, service_role;
+
+update roles
+set permissions = permissions || array['settings.manageShop']::text[]
+where id = 'role-admin'
+  and not ('settings.manageShop' = any(permissions));
+
 alter table shop_billing_settings
   add column if not exists invoice_prefix text not null default 'INV',
   add column if not exists next_invoice_sequence int not null default 1,
@@ -198,4 +259,3 @@ begin
   return v_order_id;
 end;
 $$;
-
