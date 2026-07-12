@@ -157,6 +157,25 @@ export interface Payment {
   createdAt: string;
 }
 
+export type OrderFinancialAdjustmentType = "Discount" | "Extra Charge" | "Refund";
+
+export interface OrderFinancialAdjustment {
+  id: string;
+  orderId: string;
+  adjustmentDate: string;
+  adjustmentType: OrderFinancialAdjustmentType;
+  amount: number;
+  paymentMode?: PaymentMode;
+  reason: string;
+  notes?: string;
+  recordedBy?: string;
+  voided: boolean;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
+  createdAt: string;
+}
+
 export interface Expense {
   id: string;
   expenseDate: string;

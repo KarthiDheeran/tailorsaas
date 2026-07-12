@@ -23,9 +23,23 @@ import {
   recordPayment,
   voidPayment,
 } from "@/lib/data/payments-db";
+import {
+  getOrderFinancialAdjustmentsForOrder,
+  isMissingOrderFinancialAdjustmentsSchemaError,
+  recordOrderFinancialAdjustment,
+  voidOrderFinancialAdjustment,
+} from "@/lib/data/order-financial-adjustments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
-import type { Order, OrderItem, OrderStatus, Payment, PaymentMode } from "@/lib/types";
+import type {
+  Order,
+  OrderFinancialAdjustment,
+  OrderFinancialAdjustmentType,
+  OrderItem,
+  OrderStatus,
+  Payment,
+  PaymentMode,
+} from "@/lib/types";
 
 // Mirrors components/orders/orders-table.tsx's getAvailableOrderStatuses
 // exactly (kept as a small, deliberate duplication rather than importing a
@@ -187,6 +201,20 @@ export async function getPaymentsForOrderAction(orderId: string): Promise<Paymen
   return getPaymentsForOrder(supabase, orderId);
 }
 
+export async function getFinancialAdjustmentsForOrderAction(
+  orderId: string
+): Promise<OrderFinancialAdjustment[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  if (!guard.ok) return [];
+  try {
+    return await getOrderFinancialAdjustmentsForOrder(supabase, orderId);
+  } catch (error) {
+    if (isMissingOrderFinancialAdjustmentsSchemaError(error)) return [];
+    throw error;
+  }
+}
+
 export async function recordPaymentAction(data: {
   orderId: string;
   amount: number;
@@ -239,4 +267,114 @@ export async function voidPaymentAction(
   ]);
   if (!order) return { success: false, error: "Order not found." };
   return { success: true, data: { order, payments } };
+}
+
+export async function recordFinancialAdjustmentAction(data: {
+  orderId: string;
+  adjustmentType: OrderFinancialAdjustmentType;
+  amount: number;
+  adjustmentDate: string;
+  paymentMode?: PaymentMode;
+  reason: string;
+  notes?: string;
+}): Promise<
+  ActionResult<{
+    order: Order;
+    payments: Payment[];
+    adjustments: OrderFinancialAdjustment[];
+  }>
+> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.recordPayment");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const validationError = validateFinancialAdjustmentInput(data);
+  if (validationError) return { success: false, error: validationError };
+
+  try {
+    await recordOrderFinancialAdjustment(supabase, data);
+  } catch (err) {
+    if (isMissingOrderFinancialAdjustmentsSchemaError(err)) {
+      return {
+        success: false,
+        error: "Financial adjustments are not enabled in this database yet.",
+      };
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to record adjustment.",
+    };
+  }
+
+  const [order, payments, adjustments] = await Promise.all([
+    getOrderById(supabase, data.orderId),
+    getPaymentsForOrder(supabase, data.orderId),
+    getOrderFinancialAdjustmentsForOrder(supabase, data.orderId),
+  ]);
+  if (!order) return { success: false, error: "Order not found." };
+  return { success: true, data: { order, payments, adjustments } };
+}
+
+export async function voidFinancialAdjustmentAction(
+  adjustmentId: string,
+  orderId: string,
+  reason: string
+): Promise<
+  ActionResult<{
+    order: Order;
+    payments: Payment[];
+    adjustments: OrderFinancialAdjustment[];
+  }>
+> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.voidPayment");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!reason.trim()) return { success: false, error: "A reason is required." };
+
+  try {
+    await voidOrderFinancialAdjustment(supabase, adjustmentId, reason.trim());
+  } catch (err) {
+    if (isMissingOrderFinancialAdjustmentsSchemaError(err)) {
+      return {
+        success: false,
+        error: "Financial adjustments are not enabled in this database yet.",
+      };
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to void adjustment.",
+    };
+  }
+
+  const [order, payments, adjustments] = await Promise.all([
+    getOrderById(supabase, orderId),
+    getPaymentsForOrder(supabase, orderId),
+    getOrderFinancialAdjustmentsForOrder(supabase, orderId),
+  ]);
+  if (!order) return { success: false, error: "Order not found." };
+  return { success: true, data: { order, payments, adjustments } };
+}
+
+function validateFinancialAdjustmentInput(data: {
+  adjustmentType: OrderFinancialAdjustmentType;
+  amount: number;
+  adjustmentDate: string;
+  paymentMode?: PaymentMode;
+  reason: string;
+}): string | null {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (!["Discount", "Extra Charge", "Refund"].includes(data.adjustmentType)) {
+    return "Invalid adjustment type.";
+  }
+  if (!Number.isFinite(data.amount) || data.amount <= 0) {
+    return "Amount must be greater than zero.";
+  }
+  if (!data.adjustmentDate || data.adjustmentDate > todayIso) {
+    return "Adjustment date cannot be in the future.";
+  }
+  if (!data.reason.trim()) return "Reason is required.";
+  if (data.adjustmentType === "Refund" && !data.paymentMode) {
+    return "Refund payment mode is required.";
+  }
+  return null;
 }

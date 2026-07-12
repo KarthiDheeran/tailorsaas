@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Pencil, Printer, Wallet } from "lucide-react";
-import type { Customer, Order, Payment } from "@/lib/types";
+import { X, Pencil, Printer, SlidersHorizontal, Wallet } from "lucide-react";
+import type { Customer, Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
 import {
   formatDate,
   OrderStatusEditor,
   PaymentStatusBadge,
 } from "@/components/orders/orders-table";
-import { getPaymentsForOrderAction } from "@/app/(shell)/orders/actions";
+import {
+  getFinancialAdjustmentsForOrderAction,
+  getPaymentsForOrderAction,
+} from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
 import { PaymentHistoryList } from "@/components/orders/payment-history-list";
+import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
+import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -108,16 +113,25 @@ export function OrderDetailsDrawer({
   const canEdit = hasPermission("orders.edit");
 
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [showRecordModal, setShowRecordModal] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
   useEffect(() => {
     if (!order || !canViewPayments) {
       setPayments([]);
+      setAdjustments([]);
       return;
     }
     let cancelled = false;
-    getPaymentsForOrderAction(order.id).then((result) => {
-      if (!cancelled) setPayments(result);
+    Promise.all([
+      getPaymentsForOrderAction(order.id),
+      getFinancialAdjustmentsForOrderAction(order.id),
+    ]).then(([paymentResult, adjustmentResult]) => {
+      if (!cancelled) {
+        setPayments(paymentResult);
+        setAdjustments(adjustmentResult);
+      }
     });
     return () => {
       cancelled = true;
@@ -127,6 +141,16 @@ export function OrderDetailsDrawer({
 
   function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
     setPayments(result.payments);
+    onOrderUpdated(result.order);
+  }
+
+  function handleAdjustmentChanged(result: {
+    order: Order;
+    payments: Payment[];
+    adjustments: OrderFinancialAdjustment[];
+  }) {
+    setPayments(result.payments);
+    setAdjustments(result.adjustments);
     onOrderUpdated(result.order);
   }
 
@@ -279,30 +303,55 @@ export function OrderDetailsDrawer({
                     </span>
                     <PaymentStatusBadge order={order} />
                   </div>
-                  {canRecordPayment && isReceivableOrder(order) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowRecordModal(true)}
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
-                    >
-                      <Wallet className="h-3.5 w-3.5" />
-                      {t("orders.recordPayment")}
-                    </button>
+                  {canRecordPayment && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {isReceivableOrder(order) && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRecordModal(true)}
+                          className="flex items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                        >
+                          <Wallet className="h-3.5 w-3.5" />
+                          {t("orders.recordPayment")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowAdjustmentModal(true)}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                        Adjustment
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
 
               {canViewPayments && (
-                <div>
-                  <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                    {t("orders.paymentHistory")}
-                  </p>
-                  <PaymentHistoryList
-                    order={order}
-                    payments={payments}
-                    onVoided={handlePaymentChanged}
-                  />
-                </div>
+                <>
+                  <div>
+                    <p className="mb-2 text-[13px] font-medium text-ink-muted">
+                      Adjustments
+                    </p>
+                    <FinancialAdjustmentsList
+                      order={order}
+                      adjustments={adjustments}
+                      onVoided={handleAdjustmentChanged}
+                    />
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[13px] font-medium text-ink-muted">
+                      {t("orders.paymentHistory")}
+                    </p>
+                    <PaymentHistoryList
+                      order={order}
+                      payments={payments}
+                      onVoided={handlePaymentChanged}
+                    />
+                  </div>
+                </>
               )}
             </div>
 
@@ -337,6 +386,16 @@ export function OrderDetailsDrawer({
           onRecorded={(result) => {
             handlePaymentChanged(result);
             setShowRecordModal(false);
+          }}
+        />
+      )}
+      {order && showAdjustmentModal && (
+        <FinancialAdjustmentModal
+          order={order}
+          onClose={() => setShowAdjustmentModal(false)}
+          onRecorded={(result) => {
+            handleAdjustmentChanged(result);
+            setShowAdjustmentModal(false);
           }}
         />
       )}

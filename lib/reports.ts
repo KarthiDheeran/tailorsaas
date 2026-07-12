@@ -5,6 +5,7 @@ import type {
   InventoryItem,
   InventoryItemType,
   Order,
+  OrderFinancialAdjustment,
   Payment,
   PaymentMode,
   PaymentType,
@@ -16,6 +17,10 @@ import {
   getExpenses,
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
+import {
+  getAllOrderFinancialAdjustments,
+  isMissingOrderFinancialAdjustmentsSchemaError,
+} from "@/lib/data/order-financial-adjustments-db";
 import {
   getJobCards,
   isMissingJobCardsSchemaError,
@@ -268,6 +273,12 @@ export async function getPaymentsReport(
     getAllPayments(supabase),
     getAppUsers(supabase),
   ]);
+  let allAdjustments: OrderFinancialAdjustment[] = [];
+  try {
+    allAdjustments = await getAllOrderFinancialAdjustments(supabase);
+  } catch (error) {
+    if (!isMissingOrderFinancialAdjustmentsSchemaError(error)) throw error;
+  }
   const ordersById = new Map(allOrders.map((o) => [o.id, o]));
   const userNameById = new Map(allUsers.map((u) => [u.id, u.full_name]));
 
@@ -319,15 +330,29 @@ export async function getPaymentsReport(
   // recompute trigger already applies to orders.advance_paid/balance.
   const counted = filtered.filter((p) => !p.voided);
 
-  const totalCollected = counted.reduce((sum, p) => sum + p.amount, 0);
+  const countedRefunds = allAdjustments.filter(
+    (adjustment) =>
+      adjustment.adjustmentType === "Refund" &&
+      !adjustment.voided &&
+      inRange(adjustment.adjustmentDate, filters.range) &&
+      (!filters.paymentMode || adjustment.paymentMode === filters.paymentMode)
+  );
+
+  const totalCollected =
+    counted.reduce((sum, p) => sum + p.amount, 0) -
+    countedRefunds.reduce((sum, adjustment) => sum + adjustment.amount, 0);
   const byMode = paymentModes
     .map((mode) => ({
       mode,
-      amount: counted
-        .filter((p) => p.paymentMode === mode)
-        .reduce((sum, p) => sum + p.amount, 0),
+      amount:
+        counted
+          .filter((p) => p.paymentMode === mode)
+          .reduce((sum, p) => sum + p.amount, 0) -
+        countedRefunds
+          .filter((adjustment) => adjustment.paymentMode === mode)
+          .reduce((sum, adjustment) => sum + adjustment.amount, 0),
     }))
-    .filter((b) => b.amount > 0);
+    .filter((b) => b.amount !== 0);
 
   // Distinct orders referenced by the filtered transactions, each counted
   // once regardless of how many of its payments matched the filters —

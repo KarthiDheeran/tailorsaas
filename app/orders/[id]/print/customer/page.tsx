@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import {
   getOrderByIdAction,
+  getFinancialAdjustmentsForOrderAction,
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
@@ -20,7 +21,7 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
-import type { Customer, Order, Payment } from "@/lib/types";
+import type { Customer, Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
 
 // No shop-settings module exists yet (see CLAUDE.md) — using the app's own
 // name as a stand-in until a real shop profile/name field is introduced.
@@ -62,6 +63,13 @@ function getIncludedTaxSplit(total: number, settings: ShopBillingSettings) {
   };
 }
 
+function adjustmentAmountLabel(adjustment: OrderFinancialAdjustment) {
+  const amount = adjustment.amount.toLocaleString("en-IN");
+  if (adjustment.adjustmentType === "Discount") return `-₹${amount}`;
+  if (adjustment.adjustmentType === "Extra Charge") return `+₹${amount}`;
+  return `₹${amount}`;
+}
+
 function CustomerReceiptPrintPageContent({
   params,
 }: {
@@ -87,6 +95,7 @@ function CustomerReceiptPrintPageContent({
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
@@ -123,6 +132,9 @@ function CustomerReceiptPrintPageContent({
     getPaymentsForOrderAction(params.id).then((result) => {
       if (!cancelled) setPayments(result);
     });
+    getFinancialAdjustmentsForOrderAction(params.id).then((result) => {
+      if (!cancelled) setAdjustments(result);
+    });
     return () => {
       cancelled = true;
     };
@@ -135,6 +147,7 @@ function CustomerReceiptPrintPageContent({
   const invoiceNumber =
     order.invoiceNumber ?? `${billingSettings.receiptPrefix}-${order.orderNumber}`;
   const taxSplit = getIncludedTaxSplit(order.totalAmount, billingSettings);
+  const activeAdjustments = adjustments.filter((adjustment) => !adjustment.voided);
 
   return (
     <PrintPageFrame backHref="/orders">
@@ -229,6 +242,31 @@ function CustomerReceiptPrintPageContent({
           </tbody>
         </table>
       </div>
+
+      {activeAdjustments.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 border-b border-gray-300 pb-1 text-sm font-semibold uppercase tracking-wide">
+            Adjustments
+          </p>
+          <table className="w-full text-left text-sm">
+            <tbody>
+              {activeAdjustments.map((adjustment) => (
+                <tr key={adjustment.id} className="border-b border-gray-200">
+                  <td className="py-1.5">
+                    {adjustment.adjustmentType}
+                    <span className="ml-2 text-xs text-gray-500">
+                      {adjustment.reason}
+                    </span>
+                  </td>
+                  <td className="py-1.5 text-right font-semibold">
+                    {adjustmentAmountLabel(adjustment)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {canViewPayments && (
         <div className="mt-6 flex justify-end">
