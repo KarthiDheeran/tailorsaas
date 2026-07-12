@@ -15,6 +15,7 @@ import { PaymentHistoryList } from "@/components/orders/payment-history-list";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { isReceivableOrder } from "@/lib/order-finance";
 
 // Print routes are opened in the SAME tab (client-side <Link> navigation),
 // not a new tab, deliberately: stub-data's in-memory orders/customers arrays
@@ -278,7 +279,7 @@ export function OrderDetailsDrawer({
                     </span>
                     <PaymentStatusBadge order={order} />
                   </div>
-                  {canRecordPayment && order.balance > 0 && (
+                  {canRecordPayment && isReceivableOrder(order) && (
                     <button
                       type="button"
                       onClick={() => setShowRecordModal(true)}

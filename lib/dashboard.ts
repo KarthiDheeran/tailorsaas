@@ -14,6 +14,7 @@ import {
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
+import { isActiveOrder, isReceivableOrder } from "@/lib/order-finance";
 
 // Phase 6E: real, Supabase-backed selector over Order data — the customer
 // names/phones the leaf components (todays-deliveries.tsx etc.) show come
@@ -59,34 +60,35 @@ export async function getDashboardData(
   todayIso: string
 ): Promise<DashboardData> {
   const allOrders = await getAllOrders(supabase);
+  const activeOrders = allOrders.filter(isActiveOrder);
   const yesterdayIso = addDays(todayIso, -1);
   const trialWindowEndIso = addDays(todayIso, 7);
 
-  const ordersToday = allOrders.filter((o) => o.orderDate === todayIso);
-  const ordersYesterday = allOrders.filter(
+  const ordersToday = activeOrders.filter((o) => o.orderDate === todayIso);
+  const ordersYesterday = activeOrders.filter(
     (o) => o.orderDate === yesterdayIso
   );
 
-  const todaysDeliveries = allOrders.filter(
+  const todaysDeliveries = activeOrders.filter(
     (o) => o.deliveryDate === todayIso
   );
   const deliveriesPendingToday = todaysDeliveries.filter(
-    (o) => o.balance > 0
+    isReceivableOrder
   );
 
-  const overdueOrders = allOrders
-    .filter((o) => o.balance > 0 && o.deliveryDate < todayIso)
+  const overdueOrders = activeOrders
+    .filter((o) => isReceivableOrder(o) && o.deliveryDate < todayIso)
     .map((o) => ({ ...o, daysLate: daysBetween(o.deliveryDate, todayIso) }))
     .sort((a, b) => b.daysLate - a.daysLate);
 
-  const allPendingTrials = allOrders.filter((o) => o.trialDate >= todayIso);
+  const allPendingTrials = activeOrders.filter((o) => o.trialDate >= todayIso);
   const trialsToday = allPendingTrials.filter((o) => o.trialDate === todayIso);
   const trialQueue = allPendingTrials
     .filter((o) => o.trialDate <= trialWindowEndIso)
     .sort((a, b) => (a.trialDate < b.trialDate ? -1 : 1));
 
-  const paymentPending = allOrders
-    .filter((o) => o.balance > 0)
+  const paymentPending = activeOrders
+    .filter(isReceivableOrder)
     .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
   const outstandingBalanceTotal = paymentPending.reduce(
     (sum, o) => sum + o.balance,

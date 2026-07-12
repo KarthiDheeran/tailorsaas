@@ -33,6 +33,7 @@ import {
   type CustomerStatus,
 } from "@/lib/customers-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
+import { isActiveOrder, isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
 // ---------------------------------------------------------------------------
 // Phase 6E: real, Supabase-backed report selectors — every function now
@@ -133,7 +134,8 @@ export async function getSalesReport(
   paymentMode?: PaymentMode
 ): Promise<SalesReport> {
   const allOrders = await getAllOrders(supabase);
-  const ordersInRange = allOrders.filter(
+  const activeOrders = allOrders.filter(isActiveOrder);
+  const ordersInRange = activeOrders.filter(
     (o) =>
       inRange(o.orderDate, range) &&
       (!paymentMode || o.paymentMode === paymentMode)
@@ -149,7 +151,7 @@ export async function getSalesReport(
   // revenueToday), so it's approximated as: advances collected on orders
   // placed in range, plus balances collected on orders delivered-and-settled
   // in range (balance <= 0 means the delivery-time balance was paid).
-  const deliveredSettledInRange = allOrders.filter(
+  const deliveredSettledInRange = activeOrders.filter(
     (o) =>
       inRange(o.deliveryDate, range) &&
       o.balance <= 0 &&
@@ -299,12 +301,15 @@ export async function getPaymentsReport(
   // transaction list: "this payment's order still has (overdue) balance
   // outstanding," not a property of the payment itself.
   if (filters.pendingOnly) {
-    filtered = filtered.filter((p) => (ordersById.get(p.orderId)?.balance ?? 0) > 0);
+    filtered = filtered.filter((p) => {
+      const order = ordersById.get(p.orderId);
+      return !!order && isReceivableOrder(order);
+    });
   }
   if (filters.overdueOnly) {
     filtered = filtered.filter((p) => {
       const order = ordersById.get(p.orderId);
-      return !!order && order.balance > 0 && order.deliveryDate < todayIso;
+      return !!order && isReceivableOrder(order) && order.deliveryDate < todayIso;
     });
   }
 
@@ -333,11 +338,11 @@ export async function getPaymentsReport(
     .map((id) => ordersById.get(id))
     .filter((o): o is Order => !!o);
   const outstandingBalance = distinctOrders.reduce(
-    (sum, o) => sum + Math.max(o.balance, 0),
+    (sum, o) => sum + orderBalance(o),
     0
   );
   const overdueBalance = distinctOrders
-    .filter((o) => o.balance > 0 && o.deliveryDate < todayIso)
+    .filter((o) => isReceivableOrder(o) && o.deliveryDate < todayIso)
     .reduce((sum, o) => sum + o.balance, 0);
 
   const rows: PaymentRow[] = filtered.map((payment) => {
@@ -399,26 +404,28 @@ export async function getOrdersReport(
 ): Promise<OrdersReport> {
   const weekAhead = addDays(todayIso, 7);
   const allOrders = await getAllOrders(supabase);
+  const activeOrders = allOrders.filter(isActiveOrder);
   const rangeOrders = allOrders.filter((o) => inRange(o.orderDate, filters.range));
+  const activeRangeOrders = activeOrders.filter((o) => inRange(o.orderDate, filters.range));
 
   let filtered = rangeOrders;
   if (filters.balanceStatus === "paid") {
-    filtered = filtered.filter((o) => o.balance <= 0);
+    filtered = filtered.filter((o) => isActiveOrder(o) && o.balance <= 0);
   } else if (filters.balanceStatus === "balanceDue") {
-    filtered = filtered.filter((o) => o.balance > 0);
+    filtered = filtered.filter(isReceivableOrder);
   } else if (filters.balanceStatus === "overdue") {
     filtered = filtered.filter(
-      (o) => o.balance > 0 && o.deliveryDate < todayIso
+      (o) => isReceivableOrder(o) && o.deliveryDate < todayIso
     );
   }
 
   if (filters.deliveryStatus === "overdue") {
     filtered = filtered.filter(
-      (o) => o.deliveryDate < todayIso && o.balance > 0
+      (o) => o.deliveryDate < todayIso && isReceivableOrder(o)
     );
   } else if (filters.deliveryStatus === "dueSoon") {
     filtered = filtered.filter(
-      (o) => o.deliveryDate >= todayIso && o.deliveryDate <= weekAhead
+      (o) => isActiveOrder(o) && o.deliveryDate >= todayIso && o.deliveryDate <= weekAhead
     );
   }
 
@@ -439,11 +446,11 @@ export async function getOrdersReport(
   // stable overview regardless of which status filters are also applied.
   const summary: OrdersReportSummary = {
     totalOrders: rangeOrders.length,
-    balanceDueOrders: rangeOrders.filter((o) => o.balance > 0).length,
-    overdueOrders: rangeOrders.filter(
-      (o) => o.balance > 0 && o.deliveryDate < todayIso
+    balanceDueOrders: activeRangeOrders.filter(isReceivableOrder).length,
+    overdueOrders: activeRangeOrders.filter(
+      (o) => isReceivableOrder(o) && o.deliveryDate < todayIso
     ).length,
-    dueSoonDeliveries: rangeOrders.filter(
+    dueSoonDeliveries: activeRangeOrders.filter(
       (o) => o.deliveryDate >= todayIso && o.deliveryDate <= weekAhead
     ).length,
   };
@@ -498,8 +505,9 @@ export async function getCustomersReport(
   // from order history: a customer's first-ever order date falling inside
   // the selected range.
   const allOrders = await getAllOrders(supabase);
+  const activeOrders = allOrders.filter(isActiveOrder);
   const firstOrderDateByCustomer = new Map<string, string>();
-  for (const o of allOrders) {
+  for (const o of activeOrders) {
     const current = firstOrderDateByCustomer.get(o.customerId);
     if (!current || o.orderDate < current) {
       firstOrderDateByCustomer.set(o.customerId, o.orderDate);

@@ -15,6 +15,7 @@ import {
 } from "@/lib/data/expenses-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { expenseCategories, paymentModes } from "@/lib/constants";
+import { isReceivableOrder } from "@/lib/order-finance";
 import { hasPermission } from "@/lib/permissions";
 import type { Expense, ExpenseCategory, Order, PaymentMode } from "@/lib/types";
 import {
@@ -154,7 +155,7 @@ export async function getDailyClosingAction(todayIso: string): Promise<DailyClos
 async function getPendingDuesOrders(): Promise<Order[]> {
   const allOrders = await getAllOrders(createAdminClient());
   return allOrders
-    .filter((o) => o.balance > 0)
+    .filter(isReceivableOrder)
     .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
 }
 

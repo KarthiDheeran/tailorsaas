@@ -28,6 +28,7 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/types";
+import { isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
 type DeliveryFilter = "all" | "ready" | "due" | "balance" | "clear";
 
@@ -125,7 +126,7 @@ function DeliveryDeskContent() {
   const stats = useMemo(() => {
     const ready = rows.filter((row) => row.order.status === "Ready");
     const dueOrOverdue = rows.filter((row) => row.order.deliveryDate <= today);
-    const balanceDue = rows.reduce((sum, row) => sum + Math.max(0, row.order.balance), 0);
+    const balanceDue = rows.reduce((sum, row) => sum + orderBalance(row.order), 0);
     const canDeliver = ready.filter((row) => row.order.balance <= 0);
     return {
       ready: ready.length,
@@ -141,7 +142,7 @@ function DeliveryDeskContent() {
       const order = row.order;
       if (filter === "ready" && order.status !== "Ready") return false;
       if (filter === "due" && order.deliveryDate > today) return false;
-      if (filter === "balance" && order.balance <= 0) return false;
+      if (filter === "balance" && !isReceivableOrder(order)) return false;
       if (filter === "clear" && !(order.status === "Ready" && order.balance <= 0)) {
         return false;
       }
@@ -330,7 +331,7 @@ function DeliveryDeskContent() {
                               <FileText className="h-3.5 w-3.5" />
                             </Link>
                           )}
-                          {canRecordPayment && order.balance > 0 && (
+                          {canRecordPayment && isReceivableOrder(order) && (
                             <button
                               type="button"
                               onClick={() => setPaymentOrder(order)}
@@ -347,7 +348,7 @@ function DeliveryDeskContent() {
                                 ? "No permission"
                                 : order.status !== "Ready"
                                   ? "Order is not ready"
-                                  : order.balance > 0
+                                  : isReceivableOrder(order)
                                     ? "Collect balance first"
                                     : "Mark delivered"
                             }

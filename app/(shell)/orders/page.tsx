@@ -31,6 +31,7 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { isReceivableOrder } from "@/lib/order-finance";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -265,15 +266,15 @@ function OrdersPageContent() {
         customer?.phone.includes(searchQuery.trim());
       if (!matchesQuery) return false;
     }
-    if (balanceFilter === "paid" && order.balance > 0) return false;
+    if (balanceFilter === "paid" && isReceivableOrder(order)) return false;
     if (
       balanceFilter === "due" &&
-      !(order.balance > 0 && order.deliveryDate >= todayIso)
+      !(isReceivableOrder(order) && order.deliveryDate >= todayIso)
     )
       return false;
     if (
       balanceFilter === "overdue" &&
-      !(order.balance > 0 && order.deliveryDate < todayIso)
+      !(isReceivableOrder(order) && order.deliveryDate < todayIso)
     )
       return false;
     if (statusFilter !== "all" && order.status !== statusFilter) return false;

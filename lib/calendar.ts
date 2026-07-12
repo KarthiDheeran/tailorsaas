@@ -11,6 +11,7 @@ import {
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
+import { isReceivableOrder } from "@/lib/order-finance";
 
 export type CalendarEventType = "Delivery" | "Trial" | "Production" | "Payment";
 export type CalendarEventTone = "blue" | "green" | "amber" | "red" | "slate";
@@ -112,7 +113,7 @@ export async function getCalendarData(
 
     if (
       input.includePayments &&
-      order.balance > 0 &&
+      isReceivableOrder(order) &&
       isInRange(order.deliveryDate, input.startDate, input.endDate)
     ) {
       events.push({

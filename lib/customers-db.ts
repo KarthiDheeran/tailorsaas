@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Customer, Order } from "@/lib/types";
 import { getOrdersForCustomer } from "@/lib/data/orders-db";
 import { getCustomers } from "@/lib/data/customers-db";
+import { isActiveOrder, orderBalance } from "@/lib/order-finance";
 
 // ---------------------------------------------------------------------------
 // Phase 6A: async fork of lib/customers.ts's 3 derived selectors, reading
@@ -63,9 +64,10 @@ export async function getCustomerListRows(
   return Promise.all(
     customers.map(async (customer) => {
       const customerOrders = await getOrdersForCustomer(supabase, customer.id);
-      const lastOrderDate = customerOrders[0]?.orderDate ?? null;
+      const activeOrders = customerOrders.filter(isActiveOrder);
+      const lastOrderDate = activeOrders[0]?.orderDate ?? null;
       const outstandingBalance = customerOrders.reduce(
-        (sum, o) => sum + o.balance,
+        (sum, o) => sum + orderBalance(o),
         0
       );
       return {
@@ -100,11 +102,12 @@ export async function getCustomerDetail(
   customer: Customer
 ): Promise<CustomerDetail> {
   const orders = await getOrdersForCustomer(supabase, customer.id); // newest first
-  const totalOrdersValue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const outstandingBalance = orders.reduce((sum, o) => sum + o.balance, 0);
+  const activeOrders = orders.filter(isActiveOrder);
+  const totalOrdersValue = activeOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const outstandingBalance = orders.reduce((sum, o) => sum + orderBalance(o), 0);
   const totalPaid = totalOrdersValue - outstandingBalance;
   const lastPaymentDate =
-    orders.find((o) => o.totalAmount - o.balance > 0)?.orderDate ?? null;
+    activeOrders.find((o) => o.totalAmount - o.balance > 0)?.orderDate ?? null;
 
   return {
     customer,
@@ -112,7 +115,7 @@ export async function getCustomerDetail(
     totalOrdersValue,
     totalPaid,
     outstandingBalance,
-    lastOrderDate: orders[0]?.orderDate ?? null,
+    lastOrderDate: activeOrders[0]?.orderDate ?? null,
     lastPaymentDate,
   };
 }
