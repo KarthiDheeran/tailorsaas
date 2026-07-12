@@ -1,6 +1,6 @@
 "use client";
 
-import { Sidebar } from "@/components/layout/sidebar";
+import { MobileNav, Sidebar } from "@/components/layout/sidebar";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 
@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface p-8">
+      <div className="flex min-h-screen items-center justify-center bg-surface p-4 sm:p-6 lg:p-8">
         <div className="w-full max-w-md">
           <LoadingState label="Loading workspace..." />
         </div>
@@ -23,9 +23,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-surface">{children}</main>
+    <div className="min-h-screen bg-surface">
+      <MobileNav />
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <main className="min-w-0 flex-1 overflow-y-auto bg-surface">{children}</main>
+      </div>
     </div>
   );
 }

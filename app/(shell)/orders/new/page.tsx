@@ -449,7 +449,7 @@ function NewOrderPageContent() {
 
   return (
     <div className="pb-28">
-      <div className="mx-auto max-w-7xl p-8">
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         <button
           type="button"
           onClick={handleCancel}
@@ -749,7 +749,7 @@ function NewOrderPageContent() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft md:left-[250px]">
-        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-8">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-8">
           <div className="flex items-center gap-2 text-sm text-ink-muted">
             {saveError ? (
               <span className="font-medium text-chip-red-fg">{saveError}</span>

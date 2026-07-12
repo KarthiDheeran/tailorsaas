@@ -82,7 +82,7 @@ function DashboardContent() {
 
   if (loadError && !data) {
     return (
-      <div className="mx-auto max-w-7xl p-8">
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         <LoadError message={loadError} onRetry={() => window.location.reload()} />
       </div>
     );
@@ -90,7 +90,7 @@ function DashboardContent() {
 
   if (!data) {
     return (
-      <div className="mx-auto max-w-7xl p-8">
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         <LoadingState label="Loading dashboard..." />
       </div>
     );
@@ -103,7 +103,7 @@ function DashboardContent() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Dashboard</h1>

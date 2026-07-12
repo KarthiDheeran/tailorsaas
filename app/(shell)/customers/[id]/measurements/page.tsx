@@ -63,7 +63,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   if (!customer) return null;
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <button
         onClick={() => router.push(`/customers/${params.id}`)}
         className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"

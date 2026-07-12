@@ -32,7 +32,7 @@ export default function Home() {
   if (!landingPath) return <AccessDenied />;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface p-8">
+    <div className="flex min-h-screen items-center justify-center bg-surface p-4 sm:p-6 lg:p-8">
       <div className="w-full max-w-md">
         <LoadingState label="Opening workspace..." />
       </div>

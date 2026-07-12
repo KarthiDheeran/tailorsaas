@@ -65,7 +65,7 @@ function TemplatesContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-tint text-primary">
           <MessageSquareText className="h-5 w-5" />

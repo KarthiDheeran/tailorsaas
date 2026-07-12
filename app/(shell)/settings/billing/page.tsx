@@ -81,14 +81,14 @@ function BillingSettingsContent() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl p-8">
+      <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
         <LoadingState label="Loading billing settings..." />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-tint text-primary">
           <Receipt className="h-5 w-5" />

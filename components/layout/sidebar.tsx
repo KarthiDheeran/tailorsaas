@@ -4,33 +4,35 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  ClipboardList,
-  Wallet,
-  Package,
-  Users,
-  Users2,
   BarChart3,
   CalendarDays,
-  Truck,
-  Shirt,
-  FileText,
-  Ruler,
-  Workflow,
-  Settings,
-  ChevronsUpDown,
   Check,
+  ChevronsUpDown,
+  ClipboardList,
+  FileText,
   Languages,
+  LayoutDashboard,
+  Menu,
   MessageCircle,
+  Package,
+  Ruler,
+  Settings,
+  Shirt,
+  Truck,
+  Users,
+  Users2,
+  Wallet,
+  Workflow,
+  X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
-import type { Permission } from "@/lib/permissions";
-import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { cn } from "@/lib/utils";
 import { LOCALES, LOCALE_LABELS } from "@/lib/i18n/types";
 import type { TranslationKey } from "@/lib/i18n/translations";
+import type { Permission } from "@/lib/permissions";
 
 const navItems: {
   href: string;
@@ -62,8 +64,68 @@ const navItems: {
   },
 ];
 
-// Small language selector, styled like the mock-user switcher just below it.
-// English / தமிழ் — persisted to localStorage by LanguageProvider itself.
+function BrandMark() {
+  return (
+    <div className="flex items-center gap-2 px-2">
+      <Shirt className="h-6 w-6 shrink-0 text-primary" />
+      <div>
+        <div className="text-[18px] font-bold leading-tight tracking-tight text-ink">
+          TailorSaaS
+        </div>
+        <div className="text-[11px] leading-tight text-ink-faint">
+          Tailoring. Simplified.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
+  const { hasPermission, hasAnyPermission } = useCurrentUser();
+  const { t } = useLanguage();
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.permission) return hasPermission(item.permission);
+    if (item.anyOf) return hasAnyPermission(item.anyOf);
+    return true;
+  });
+
+  return (
+    <>
+      {visibleNavItems.map(({ href, labelKey, icon: Icon, activePrefixes }) => {
+        const isActive =
+          pathname === href ||
+          pathname.startsWith(`${href}/`) ||
+          activePrefixes?.some(
+            (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+          );
+        const label =
+          href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
+            ? t("nav.myTasks")
+            : t(labelKey);
+
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-lg border-l-4 px-4 py-2.5 text-sm transition-colors",
+              isActive
+                ? "border-primary bg-primary-tint font-semibold text-primary"
+                : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
+            )}
+          >
+            <Icon className="h-[18px] w-[18px] shrink-0" />
+            <span className="break-words">{label}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
 function LanguageSwitcher() {
   const { locale, setLocale } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -107,80 +169,90 @@ function LanguageSwitcher() {
   );
 }
 
-export function Sidebar() {
-  const pathname = usePathname();
-  const { currentUser, currentRole, hasPermission, hasAnyPermission } = useCurrentUser();
-  const { t } = useLanguage();
-
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.permission) return hasPermission(item.permission);
-    if (item.anyOf) return hasAnyPermission(item.anyOf);
-    return true;
-  });
-
+function UserIdentity() {
+  const { currentUser, currentRole } = useCurrentUser();
   return (
-    <aside className="flex h-screen w-[250px] flex-col bg-white px-4 py-6 print:hidden">
-      <div className="mb-8 flex items-center gap-2 px-2">
-        <Shirt className="h-6 w-6 text-primary" />
-        <div>
-          <div className="text-[18px] font-bold leading-tight tracking-tight text-ink">
-            TailorSaaS
-          </div>
-          <div className="text-[11px] leading-tight text-ink-faint">
-            Tailoring. Simplified.
-          </div>
+    <div className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-tint text-sm font-semibold text-primary">
+        {(currentUser?.full_name ?? "?").charAt(0)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-ink">
+          {currentUser?.full_name ?? "Unknown user"}
+        </div>
+        <div className="truncate text-[11px] text-ink-faint">
+          {currentRole?.name ?? "-"}
         </div>
       </div>
-      <nav className="flex-1 space-y-1.5">
-        {visibleNavItems.map(({ href, labelKey, icon: Icon, activePrefixes }) => {
-          const isActive =
-            pathname === href ||
-            pathname.startsWith(`${href}/`) ||
-            activePrefixes?.some(
-              (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-            );
-          const label =
-            href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
-              ? t("nav.myTasks")
-              : t(labelKey);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border-l-4 px-4 py-2.5 text-sm transition-colors",
-                isActive
-                  ? "border-primary bg-primary-tint font-semibold text-primary"
-                  : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
-              )}
-            >
-              <Icon className="h-[18px] w-[18px]" />
-              <span className="break-words">{label}</span>
-            </Link>
-          );
-        })}
+    </div>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="hidden h-screen w-[250px] shrink-0 flex-col bg-white px-4 py-6 print:hidden lg:flex">
+      <div className="mb-8">
+        <BrandMark />
+      </div>
+      <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
+        <NavLinks />
       </nav>
 
       <LanguageSwitcher />
-
-      {/* Real logged-in identity (Phase 3) — replaces the earlier dev-only
-          mock-user switcher popover; no longer switchable, since this is
-          the actual Supabase-authenticated account. */}
-      <div className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-tint text-sm font-semibold text-primary">
-          {(currentUser?.full_name ?? "?").charAt(0)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink">
-            {currentUser?.full_name ?? "Unknown user"}
-          </div>
-          <div className="truncate text-[11px] text-ink-faint">
-            {currentRole?.name ?? "—"}
-          </div>
-        </div>
-      </div>
-
+      <UserIdentity />
       <LogoutButton />
     </aside>
+  );
+}
+
+export function MobileNav() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="sticky top-0 z-40 border-b border-border-soft bg-white px-4 py-3 print:hidden lg:hidden">
+      <div className="flex items-center justify-between gap-3">
+        <BrandMark />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface hover:text-ink"
+          aria-label="Open navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            aria-label="Close navigation"
+            onClick={() => setOpen(false)}
+          />
+          <aside className="relative flex h-full w-[min(320px,calc(100vw-48px))] flex-col bg-white px-4 py-5 shadow-xl">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <BrandMark />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+                aria-label="Close navigation"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+              <NavLinks onNavigate={() => setOpen(false)} />
+            </nav>
+            <div className="mt-4 border-t border-border-soft pt-4">
+              <LanguageSwitcher />
+              <UserIdentity />
+              <LogoutButton />
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
   );
 }

@@ -331,7 +331,7 @@ function OrdersPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       {showCreatedToast && (
         <div className="fixed right-8 top-6 z-50 flex items-center gap-2 rounded-lg border border-border-soft bg-white px-4 py-3 shadow-soft">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />

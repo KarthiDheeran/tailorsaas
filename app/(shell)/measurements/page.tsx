@@ -127,7 +127,7 @@ function MeasurementDeskContent() {
   }, [rows, query, view]);
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Measurements</h1>

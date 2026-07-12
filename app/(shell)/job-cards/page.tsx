@@ -282,7 +282,7 @@ function JobCardsContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-[26px] font-semibold text-ink">Job Cards</h1>
         <p className="text-sm text-ink-muted">
