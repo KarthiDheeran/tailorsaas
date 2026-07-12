@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   // Phase 3: the session/profile/role fetch is async now (a real Supabase
@@ -13,8 +14,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-surface p-8">
+        <div className="w-full max-w-md">
+          <LoadingState label="Loading workspace..." />
+        </div>
       </div>
     );
   }

@@ -14,6 +14,22 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  .loading-progress-bar {
+    animation: loading-progress 1.25s ease-in-out infinite;
+  }
+}
+
+@keyframes loading-progress {
+  0% {
+    transform: translateX(-120%) scaleX(0.65);
+  }
+  50% {
+    transform: translateX(55%) scaleX(1);
+  }
+  100% {
+    transform: translateX(220%) scaleX(0.65);
+  }
 }
 
 /* Customer Receipt / Tailor Job Card print routes (app/orders/[id]/print/**)

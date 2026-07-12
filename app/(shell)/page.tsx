@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AccessDenied } from "@/components/auth/access-denied";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
 export default function Home() {
   const router = useRouter();
@@ -31,8 +32,10 @@ export default function Home() {
   if (!landingPath) return <AccessDenied />;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+    <div className="flex min-h-screen items-center justify-center bg-surface p-8">
+      <div className="w-full max-w-md">
+        <LoadingState label="Opening workspace..." />
+      </div>
     </div>
   );
 }
