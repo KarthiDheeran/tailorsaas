@@ -9,6 +9,7 @@ import {
   CreditCard,
   IndianRupee,
   Plus,
+  Printer,
   Smartphone,
   X,
 } from "lucide-react";
@@ -93,6 +94,7 @@ function PaymentsPageContent() {
   const canViewPayments = hasPermission("orders.viewPayments");
   const canViewExpenses = hasPermission("expenses.view");
   const canManageExpenses = hasPermission("expenses.manage");
+  const canPrintPaymentReceipts = hasPermission("orders.printCustomerReceipt");
   const todayIso = new Date().toISOString().slice(0, 10);
 
   const [preset, setPreset] = useState<DateRangePreset>("today");
@@ -544,6 +546,15 @@ function PaymentsPageContent() {
                 showRecordedBy={false}
                 renderActions={(row) => (
                   <div className="flex items-center justify-end gap-3">
+                    {canPrintPaymentReceipts && !row.payment.voided && (
+                      <Link
+                        href={`/orders/${row.payment.orderId}/print/payment/${row.payment.id}`}
+                        title="Print payment receipt"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
                     <Link
                       href={`/orders?view=${row.payment.orderId}`}
                       className="text-xs font-semibold text-primary hover:underline"
