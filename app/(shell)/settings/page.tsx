@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Languages,
   Layers,
+  MessageSquareText,
   Receipt,
   Ruler,
   Settings,
@@ -21,6 +22,14 @@ const SETTINGS_SECTIONS = [
     description: "Shop name, GSTIN, contact details, receipt prefix, and print footer.",
     href: "/settings/billing",
     icon: Receipt,
+    status: "Available",
+    permission: "settings.view",
+  },
+  {
+    title: "Communication Templates",
+    description: "Trial, delivery, payment, production, delay, and rework message wording.",
+    href: "/settings/communication-templates",
+    icon: MessageSquareText,
     status: "Available",
     permission: "settings.view",
   },

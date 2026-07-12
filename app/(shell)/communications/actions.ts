@@ -1,13 +1,15 @@
 "use server";
 
 import { getServerCallerPermissions } from "@/lib/auth/require-server-permission";
+import { getCalendarData, type CalendarData } from "@/lib/calendar";
 import {
   getWhatsAppMessages,
   isMissingWhatsAppMessagesSchemaError,
   logWhatsAppMessage,
   type WhatsAppMessageInput,
 } from "@/lib/data/whatsapp-messages-db";
-import { hasAnyPermission } from "@/lib/permissions";
+import { hasAnyPermission, hasPermission } from "@/lib/permissions";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { WhatsAppMessage } from "@/lib/types";
 
@@ -28,6 +30,24 @@ export async function getWhatsAppMessagesAction(): Promise<WhatsAppMessage[] | n
     if (isMissingWhatsAppMessagesSchemaError(error)) return null;
     throw error;
   }
+}
+
+export async function getReminderInboxAction(todayIso: string): Promise<CalendarData | null> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!hasAnyPermission(permissions, ["calendar.view", "orders.view", "customers.view"])) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(todayIso)) {
+    throw new Error("A valid date is required.");
+  }
+
+  return getCalendarData(createAdminClient(), {
+    startDate: addDays(todayIso, -14),
+    endDate: addDays(todayIso, 21),
+    todayIso,
+    includePayments: hasPermission(permissions, "orders.viewPayments"),
+  });
 }
 
 export async function logWhatsAppMessageAction(
@@ -54,4 +74,11 @@ export async function logWhatsAppMessageAction(
       error: error instanceof Error ? error.message : "Failed to log WhatsApp message.",
     };
   }
+}
+
+function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }

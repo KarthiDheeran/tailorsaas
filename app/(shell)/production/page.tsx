@@ -117,8 +117,10 @@ function ProductionCard({
 }) {
   const [saving, setSaving] = useState<"start" | "complete" | "move" | null>(null);
   const [targetStage, setTargetStage] = useState<JobCardStage>(card.stage);
+  const [stageReason, setStageReason] = useState("");
   useEffect(() => {
     setTargetStage(card.stage);
+    setStageReason("");
   }, [card.stage]);
   const canStart = card.persisted
     ? Boolean(card.assignedStaffId && !card.startedDate && !card.completedDate)
@@ -162,8 +164,12 @@ function ProductionCard({
 
   async function handleMoveStage() {
     if (!card.persisted || targetStage === card.stage) return;
+    if ((targetStage === "Delayed" || targetStage === "Alteration") && !stageReason.trim()) {
+      window.alert(targetStage === "Delayed" ? "Delay reason is required." : "Rework reason is required.");
+      return;
+    }
     setSaving("move");
-    const result = await moveJobCardStageAction(card.id, targetStage, todayIso);
+    const result = await moveJobCardStageAction(card.id, targetStage, todayIso, stageReason);
     setSaving(null);
     if (!result.success) {
       window.alert(result.error);
@@ -237,26 +243,37 @@ function ProductionCard({
         )}
       </div>
       {canMoveStages && card.persisted && card.stage !== "Delivered" && card.stage !== "Cancelled" && (
-        <div className="mt-3 flex items-center gap-2 border-t border-border-soft pt-3">
-          <select
-            value={targetStage}
-            onChange={(event) => setTargetStage(event.target.value as JobCardStage)}
-            className="h-8 min-w-0 flex-1 rounded border border-border bg-white px-2 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-          >
-            {STAGE_OPTIONS.map((stage) => (
-              <option key={stage} value={stage}>
-                {stage}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={handleMoveStage}
-            disabled={saving !== null || targetStage === card.stage}
-            className="h-8 rounded border border-border px-2 text-xs font-semibold text-ink-muted hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saving === "move" ? "Moving..." : "Move"}
-          </button>
+        <div className="mt-3 border-t border-border-soft pt-3">
+          <div className="flex items-center gap-2">
+            <select
+              value={targetStage}
+              onChange={(event) => setTargetStage(event.target.value as JobCardStage)}
+              className="h-8 min-w-0 flex-1 rounded border border-border bg-white px-2 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            >
+              {STAGE_OPTIONS.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleMoveStage}
+              disabled={saving !== null || targetStage === card.stage}
+              className="h-8 rounded border border-border px-2 text-xs font-semibold text-ink-muted hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving === "move" ? "Moving..." : "Move"}
+            </button>
+          </div>
+          {(targetStage === "Delayed" || targetStage === "Alteration") && targetStage !== card.stage && (
+            <textarea
+              value={stageReason}
+              onChange={(event) => setStageReason(event.target.value)}
+              rows={2}
+              placeholder={targetStage === "Delayed" ? "Delay reason" : "Rework / alteration reason"}
+              className="mt-2 w-full rounded border border-border bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          )}
         </div>
       )}
     </div>

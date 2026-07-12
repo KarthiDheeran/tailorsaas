@@ -5,6 +5,8 @@ import {
   type CalendarReminderTargetType,
   type CalendarReminderType,
 } from "@/lib/data/calendar-reminders-db";
+import { renderCommunicationTemplate } from "@/lib/communication-templates";
+import { getCommunicationTemplatesWithFallback } from "@/lib/data/communication-templates-db";
 import {
   getJobCards,
   isMissingJobCardsSchemaError,
@@ -59,6 +61,8 @@ export async function getCalendarData(
     getAllOrders(supabase),
     getCalendarJobCards(supabase, input.todayIso),
   ]);
+  const { templates } = await getCommunicationTemplatesWithFallback(supabase);
+  const templateByType = new Map(templates.map((template) => [template.templateType, template]));
 
   const events: CalendarEvent[] = [];
 
@@ -84,7 +88,15 @@ export async function getCalendarData(
         reminderType: "Delivery",
         reminderTargetType: "Order",
         reminderTargetId: order.id,
-        reminderMessage: `Hi ${customerName}, your order ${order.orderNumber} is scheduled for delivery on ${order.deliveryDate}.${customerPhone ? "" : ""}`,
+        reminderMessage: renderCommunicationTemplate(
+          templateByType.get("Delivery Reminder"),
+          `Hi ${customerName}, your order ${order.orderNumber} is scheduled for delivery on ${order.deliveryDate}.`,
+          {
+            customer_name: customerName,
+            order_number: order.orderNumber,
+            date: order.deliveryDate,
+          }
+        ),
         isPastDue: active && order.deliveryDate < input.todayIso,
       });
     }
@@ -106,7 +118,15 @@ export async function getCalendarData(
         reminderType: "Trial",
         reminderTargetType: "Order",
         reminderTargetId: order.id,
-        reminderMessage: `Hi ${customerName}, this is a reminder for your trial on ${order.trialDate} for order ${order.orderNumber}.`,
+        reminderMessage: renderCommunicationTemplate(
+          templateByType.get("Trial Reminder"),
+          `Hi ${customerName}, this is a reminder for your trial on ${order.trialDate} for order ${order.orderNumber}.`,
+          {
+            customer_name: customerName,
+            order_number: order.orderNumber,
+            date: order.trialDate,
+          }
+        ),
         isPastDue: order.trialDate < input.todayIso && order.status !== "Delivered",
       });
     }
@@ -132,7 +152,16 @@ export async function getCalendarData(
         reminderType: "Payment",
         reminderTargetType: "Order",
         reminderTargetId: order.id,
-        reminderMessage: `Hi ${customerName}, payment of Rs ${Number(order.balance).toLocaleString("en-IN")} is pending for order ${order.orderNumber}.`,
+        reminderMessage: renderCommunicationTemplate(
+          templateByType.get("Payment Reminder"),
+          `Hi ${customerName}, payment of Rs ${Number(order.balance).toLocaleString("en-IN")} is pending for order ${order.orderNumber}.`,
+          {
+            customer_name: customerName,
+            order_number: order.orderNumber,
+            date: order.deliveryDate,
+            balance: Number(order.balance).toLocaleString("en-IN"),
+          }
+        ),
         isPastDue: order.deliveryDate < input.todayIso,
       });
     }
@@ -161,7 +190,19 @@ export async function getCalendarData(
       reminderType: "Production",
       reminderTargetType: "Job Card",
       reminderTargetId: card.id,
-      reminderMessage: `${card.jobCardNumber} (${card.garment}) is due on ${card.deliveryDate}${card.assignedTo ? ` for ${card.assignedTo}` : ""}.`,
+      reminderMessage: renderCommunicationTemplate(
+        templateByType.get("Production Reminder"),
+        `${card.jobCardNumber} (${card.garment}) is due on ${card.deliveryDate}${card.assignedTo ? ` for ${card.assignedTo}` : ""}.`,
+        {
+          customer_name: card.customer?.name,
+          order_number: card.orderNumber,
+          job_card_number: card.jobCardNumber,
+          garment: card.garment,
+          date: card.deliveryDate,
+          assigned_staff: card.assignedTo,
+          assigned_staff_text: card.assignedTo ? ` for ${card.assignedTo}` : "",
+        }
+      ),
       isPastDue: card.isDelayed,
     });
   }

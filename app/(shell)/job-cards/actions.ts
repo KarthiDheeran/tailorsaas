@@ -209,13 +209,20 @@ export async function completeJobCardAction(
 export async function moveJobCardStageAction(
   id: string,
   stage: JobCardStage,
-  todayIso: string
+  todayIso: string,
+  reason?: string
 ): Promise<ActionResult> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
   if (!VALID_STAGES.has(stage)) return { success: false, error: "Invalid stage." };
   if (!ISO_DATE.test(todayIso)) return { success: false, error: "A valid date is required." };
+  if ((stage === "Delayed" || stage === "Alteration") && !reason?.trim()) {
+    return {
+      success: false,
+      error: stage === "Delayed" ? "Delay reason is required." : "Rework reason is required.",
+    };
+  }
 
   try {
     const admin = createAdminClient();
@@ -226,10 +233,18 @@ export async function moveJobCardStageAction(
       await logJobCardActivityBestEffort({
         jobCardId: id,
         orderId,
-        actionType: stage === "Ready" ? "Completed" : "Stage Moved",
+        actionType:
+          stage === "Ready"
+            ? "Completed"
+            : stage === "Delayed"
+              ? "Delayed"
+              : stage === "Alteration"
+                ? "Rework"
+                : "Stage Moved",
         fromStage: before.currentStage,
         toStage: stage,
         assignedStaffId: before.assignedStaffId,
+        notes: reason,
         performedBy: guard.userId,
       });
     }

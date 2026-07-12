@@ -260,11 +260,30 @@ export interface WhatsAppMessage {
   createdAt: string;
 }
 
+export type CommunicationTemplateType =
+  | "Delivery Reminder"
+  | "Trial Reminder"
+  | "Payment Reminder"
+  | "Production Reminder"
+  | "Delay Notice"
+  | "Rework Notice";
+
+export interface CommunicationTemplate {
+  templateType: CommunicationTemplateType;
+  title: string;
+  body: string;
+  active: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
 export type JobCardActivityAction =
   | "Assigned"
   | "Started"
   | "Stage Moved"
-  | "Completed";
+  | "Completed"
+  | "Delayed"
+  | "Rework";
 
 export interface JobCardActivityLog {
   id: string;
