@@ -407,7 +407,7 @@ function CalendarEventItem({
         </Link>
         {event.reminderSentAt ? (
           <span className="text-xs font-semibold text-chip-mint-fg">Sent</span>
-        ) : event.customerPhone ? (
+        ) : event.customerPhone && event.whatsappEnabled ? (
           <a
             href={buildWhatsAppUrl(event.customerPhone, event.reminderMessage)}
             target="_blank"
@@ -427,6 +427,11 @@ function CalendarEventItem({
             <MessageCircle className="h-3.5 w-3.5" />
             {pending ? "Saving" : "WhatsApp"}
           </a>
+        ) : event.customerPhone && !event.whatsappEnabled ? (
+          <span className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-ink-faint">
+            <MessageCircle className="h-3.5 w-3.5" />
+            WhatsApp off
+          </span>
         ) : (
           <button
             type="button"

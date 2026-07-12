@@ -27,6 +27,9 @@ export async function saveCommunicationTemplateAction(input: {
   templateType: CommunicationTemplateType;
   body: string;
   active: boolean;
+  whatsappEnabled: boolean;
+  smsEnabled: boolean;
+  emailEnabled: boolean;
 }): Promise<ActionResult> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "settings.manageShop");

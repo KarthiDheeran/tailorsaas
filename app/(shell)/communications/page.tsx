@@ -147,7 +147,7 @@ function ReminderInbox({
                 </Link>
                 {event.reminderSentAt ? (
                   <span className="text-xs font-semibold text-chip-mint-fg">Sent</span>
-                ) : event.customerPhone ? (
+                ) : event.customerPhone && event.whatsappEnabled ? (
                   <a
                     href={buildWhatsAppUrl(event.customerPhone, event.reminderMessage)}
                     target="_blank"
@@ -168,6 +168,11 @@ function ReminderInbox({
                     <MessageCircle className="h-3.5 w-3.5" />
                     {pendingEventKey === event.eventKey ? "Saving..." : "WhatsApp"}
                   </a>
+                ) : event.customerPhone && !event.whatsappEnabled ? (
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-ink-faint">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    WhatsApp off
+                  </span>
                 ) : (
                   <button
                     type="button"

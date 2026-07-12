@@ -273,6 +273,9 @@ export interface CommunicationTemplate {
   title: string;
   body: string;
   active: boolean;
+  whatsappEnabled: boolean;
+  smsEnabled: boolean;
+  emailEnabled: boolean;
   updatedAt: string;
   updatedBy?: string;
 }

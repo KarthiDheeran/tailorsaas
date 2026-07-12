@@ -39,6 +39,7 @@ export interface CalendarEvent {
   reminderTargetType: CalendarReminderTargetType;
   reminderTargetId?: string;
   reminderMessage: string;
+  whatsappEnabled: boolean;
   reminderSentAt?: string;
   isPastDue: boolean;
 }
@@ -72,6 +73,7 @@ export async function getCalendarData(
 
     if (isInRange(order.deliveryDate, input.startDate, input.endDate)) {
       const active = order.status !== "Delivered" && order.status !== "Cancelled";
+      const template = templateByType.get("Delivery Reminder");
       events.push({
         id: `delivery:${order.id}:${order.deliveryDate}`,
         eventKey: `delivery:${order.id}:${order.deliveryDate}`,
@@ -89,7 +91,7 @@ export async function getCalendarData(
         reminderTargetType: "Order",
         reminderTargetId: order.id,
         reminderMessage: renderCommunicationTemplate(
-          templateByType.get("Delivery Reminder"),
+          template,
           `Hi ${customerName}, your order ${order.orderNumber} is scheduled for delivery on ${order.deliveryDate}.`,
           {
             customer_name: customerName,
@@ -97,11 +99,13 @@ export async function getCalendarData(
             date: order.deliveryDate,
           }
         ),
+        whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
         isPastDue: active && order.deliveryDate < input.todayIso,
       });
     }
 
     if (order.trialDate && isInRange(order.trialDate, input.startDate, input.endDate)) {
+      const template = templateByType.get("Trial Reminder");
       events.push({
         id: `trial:${order.id}:${order.trialDate}`,
         eventKey: `trial:${order.id}:${order.trialDate}`,
@@ -119,7 +123,7 @@ export async function getCalendarData(
         reminderTargetType: "Order",
         reminderTargetId: order.id,
         reminderMessage: renderCommunicationTemplate(
-          templateByType.get("Trial Reminder"),
+          template,
           `Hi ${customerName}, this is a reminder for your trial on ${order.trialDate} for order ${order.orderNumber}.`,
           {
             customer_name: customerName,
@@ -127,6 +131,7 @@ export async function getCalendarData(
             date: order.trialDate,
           }
         ),
+        whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
         isPastDue: order.trialDate < input.todayIso && order.status !== "Delivered",
       });
     }
@@ -136,6 +141,7 @@ export async function getCalendarData(
       isReceivableOrder(order) &&
       isInRange(order.deliveryDate, input.startDate, input.endDate)
     ) {
+      const template = templateByType.get("Payment Reminder");
       events.push({
         id: `payment:${order.id}:${order.deliveryDate}`,
         eventKey: `payment:${order.id}:${order.deliveryDate}`,
@@ -153,7 +159,7 @@ export async function getCalendarData(
         reminderTargetType: "Order",
         reminderTargetId: order.id,
         reminderMessage: renderCommunicationTemplate(
-          templateByType.get("Payment Reminder"),
+          template,
           `Hi ${customerName}, payment of Rs ${Number(order.balance).toLocaleString("en-IN")} is pending for order ${order.orderNumber}.`,
           {
             customer_name: customerName,
@@ -162,6 +168,7 @@ export async function getCalendarData(
             balance: Number(order.balance).toLocaleString("en-IN"),
           }
         ),
+        whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
         isPastDue: order.deliveryDate < input.todayIso,
       });
     }
@@ -170,6 +177,7 @@ export async function getCalendarData(
   for (const card of jobCards) {
     if (!isInRange(card.deliveryDate, input.startDate, input.endDate)) continue;
     if (card.productionBucket === "Closed") continue;
+    const template = templateByType.get("Production Reminder");
     events.push({
       id: `production:${card.id}:${card.deliveryDate}`,
       eventKey: `production:${card.id}:${card.deliveryDate}`,
@@ -191,7 +199,7 @@ export async function getCalendarData(
       reminderTargetType: "Job Card",
       reminderTargetId: card.id,
       reminderMessage: renderCommunicationTemplate(
-        templateByType.get("Production Reminder"),
+        template,
         `${card.jobCardNumber} (${card.garment}) is due on ${card.deliveryDate}${card.assignedTo ? ` for ${card.assignedTo}` : ""}.`,
         {
           customer_name: card.customer?.name,
@@ -203,6 +211,7 @@ export async function getCalendarData(
           assigned_staff_text: card.assignedTo ? ` for ${card.assignedTo}` : "",
         }
       ),
+      whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
       isPastDue: card.isDelayed,
     });
   }
@@ -218,6 +227,16 @@ export async function getCalendarData(
     events: withReminders.events.sort(sortEvents),
     remindersEnabled: withReminders.remindersEnabled,
   };
+}
+
+function isTemplateChannelEnabled(
+  template: { active: boolean; whatsappEnabled: boolean } | undefined,
+  channel: "whatsapp"
+): boolean {
+  if (!template) return true;
+  if (template.active === false) return false;
+  if (channel === "whatsapp") return template.whatsappEnabled !== false;
+  return true;
 }
 
 async function getCalendarJobCards(

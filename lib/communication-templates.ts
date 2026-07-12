@@ -30,6 +30,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Delivery Reminder",
     body: "Hi {{customer_name}}, your order {{order_number}} is scheduled for delivery on {{date}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
   {
@@ -37,6 +40,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Trial Reminder",
     body: "Hi {{customer_name}}, this is a reminder for your trial on {{date}} for order {{order_number}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
   {
@@ -44,6 +50,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Payment Reminder",
     body: "Hi {{customer_name}}, payment of Rs {{balance}} is pending for order {{order_number}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
   {
@@ -51,6 +60,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Production Reminder",
     body: "{{job_card_number}} ({{garment}}) is due on {{date}}{{assigned_staff_text}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
   {
@@ -58,6 +70,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Delay Notice",
     body: "Hi {{customer_name}}, your order {{order_number}} is delayed. Reason: {{reason}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
   {
@@ -65,6 +80,9 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     title: "Rework / Alteration Notice",
     body: "Hi {{customer_name}}, your order {{order_number}} needs alteration/rework. Reason: {{reason}}.",
     active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
     updatedAt: "",
   },
 ];

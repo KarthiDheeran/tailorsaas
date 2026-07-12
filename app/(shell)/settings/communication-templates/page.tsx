@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquareText, Save } from "lucide-react";
+import { Mail, MessageCircle, MessageSquareText, Save, Smartphone } from "lucide-react";
 import {
   getCommunicationTemplatesAction,
   saveCommunicationTemplateAction,
@@ -55,6 +55,9 @@ function TemplatesContent() {
       templateType: template.templateType,
       body: template.body,
       active: template.active,
+      whatsappEnabled: template.whatsappEnabled,
+      smsEnabled: template.smsEnabled,
+      emailEnabled: template.emailEnabled,
     });
     setSavingType(null);
     if (!result.success) {
@@ -81,6 +84,7 @@ function TemplatesContent() {
       {!enabled && (
         <div className="mb-5 rounded-xl border border-chip-peach bg-chip-peach p-4 text-sm font-medium text-chip-peach-fg">
           Built-in templates are being shown. Apply <span className="font-semibold">supabase/migrations/0019_communication_templates_and_rework.sql</span> to edit and save templates.
+          Then apply <span className="font-semibold">supabase/migrations/0020_communication_template_channels.sql</span> to enable channel controls.
         </div>
       )}
 
@@ -136,6 +140,39 @@ function TemplatesContent() {
                 rows={5}
                 className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-muted"
               />
+              <div className="mt-4 rounded-lg border border-border-soft bg-surface p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                  Channels
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <ChannelToggle
+                    label="WhatsApp"
+                    icon={MessageCircle}
+                    checked={template.whatsappEnabled}
+                    disabled={!canManage || !enabled || !template.active}
+                    onChange={(checked) => updateTemplate(index, { whatsappEnabled: checked })}
+                  />
+                  <ChannelToggle
+                    label="SMS"
+                    icon={Smartphone}
+                    checked={template.smsEnabled}
+                    disabled={!canManage || !enabled || !template.active}
+                    onChange={(checked) => updateTemplate(index, { smsEnabled: checked })}
+                  />
+                  <ChannelToggle
+                    label="Email"
+                    icon={Mail}
+                    checked={template.emailEnabled}
+                    disabled={!canManage || !enabled || !template.active}
+                    onChange={(checked) => updateTemplate(index, { emailEnabled: checked })}
+                  />
+                </div>
+                {!template.active && (
+                  <p className="mt-2 text-xs text-ink-faint">
+                    Enable the template before choosing delivery channels.
+                  </p>
+                )}
+              </div>
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
@@ -152,6 +189,34 @@ function TemplatesContent() {
         </div>
       )}
     </div>
+  );
+}
+
+function ChannelToggle({
+  label,
+  icon: Icon,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  icon: typeof MessageCircle;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-lg border border-border-soft bg-white px-3 py-2 text-xs font-semibold text-ink-muted">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 accent-primary"
+      />
+      <Icon className="h-3.5 w-3.5 text-ink-faint" />
+      {label}
+    </label>
   );
 }
 
