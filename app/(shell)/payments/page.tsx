@@ -20,7 +20,6 @@ import {
   getExpensesAction,
   getExpenseTotalAction,
   getPaymentsLedgerAction,
-  getPendingDuesAction,
   getPendingDuesOrdersAction,
   voidExpenseAction,
   type DailyClosingSummary,
@@ -115,13 +114,8 @@ function PaymentsPageContent() {
   // always-today range and no other filters.
   const [todayReport, setTodayReport] = useState<PaymentsReport>(EMPTY_REPORT);
   const [dailyClosing, setDailyClosing] = useState<DailyClosingSummary | null>(null);
-  // "Pending Dues" card: total outstanding balance across ALL orders (not
-  // scoped to today or any filter) — see getPendingDuesAction's own comment
-  // for why this is a separate fetch from todayReport above.
-  const [pendingDues, setPendingDues] = useState(0);
-  // Pending Dues tab's table rows — same underlying orders as the card
-  // above (getPendingDuesOrders in actions.ts), just the full list instead
-  // of the summed total.
+  // Pending Dues tab rows. The summary card total is derived from these rows
+  // too, so receivables are not fetched twice.
   const [pendingDuesOrders, setPendingDuesOrders] = useState<Order[]>([]);
   const [adjustments, setAdjustments] = useState<FinancialAdjustmentLedgerRow[]>([]);
   const [adjustmentType, setAdjustmentType] = useState<OrderFinancialAdjustmentType | "">("");
@@ -144,7 +138,6 @@ function PaymentsPageContent() {
   const [reportLoaded, setReportLoaded] = useState(false);
   const [todayReportLoaded, setTodayReportLoaded] = useState(false);
   const [dailyClosingLoaded, setDailyClosingLoaded] = useState(false);
-  const [pendingDuesLoaded, setPendingDuesLoaded] = useState(false);
   const [pendingDuesOrdersLoaded, setPendingDuesOrdersLoaded] = useState(false);
   const [adjustmentsLoaded, setAdjustmentsLoaded] = useState(false);
   const [expensesLoaded, setExpensesLoaded] = useState(false);
@@ -226,24 +219,6 @@ function PaymentsPageContent() {
       cancelled = true;
     };
   }, [canViewPayments, todayIso, refreshTick, expenseRefreshKey]);
-
-  useEffect(() => {
-    if (!canViewPayments) return;
-    let cancelled = false;
-    getPendingDuesAction().then((result) => {
-      if (!cancelled && result !== null) setPendingDues(result);
-      if (!cancelled) setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load pending dues."));
-      }
-    }).finally(() => {
-      if (!cancelled) setPendingDuesLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewPayments, refreshTick]);
 
   useEffect(() => {
     if (!canViewPayments) return;
@@ -359,6 +334,10 @@ function PaymentsPageContent() {
   const todayCollected = todayReport.totalCollected;
   const cashToday = todayReport.byMode.find((b) => b.mode === "Cash")?.amount ?? 0;
   const upiToday = todayReport.byMode.find((b) => b.mode === "UPI")?.amount ?? 0;
+  const pendingDues = pendingDuesOrders.reduce(
+    (sum, order) => sum + Number(order.balance),
+    0
+  );
 
   const isLoading =
     (canViewPayments &&
@@ -366,7 +345,6 @@ function PaymentsPageContent() {
         reportLoaded &&
         todayReportLoaded &&
         dailyClosingLoaded &&
-        pendingDuesLoaded &&
         pendingDuesOrdersLoaded &&
         adjustmentsLoaded
       )) ||
