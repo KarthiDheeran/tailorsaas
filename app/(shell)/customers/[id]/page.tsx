@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
-import { ChevronLeft, Plus, Pencil } from "lucide-react";
+import { ChevronLeft, FileText, Plus, Pencil } from "lucide-react";
 import {
   getCustomerByIdAction,
   getCustomerDetailAction,
@@ -104,6 +104,15 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             contextType="Customer"
             contextId={customer.id}
           />
+          {canViewPayments && (
+            <Link
+              href={`/customers/${customer.id}/statement`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              title="Customer statement"
+            >
+              <FileText className="h-3.5 w-3.5" />
+            </Link>
+          )}
           {canEdit && (
             <Link
               href={`/customers/${customer.id}/edit`}

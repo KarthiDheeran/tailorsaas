@@ -24,6 +24,10 @@ import {
   type CustomerDetail,
   type CustomerListRow,
 } from "@/lib/customers-db";
+import {
+  getCustomerStatement,
+  type CustomerStatement,
+} from "@/lib/customer-statement";
 import type {
   Customer,
   CustomerMeasurements,
@@ -121,6 +125,19 @@ export async function getCustomerDetailAction(
   const customer = await getCustomerById(supabase, customerId);
   if (!customer) return undefined;
   return getCustomerDetail(supabase, customer);
+}
+
+export async function getCustomerStatementAction(
+  customerId: string
+): Promise<CustomerStatement | undefined> {
+  const supabase = createServerClient();
+  const customerGuard = await requireServerPermission(supabase, "customers.view");
+  if (!customerGuard.ok) return undefined;
+  const paymentGuard = await requireServerPermission(supabase, "orders.viewPayments");
+  if (!paymentGuard.ok) return undefined;
+  const customer = await getCustomerById(supabase, customerId);
+  if (!customer) return undefined;
+  return getCustomerStatement(supabase, customer);
 }
 
 export interface CustomerFormData {

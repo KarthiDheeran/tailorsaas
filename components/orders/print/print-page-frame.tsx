@@ -12,9 +12,11 @@ import { useLanguage } from "@/components/i18n/language-provider";
 // green-gray design tokens, since this is a physical document, not a screen.
 export function PrintPageFrame({
   backHref,
+  backLabel,
   children,
 }: {
   backHref: string;
+  backLabel?: string;
   children: React.ReactNode;
 }) {
   const { t } = useLanguage();
@@ -26,7 +28,7 @@ export function PrintPageFrame({
           className="flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900"
         >
           <ChevronLeft className="h-4 w-4" />
-          {t("print.backToOrders")}
+          {backLabel ?? t("print.backToOrders")}
         </Link>
         <button
           type="button"
