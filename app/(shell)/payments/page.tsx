@@ -15,6 +15,7 @@ import {
 import {
   createExpenseAction,
   getDailyClosingAction,
+  getFinancialAdjustmentsAction,
   getExpensesAction,
   getExpenseTotalAction,
   getPaymentsLedgerAction,
@@ -22,9 +23,11 @@ import {
   getPendingDuesOrdersAction,
   voidExpenseAction,
   type DailyClosingSummary,
+  type FinancialAdjustmentLedgerRow,
 } from "@/app/(shell)/payments/actions";
 import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { PendingDuesTable } from "@/components/payments/pending-dues-table";
+import { FinancialAdjustmentsTable } from "@/components/payments/financial-adjustments-table";
 import { PaymentsTabs, type PaymentsTab } from "@/components/payments/payments-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
@@ -39,12 +42,24 @@ import {
   type PaymentsReport,
 } from "@/lib/reports";
 import { expenseCategories, paymentModes } from "@/lib/constants";
-import type { Expense, ExpenseCategory, Order, PaymentMode, PaymentType } from "@/lib/types";
+import type {
+  Expense,
+  ExpenseCategory,
+  Order,
+  OrderFinancialAdjustmentType,
+  PaymentMode,
+  PaymentType,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
+const ADJUSTMENT_TYPES: OrderFinancialAdjustmentType[] = [
+  "Discount",
+  "Extra Charge",
+  "Refund",
+];
 // Phase 7G: a deliberately simpler date-filter set than Reports' full
 // six-preset range — this page is a daily operational ledger, not an
 // analysis tool, so "All Time" and a custom range don't belong here.
@@ -106,6 +121,11 @@ function PaymentsPageContent() {
   // above (getPendingDuesOrders in actions.ts), just the full list instead
   // of the summed total.
   const [pendingDuesOrders, setPendingDuesOrders] = useState<Order[]>([]);
+  const [adjustments, setAdjustments] = useState<FinancialAdjustmentLedgerRow[]>([]);
+  const [adjustmentType, setAdjustmentType] = useState<OrderFinancialAdjustmentType | "">("");
+  const [adjustmentMode, setAdjustmentMode] = useState<PaymentMode | "">("");
+  const [adjustmentQuery, setAdjustmentQuery] = useState("");
+  const [adjustmentsMigrationMissing, setAdjustmentsMigrationMissing] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [todayExpenses, setTodayExpenses] = useState(0);
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory | "">("");
@@ -124,6 +144,7 @@ function PaymentsPageContent() {
   const [dailyClosingLoaded, setDailyClosingLoaded] = useState(false);
   const [pendingDuesLoaded, setPendingDuesLoaded] = useState(false);
   const [pendingDuesOrdersLoaded, setPendingDuesOrdersLoaded] = useState(false);
+  const [adjustmentsLoaded, setAdjustmentsLoaded] = useState(false);
   const [expensesLoaded, setExpensesLoaded] = useState(false);
   const [todayExpensesLoaded, setTodayExpensesLoaded] = useState(false);
 
@@ -241,6 +262,41 @@ function PaymentsPageContent() {
   }, [canViewPayments, refreshTick]);
 
   useEffect(() => {
+    if (!canViewPayments) return;
+    let cancelled = false;
+    getFinancialAdjustmentsAction({
+      from: range.from,
+      to: range.to,
+      adjustmentType: adjustmentType || undefined,
+      paymentMode: adjustmentMode || undefined,
+      query: adjustmentQuery,
+      includeVoided: true,
+    }).then((result) => {
+      if (cancelled) return;
+      setAdjustmentsMigrationMissing(result === null);
+      setAdjustments(result ?? []);
+      setLoadError(null);
+    }).catch((error) => {
+      if (!cancelled) {
+        setLoadError(getErrorMessage(error, "Failed to load financial adjustments."));
+      }
+    }).finally(() => {
+      if (!cancelled) setAdjustmentsLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    canViewPayments,
+    range.from,
+    range.to,
+    adjustmentType,
+    adjustmentMode,
+    adjustmentQuery,
+    refreshTick,
+  ]);
+
+  useEffect(() => {
     if (!canViewExpenses) return;
     let cancelled = false;
     getExpensesAction({
@@ -309,7 +365,8 @@ function PaymentsPageContent() {
         todayReportLoaded &&
         dailyClosingLoaded &&
         pendingDuesLoaded &&
-        pendingDuesOrdersLoaded
+        pendingDuesOrdersLoaded &&
+        adjustmentsLoaded
       )) ||
     (canViewExpenses && !(expensesLoaded && todayExpensesLoaded));
 
@@ -382,6 +439,61 @@ function PaymentsPageContent() {
           />
 
           {tab === "pending-dues" && <PendingDuesTable orders={pendingDuesOrders} />}
+
+          {tab === "adjustments" && (
+            <>
+              {adjustmentsMigrationMissing && (
+                <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+                  Financial adjustments are ready in the app, but the database migration has not been applied yet.
+                  Apply <span className="font-semibold text-ink">supabase/migrations/0018_order_financial_adjustments.sql</span> to start seeing discounts, refunds, and extra charges here.
+                </div>
+              )}
+
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <DateRangeFilter
+                  preset={preset}
+                  custom={customRange}
+                  onPresetChange={setPreset}
+                  onCustomChange={setCustomRange}
+                  presets={PAYMENT_PAGE_PRESETS}
+                />
+                <select
+                  value={adjustmentType}
+                  onChange={(e) =>
+                    setAdjustmentType(e.target.value as OrderFinancialAdjustmentType | "")
+                  }
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">All Adjustment Types</option>
+                  {ADJUSTMENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={adjustmentMode}
+                  onChange={(e) => setAdjustmentMode(e.target.value as PaymentMode | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">All Refund Modes</option>
+                  {paymentModes.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={adjustmentQuery}
+                  onChange={(e) => setAdjustmentQuery(e.target.value)}
+                  placeholder="Search order, customer, reason, or notes"
+                  className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+              </div>
+
+              <FinancialAdjustmentsTable rows={adjustments} />
+            </>
+          )}
 
           {tab === "collections" && (
             <>

@@ -7,6 +7,7 @@ import type { TranslationKey } from "@/lib/i18n/translations";
 const TABS = [
   { key: "collections", labelKey: "payments.tabCollections" },
   { key: "pending-dues", labelKey: "payments.tabPendingDues" },
+  { key: "adjustments", labelKey: "payments.tabAdjustments" },
   { key: "expenses", labelKey: "payments.tabExpenses" },
 ] as const satisfies { key: string; labelKey: TranslationKey }[];
 

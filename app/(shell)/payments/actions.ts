@@ -13,11 +13,23 @@ import {
   voidExpense,
   type ExpenseFilters,
 } from "@/lib/data/expenses-db";
+import {
+  getAllOrderFinancialAdjustments,
+  isMissingOrderFinancialAdjustmentsSchemaError,
+} from "@/lib/data/order-financial-adjustments-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { expenseCategories, paymentModes } from "@/lib/constants";
 import { isReceivableOrder } from "@/lib/order-finance";
 import { hasPermission } from "@/lib/permissions";
-import type { Expense, ExpenseCategory, Order, PaymentMode } from "@/lib/types";
+import type {
+  CustomerSnapshot,
+  Expense,
+  ExpenseCategory,
+  Order,
+  OrderFinancialAdjustment,
+  OrderFinancialAdjustmentType,
+  PaymentMode,
+} from "@/lib/types";
 import {
   getPaymentsReport,
   type PaymentsFilters,
@@ -48,6 +60,22 @@ export interface DailyClosingSummary {
   digitalNet: number | null;
   byMode: DailyClosingModeRow[];
   expensesAvailable: boolean;
+}
+
+export interface FinancialAdjustmentFilters {
+  from: string;
+  to: string;
+  adjustmentType?: OrderFinancialAdjustmentType;
+  paymentMode?: PaymentMode;
+  query?: string;
+  includeVoided?: boolean;
+}
+
+export interface FinancialAdjustmentLedgerRow {
+  adjustment: OrderFinancialAdjustment;
+  orderId: string;
+  orderNumber: string;
+  customer: CustomerSnapshot | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +202,67 @@ export async function getPendingDuesOrdersAction(): Promise<Order[] | null> {
   const guard = await requireServerPermission(supabase, "orders.viewPayments");
   if (!guard.ok) return null;
   return getPendingDuesOrders();
+}
+
+export async function getFinancialAdjustmentsAction(
+  filters: FinancialAdjustmentFilters
+): Promise<FinancialAdjustmentLedgerRow[] | null> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  if (!guard.ok) return null;
+  if (!ISO_DATE.test(filters.from) || !ISO_DATE.test(filters.to)) {
+    throw new Error("A valid date range is required.");
+  }
+
+  try {
+    const admin = createAdminClient();
+    const [adjustments, orders] = await Promise.all([
+      getAllOrderFinancialAdjustments(admin),
+      getAllOrders(admin),
+    ]);
+    const ordersById = new Map(orders.map((order) => [order.id, order]));
+    const query = filters.query?.trim().toLowerCase() ?? "";
+
+    return adjustments
+      .filter((adjustment) => {
+        if (adjustment.adjustmentDate < filters.from || adjustment.adjustmentDate > filters.to) {
+          return false;
+        }
+        if (!filters.includeVoided && adjustment.voided) return false;
+        if (filters.adjustmentType && adjustment.adjustmentType !== filters.adjustmentType) {
+          return false;
+        }
+        if (filters.paymentMode && adjustment.paymentMode !== filters.paymentMode) {
+          return false;
+        }
+        if (query) {
+          const order = ordersById.get(adjustment.orderId);
+          const haystack = [
+            adjustment.reason,
+            adjustment.notes ?? "",
+            order?.orderNumber ?? "",
+            order?.customerSnapshot?.name ?? "",
+            order?.customerSnapshot?.phone ?? "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+        return true;
+      })
+      .map((adjustment) => {
+        const order = ordersById.get(adjustment.orderId);
+        return {
+          adjustment,
+          orderId: adjustment.orderId,
+          orderNumber: order?.orderNumber ?? "—",
+          customer: order?.customerSnapshot,
+        };
+      });
+  } catch (error) {
+    if (isMissingOrderFinancialAdjustmentsSchemaError(error)) return null;
+    throw error;
+  }
 }
 
 export async function getExpensesAction(filters: ExpenseFilters): Promise<Expense[] | null> {
