@@ -323,8 +323,7 @@ function DeliveryDeskContent() {
                           )}
                           {canPrintReceipt && (
                             <Link
-                              href={`/orders/${order.id}/customer-receipt`}
-                              target="_blank"
+                              href={`/orders/${order.id}/print/customer`}
                               title="Receipt"
                               className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                             >
