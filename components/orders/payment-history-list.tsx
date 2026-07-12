@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Printer } from "lucide-react";
 import { voidPaymentAction } from "@/app/(shell)/orders/actions";
 import { formatDate } from "@/components/orders/orders-table";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -55,6 +57,8 @@ function PaymentRow({
   onVoided: (result: { order: Order; payments: Payment[] }) => void;
 }) {
   const { t } = useLanguage();
+  const { hasPermission } = useCurrentUser();
+  const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -109,15 +113,26 @@ function PaymentRow({
             </p>
           )}
         </div>
-        {canVoid && !payment.voided && !voiding && (
-          <button
-            type="button"
-            onClick={() => setVoiding(true)}
-            className="shrink-0 text-xs font-semibold text-chip-red-fg hover:underline"
-          >
-            {t("orders.voidPayment")}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {canPrintReceipt && !payment.voided && (
+            <Link
+              href={`/orders/${order.id}/print/payment/${payment.id}`}
+              title="Print payment receipt"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            >
+              <Printer className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {canVoid && !payment.voided && !voiding && (
+            <button
+              type="button"
+              onClick={() => setVoiding(true)}
+              className="text-xs font-semibold text-chip-red-fg hover:underline"
+            >
+              {t("orders.voidPayment")}
+            </button>
+          )}
+        </div>
       </div>
 
       {canVoid && !payment.voided && voiding && (
