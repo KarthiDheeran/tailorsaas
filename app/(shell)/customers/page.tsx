@@ -14,6 +14,8 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { downloadCsv } from "@/lib/csv";
 
 const EMPTY_FILTERS: CustomerFilterState = {
   query: "",
@@ -76,9 +78,39 @@ function CustomersPageContent() {
     return true;
   });
 
+  function handleExportCustomers() {
+    const canViewPayments = hasPermission("orders.viewPayments");
+    const headers = [
+      "Customer No",
+      "Name",
+      "Phone",
+      "Gender",
+      "Area",
+      "Total Orders",
+      "Last Order",
+      "Status",
+      ...(canViewPayments ? ["Outstanding Balance"] : []),
+    ];
+    const csvRows = rows.map((row) => {
+      const base = [
+        row.customer.customerNumber,
+        row.customer.name,
+        row.customer.phone,
+        row.customer.gender,
+        row.customer.area,
+        row.totalOrders,
+        row.lastOrderDate ?? "",
+        row.status,
+      ];
+      return canViewPayments ? [...base, row.outstandingBalance] : base;
+    });
+
+    downloadCsv(`customers-${todayIso}.csv`, headers, csvRows);
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">
             {t("customers.title")}
@@ -87,15 +119,22 @@ function CustomersPageContent() {
             {allRows.length} {t("customers.onRecord")}
           </p>
         </div>
-        {hasPermission("customers.create") && (
-          <Link
-            href="/customers/new"
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-          >
-            <UserPlus className="h-4 w-4" />
-            {t("customers.addCustomer")}
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportCsvButton
+            onClick={handleExportCustomers}
+            disabled={isLoading || rows.length === 0}
+            label={t("reports.exportCsv")}
+          />
+          {hasPermission("customers.create") && (
+            <Link
+              href="/customers/new"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              <UserPlus className="h-4 w-4" />
+              {t("customers.addCustomer")}
+            </Link>
+          )}
+        </div>
       </div>
 
       <CustomerFilters filters={filters} areas={areas} onChange={setFilters} />

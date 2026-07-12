@@ -30,6 +30,8 @@ import type {
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { downloadCsv } from "@/lib/csv";
 
 type InventoryTab = "stock" | "customer-fabric";
 
@@ -123,6 +125,68 @@ function InventoryContent() {
     (fabric) => fabric.status === "Received" || fabric.status === "In Use"
   ).length;
 
+  function handleExportStock() {
+    downloadCsv(
+      `inventory-stock-${todayIso}.csv`,
+      [
+        "Name",
+        "SKU",
+        "Type",
+        "Color",
+        "Quantity On Hand",
+        "Unit",
+        "Reorder Level",
+        "Cost Per Unit",
+        "Stock Value",
+        "Status",
+        "Notes",
+      ],
+      filteredItems.map((item) => [
+        item.name,
+        item.sku ?? "",
+        item.itemType,
+        item.color ?? "",
+        item.quantityOnHand,
+        item.unit,
+        item.reorderLevel,
+        item.costPerUnit ?? "",
+        item.quantityOnHand * (item.costPerUnit ?? 0),
+        item.active ? "Active" : "Inactive",
+        item.notes ?? "",
+      ])
+    );
+  }
+
+  function handleExportCustomerFabric() {
+    downloadCsv(
+      `customer-fabric-${todayIso}.csv`,
+      [
+        "Customer",
+        "Phone",
+        "Fabric",
+        "Color",
+        "Quantity",
+        "Unit",
+        "Received Date",
+        "Returned Date",
+        "Status",
+        "Notes",
+      ],
+      filteredCustomerFabrics.map((fabric) => [
+        fabric.customerName,
+        fabric.customerPhone ?? "",
+        fabric.fabricDescription,
+        fabric.color ?? "",
+        fabric.quantity,
+        fabric.unit,
+        fabric.receivedDate,
+        fabric.returnedDate ?? "",
+        fabric.status,
+        fabric.notes ?? "",
+      ])
+    );
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
@@ -173,6 +237,11 @@ function InventoryContent() {
                   placeholder="Search stock by name, SKU, color, or type"
                   className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 />
+                <ExportCsvButton
+                  onClick={handleExportStock}
+                  disabled={filteredItems.length === 0}
+                  className={canUseInventoryMutations ? "" : "ml-auto"}
+                />
                 {canUseInventoryMutations && (
                   <button
                     type="button"
@@ -197,6 +266,11 @@ function InventoryContent() {
                   onChange={(e) => setFabricQuery(e.target.value)}
                   placeholder="Search customer fabric by customer, phone, color, or status"
                   className="h-9 w-80 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                <ExportCsvButton
+                  onClick={handleExportCustomerFabric}
+                  disabled={filteredCustomerFabrics.length === 0}
+                  className={canUseInventoryMutations ? "" : "ml-auto"}
                 />
                 {canUseInventoryMutations && (
                   <button

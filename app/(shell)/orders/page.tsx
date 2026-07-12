@@ -32,6 +32,8 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { isReceivableOrder } from "@/lib/order-finance";
+import { downloadCsv } from "@/lib/csv";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +51,7 @@ function OrdersPageContent() {
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canCreate = hasPermission("orders.create");
+  const canViewPayments = hasPermission("orders.viewPayments");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null
   );
@@ -316,6 +319,47 @@ function OrdersPageContent() {
   const rangeStart = allOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, allOrders.length);
 
+  function handleExportOrders() {
+    const exportOrders = selectedCustomer ? customerOrders : allOrders;
+    const headers = [
+      "Order No",
+      "Customer",
+      "Phone",
+      "Order Date",
+      "Delivery Date",
+      "Items",
+      "Status",
+      ...(canViewPayments ? ["Total", "Paid", "Balance"] : []),
+    ];
+    const rows = exportOrders.map((order) => {
+      const customer = customersById[order.customerId] ?? order.customerSnapshot;
+      const base = [
+        order.orderNumber,
+        customer?.name ?? "Unknown",
+        customer?.phone ?? "",
+        order.orderDate,
+        order.deliveryDate,
+        order.items.map((item) => `${item.particular} x${item.qty}`).join("; "),
+        order.status,
+      ];
+      if (!canViewPayments) return base;
+      return [
+        ...base,
+        order.totalAmount,
+        order.advancePaid,
+        order.balance,
+      ];
+    });
+
+    downloadCsv(
+      selectedCustomer
+        ? `orders-${selectedCustomer.customerNumber}-${todayIso}.csv`
+        : `orders-${todayIso}.csv`,
+      headers,
+      rows
+    );
+  }
+
   function handleSelectCustomer(customer: Customer) {
     setSelectedCustomer(customer);
   }
@@ -348,22 +392,29 @@ function OrdersPageContent() {
           </button>
         </div>
       )}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">{t("orders.title")}</h1>
           <p className="text-sm text-ink-muted">
             {t("orders.subtitle")}
           </p>
         </div>
-        {canCreate && (
-          <Link
-            href="/orders/new"
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-          >
-            <Plus className="h-4 w-4" />
-            {t("orders.newOrder")}
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportCsvButton
+            onClick={handleExportOrders}
+            disabled={isLoading || (selectedCustomer ? customerOrders.length === 0 : allOrders.length === 0)}
+            label={t("reports.exportCsv")}
+          />
+          {canCreate && (
+            <Link
+              href="/orders/new"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              <Plus className="h-4 w-4" />
+              {t("orders.newOrder")}
+            </Link>
+          )}
+        </div>
       </div>
 
       {loadError && (

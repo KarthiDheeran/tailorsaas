@@ -1,12 +1,14 @@
-function escapeCsvCell(value: string | number): string {
-  const s = String(value);
+type CsvCell = string | number | null | undefined;
+
+function escapeCsvCell(value: CsvCell): string {
+  const s = value === null || value === undefined ? "" : String(value);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function downloadCsv(
   filename: string,
   headers: string[],
-  rows: (string | number)[][]
+  rows: CsvCell[][]
 ): void {
   const lines = [headers, ...rows].map((row) =>
     row.map(escapeCsvCell).join(",")

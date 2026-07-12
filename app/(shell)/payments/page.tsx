@@ -53,6 +53,8 @@ import type {
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { downloadCsv } from "@/lib/csv";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 const ADJUSTMENT_TYPES: OrderFinancialAdjustmentType[] = [
@@ -350,6 +352,118 @@ function PaymentsPageContent() {
       )) ||
     (canViewExpenses && !(expensesLoaded && todayExpensesLoaded));
 
+  function handleExportCollections() {
+    downloadCsv(
+      `payment-collections-${range.from}-to-${range.to}.csv`,
+      [
+        "Payment Date",
+        "Order No",
+        "Customer",
+        "Amount",
+        "Payment Mode",
+        "Payment Type",
+        "Status",
+        "Void Reason",
+      ],
+      report.rows.map((row) => [
+        row.payment.paymentDate,
+        row.orderNumber,
+        row.customer?.name ?? "Unknown",
+        row.payment.amount,
+        row.payment.paymentMode,
+        row.payment.paymentType,
+        row.payment.voided ? "Voided" : "Active",
+        row.payment.voidReason ?? "",
+      ])
+    );
+  }
+
+  function handleExportPendingDues() {
+    downloadCsv(
+      `pending-dues-${todayIso}.csv`,
+      [
+        "Order No",
+        "Customer",
+        "Phone",
+        "Delivery Date",
+        "Total Bill",
+        "Paid",
+        "Balance Due",
+        "Status",
+      ],
+      pendingDuesOrders.map((order) => [
+        order.orderNumber,
+        order.customerSnapshot?.name ?? "Unknown",
+        order.customerSnapshot?.phone ?? "",
+        order.deliveryDate,
+        order.totalAmount,
+        order.advancePaid,
+        order.balance,
+        order.deliveryDate < todayIso ? "Overdue" : "Due",
+      ])
+    );
+  }
+
+  function handleExportAdjustments() {
+    downloadCsv(
+      `financial-adjustments-${range.from}-to-${range.to}.csv`,
+      [
+        "Date",
+        "Order No",
+        "Customer",
+        "Type",
+        "Amount",
+        "Reason",
+        "Notes",
+        "Mode",
+        "Status",
+        "Void Reason",
+      ],
+      adjustments.map((row) => [
+        row.adjustment.adjustmentDate,
+        row.orderNumber,
+        row.customer?.name ?? "Unknown",
+        row.adjustment.adjustmentType,
+        row.adjustment.adjustmentType === "Extra Charge"
+          ? row.adjustment.amount
+          : -row.adjustment.amount,
+        row.adjustment.reason,
+        row.adjustment.notes ?? "",
+        row.adjustment.paymentMode ?? "",
+        row.adjustment.voided ? "Voided" : "Active",
+        row.adjustment.voidReason ?? "",
+      ])
+    );
+  }
+
+  function handleExportExpenses() {
+    downloadCsv(
+      `expenses-${range.from}-to-${range.to}.csv`,
+      [
+        "Date",
+        "Category",
+        "Vendor",
+        "Description",
+        "Amount",
+        "Payment Mode",
+        "Notes",
+        "Status",
+        "Void Reason",
+      ],
+      expenses.map((expense) => [
+        expense.expenseDate,
+        expense.category,
+        expense.vendor ?? "",
+        expense.description,
+        expense.amount,
+        expense.paymentMode,
+        expense.notes ?? "",
+        expense.voided ? "Voided" : "Active",
+        expense.voidReason ?? "",
+      ])
+    );
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
@@ -418,7 +532,18 @@ function PaymentsPageContent() {
             canViewExpenses={canViewExpenses}
           />
 
-          {tab === "pending-dues" && <PendingDuesTable orders={pendingDuesOrders} />}
+          {tab === "pending-dues" && (
+            <>
+              <div className="mb-5 flex justify-end">
+                <ExportCsvButton
+                  onClick={handleExportPendingDues}
+                  disabled={pendingDuesOrders.length === 0}
+                  label={t("reports.exportCsv")}
+                />
+              </div>
+              <PendingDuesTable orders={pendingDuesOrders} />
+            </>
+          )}
 
           {tab === "adjustments" && (
             <>
@@ -469,6 +594,12 @@ function PaymentsPageContent() {
                   placeholder="Search order, customer, reason, or notes"
                   className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 />
+                <ExportCsvButton
+                  onClick={handleExportAdjustments}
+                  disabled={adjustments.length === 0}
+                  label={t("reports.exportCsv")}
+                  className="ml-auto"
+                />
               </div>
 
               <FinancialAdjustmentsTable rows={adjustments} />
@@ -514,6 +645,12 @@ function PaymentsPageContent() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={t("payments.searchPlaceholder")}
                   className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                <ExportCsvButton
+                  onClick={handleExportCollections}
+                  disabled={report.rows.length === 0}
+                  label={t("reports.exportCsv")}
+                  className="ml-auto"
                 />
               </div>
 
@@ -591,6 +728,12 @@ function PaymentsPageContent() {
                   onChange={(e) => setExpenseQuery(e.target.value)}
                   placeholder={t("payments.expenseSearchPlaceholder")}
                   className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+                <ExportCsvButton
+                  onClick={handleExportExpenses}
+                  disabled={expenses.length === 0}
+                  label={t("reports.exportCsv")}
+                  className={canManageExpenses && !expensesMigrationMissing ? "" : "ml-auto"}
                 />
                 {canManageExpenses && !expensesMigrationMissing && (
                   <button
