@@ -390,7 +390,7 @@ function OrdersPageContent() {
       )}
 
       {isLoading ? (
-        <LoadingState label={t("orders.title")} />
+        <LoadingState label="Loading orders..." />
       ) : selectedCustomer ? (
         <div>
           <div className="mb-4 flex items-center justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
@@ -423,7 +423,7 @@ function OrdersPageContent() {
             {t("orders.ordersFor")} {selectedCustomer.name}
           </h2>
           {isCustomerOrdersLoading ? (
-            <LoadingState label={t("orders.title")} />
+            <LoadingState label="Loading customer orders..." />
           ) : (
             <OrdersTable
               orders={customerOrders}

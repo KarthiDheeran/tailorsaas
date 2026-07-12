@@ -100,7 +100,7 @@ function CustomersPageContent() {
 
       <CustomerFilters filters={filters} areas={areas} onChange={setFilters} />
 
-      {isLoading ? <LoadingState label={t("customers.title")} /> : <CustomersTable rows={rows} />}
+      {isLoading ? <LoadingState label="Loading customers..." /> : <CustomersTable rows={rows} />}
     </div>
   );
 }

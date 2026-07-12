@@ -613,7 +613,7 @@ function JobCardHistoryDrawer({
             </div>
           )}
           {logs === undefined ? (
-            <LoadingState label="Loading history..." />
+            <LoadingState label="Loading job card history..." />
           ) : logs === null ? (
             <div className="rounded-lg border border-border-soft bg-surface px-3 py-4 text-sm text-ink-muted">
               Activity history is ready in the app, but the database migration has not been applied yet.

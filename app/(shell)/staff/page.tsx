@@ -155,7 +155,7 @@ function StaffPageContent() {
       )}
 
       {isDataLoading ? (
-        <LoadingState label={t("staff.title")} />
+        <LoadingState label="Loading staff..." />
       ) : (
         <>
           {tab === "list" && canManage && (
