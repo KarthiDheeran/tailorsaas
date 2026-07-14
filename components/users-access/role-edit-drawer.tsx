@@ -9,9 +9,8 @@ import {
   type Permission,
 } from "@/lib/permissions";
 import {
-  DEFAULT_MANAGER_PERMISSIONS,
-  DEFAULT_STAFF_PERMISSIONS,
   SYSTEM_ROLE_IDS,
+  SYSTEM_ROLE_DEFAULT_PERMISSIONS,
   type Role,
   type RoleInput,
 } from "@/lib/roles";
@@ -58,11 +57,8 @@ export function RoleEditDrawer({
   // Local-only, like the rest of this drawer — takes effect on Save, not
   // immediately, same as every other edit here (Cancel still discards it).
   function handleResetToDefault() {
-    if (role?.id === SYSTEM_ROLE_IDS.MANAGER) {
-      setPermissions([...DEFAULT_MANAGER_PERMISSIONS]);
-    } else if (role?.id === SYSTEM_ROLE_IDS.STAFF) {
-      setPermissions([...DEFAULT_STAFF_PERMISSIONS]);
-    }
+    const defaults = role ? SYSTEM_ROLE_DEFAULT_PERMISSIONS[role.id] : undefined;
+    if (defaults) setPermissions([...defaults]);
   }
 
   async function handleSubmit(e: React.FormEvent) {

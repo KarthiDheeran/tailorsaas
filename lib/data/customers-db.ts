@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Customer,
   CustomerMeasurements,
+  FabricSourcePreference,
   Gender,
   GarmentMeasurement,
+  MeasurementHistoryEntry,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +26,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const CUSTOMER_COLUMNS =
-  "id, customer_number, name, phone, address, area, gender";
+  "id, customer_number, name, phone, address, area, gender, category_preference, fit_preference, style_preference, fabric_source_preference, frequent_complaints, notes";
 
 interface CustomerRow {
   id: string;
@@ -34,6 +36,12 @@ interface CustomerRow {
   address: string;
   area: string;
   gender: Gender | null;
+  category_preference: string | null;
+  fit_preference: string | null;
+  style_preference: string | null;
+  fabric_source_preference: FabricSourcePreference | null;
+  frequent_complaints: string | null;
+  notes: string | null;
 }
 
 function mapCustomer(row: CustomerRow): Customer {
@@ -45,7 +53,27 @@ function mapCustomer(row: CustomerRow): Customer {
     address: row.address,
     area: row.area,
     gender: row.gender ?? undefined,
+    categoryPreference: row.category_preference ?? undefined,
+    fitPreference: row.fit_preference ?? undefined,
+    stylePreference: row.style_preference ?? undefined,
+    fabricSourcePreference: row.fabric_source_preference ?? undefined,
+    frequentComplaints: row.frequent_complaints ?? undefined,
+    notes: row.notes ?? undefined,
   };
+}
+
+interface CustomerWriteData {
+  name: string;
+  phone: string;
+  address: string;
+  area: string;
+  gender?: Gender;
+  categoryPreference?: string;
+  fitPreference?: string;
+  stylePreference?: string;
+  fabricSourcePreference?: FabricSourcePreference;
+  frequentComplaints?: string;
+  notes?: string;
 }
 
 export async function getCustomers(supabase: SupabaseClient): Promise<Customer[]> {
@@ -118,13 +146,7 @@ export async function getCustomerByPhone(
 
 export async function createCustomer(
   supabase: SupabaseClient,
-  data: {
-    name: string;
-    phone: string;
-    address: string;
-    area: string;
-    gender?: Gender;
-  }
+  data: CustomerWriteData
 ): Promise<Customer> {
   // customer_number_seq (uniqueness) + generate_customer_number() (display
   // format, "CUST-0001") both live in the DB migration — this is the one
@@ -143,6 +165,12 @@ export async function createCustomer(
       address: data.address,
       area: data.area,
       gender: data.gender ?? null,
+      category_preference: data.categoryPreference ?? "",
+      fit_preference: data.fitPreference ?? "",
+      style_preference: data.stylePreference ?? "",
+      fabric_source_preference: data.fabricSourcePreference ?? "Not specified",
+      frequent_complaints: data.frequentComplaints ?? "",
+      notes: data.notes ?? "",
     })
     .select(CUSTOMER_COLUMNS)
     .single();
@@ -153,24 +181,39 @@ export async function createCustomer(
 export async function updateCustomer(
   supabase: SupabaseClient,
   id: string,
-  data: {
-    name: string;
-    phone: string;
-    address: string;
-    area: string;
-    gender?: Gender;
-  }
+  data: CustomerWriteData
 ): Promise<Customer | undefined> {
+  const updates: Record<string, unknown> = {
+    name: data.name,
+    phone: data.phone,
+    address: data.address,
+    area: data.area,
+    gender: data.gender ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.categoryPreference !== undefined) {
+    updates.category_preference = data.categoryPreference;
+  }
+  if (data.fitPreference !== undefined) {
+    updates.fit_preference = data.fitPreference;
+  }
+  if (data.stylePreference !== undefined) {
+    updates.style_preference = data.stylePreference;
+  }
+  if (data.fabricSourcePreference !== undefined) {
+    updates.fabric_source_preference = data.fabricSourcePreference;
+  }
+  if (data.frequentComplaints !== undefined) {
+    updates.frequent_complaints = data.frequentComplaints;
+  }
+  if (data.notes !== undefined) {
+    updates.notes = data.notes;
+  }
+
   const { data: row, error } = await supabase
     .from("customers")
-    .update({
-      name: data.name,
-      phone: data.phone,
-      address: data.address,
-      area: data.area,
-      gender: data.gender ?? null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq("id", id)
     .select(CUSTOMER_COLUMNS)
     .maybeSingle();
@@ -228,6 +271,7 @@ export async function saveCustomerMeasurements(
     customerId: string;
     values: Record<string, string>;
     notes?: string;
+    source?: string;
   }
 ): Promise<CustomerMeasurements> {
   const { data: existing } = await supabase
@@ -253,6 +297,12 @@ export async function saveCustomerMeasurements(
     .select(CUSTOMER_MEASUREMENTS_COLUMNS)
     .single();
   if (error) throw error;
+  await insertCustomerMeasurementRevision(supabase, {
+    customerId: data.customerId,
+    values: mergedValues,
+    notes,
+    source: data.source,
+  });
   return mapCustomerMeasurements(row as CustomerMeasurementsRow);
 }
 
@@ -350,6 +400,7 @@ export async function saveGarmentMeasurement(
     values: Record<string, string>;
     fitNotes?: string;
     notes?: string;
+    source?: string;
   }
 ): Promise<GarmentMeasurement> {
   const { data: row, error } = await supabase
@@ -368,5 +419,138 @@ export async function saveGarmentMeasurement(
     .select(GARMENT_MEASUREMENTS_COLUMNS)
     .single();
   if (error) throw error;
+  await insertGarmentMeasurementRevision(supabase, {
+    customerId: data.customerId,
+    garmentType: data.garmentType,
+    values: data.values,
+    fitNotes: data.fitNotes,
+    notes: data.notes,
+    source: data.source,
+  });
   return mapGarmentMeasurement(row as GarmentMeasurementRow);
+}
+
+interface CustomerMeasurementRevisionRow {
+  id: string;
+  customer_id: string;
+  values: Record<string, string>;
+  notes: string | null;
+  source: string | null;
+  created_at: string;
+}
+
+interface GarmentMeasurementRevisionRow {
+  id: string;
+  customer_id: string;
+  garment_type: string;
+  values: Record<string, string>;
+  fit_notes: string | null;
+  notes: string | null;
+  source: string | null;
+  created_at: string;
+}
+
+const CUSTOMER_MEASUREMENT_REVISION_COLUMNS =
+  "id, customer_id, values, notes, source, created_at";
+const GARMENT_MEASUREMENT_REVISION_COLUMNS =
+  "id, customer_id, garment_type, values, fit_notes, notes, source, created_at";
+
+function mapCustomerMeasurementRevision(
+  row: CustomerMeasurementRevisionRow
+): MeasurementHistoryEntry {
+  return {
+    id: row.id,
+    kind: "Baseline",
+    customerId: row.customer_id,
+    values: row.values ?? {},
+    notes: row.notes ?? undefined,
+    source: row.source ?? "Manual",
+    createdAt: row.created_at,
+  };
+}
+
+function mapGarmentMeasurementRevision(
+  row: GarmentMeasurementRevisionRow
+): MeasurementHistoryEntry {
+  return {
+    id: row.id,
+    kind: "Garment",
+    customerId: row.customer_id,
+    garmentType: row.garment_type,
+    values: row.values ?? {},
+    fitNotes: row.fit_notes ?? undefined,
+    notes: row.notes ?? undefined,
+    source: row.source ?? "Manual",
+    createdAt: row.created_at,
+  };
+}
+
+async function insertCustomerMeasurementRevision(
+  supabase: SupabaseClient,
+  data: {
+    customerId: string;
+    values: Record<string, string>;
+    notes?: string | null;
+    source?: string;
+  }
+) {
+  const { error } = await supabase.from("customer_measurement_revisions").insert({
+    customer_id: data.customerId,
+    values: data.values,
+    notes: data.notes ?? null,
+    source: data.source ?? "Manual",
+  });
+  if (error) throw error;
+}
+
+async function insertGarmentMeasurementRevision(
+  supabase: SupabaseClient,
+  data: {
+    customerId: string;
+    garmentType: string;
+    values: Record<string, string>;
+    fitNotes?: string;
+    notes?: string;
+    source?: string;
+  }
+) {
+  const { error } = await supabase.from("garment_measurement_revisions").insert({
+    customer_id: data.customerId,
+    garment_type: data.garmentType,
+    values: data.values,
+    fit_notes: data.fitNotes ?? null,
+    notes: data.notes ?? null,
+    source: data.source ?? "Manual",
+  });
+  if (error) throw error;
+}
+
+export async function getMeasurementHistoryForCustomer(
+  supabase: SupabaseClient,
+  customerId: string
+): Promise<MeasurementHistoryEntry[]> {
+  const [baselineResult, garmentResult] = await Promise.all([
+    supabase
+      .from("customer_measurement_revisions")
+      .select(CUSTOMER_MEASUREMENT_REVISION_COLUMNS)
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("garment_measurement_revisions")
+      .select(GARMENT_MEASUREMENT_REVISION_COLUMNS)
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (baselineResult.error) throw baselineResult.error;
+  if (garmentResult.error) throw garmentResult.error;
+
+  return [
+    ...(((baselineResult.data as CustomerMeasurementRevisionRow[]) ?? []).map(
+      mapCustomerMeasurementRevision
+    )),
+    ...(((garmentResult.data as GarmentMeasurementRevisionRow[]) ?? []).map(
+      mapGarmentMeasurementRevision
+    )),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

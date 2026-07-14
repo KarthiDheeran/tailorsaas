@@ -260,6 +260,31 @@ function TailorJobCardPrintPageContent({
                 </p>
               )}
 
+              {((item.fabricSource && item.fabricSource !== "Not specified") ||
+                item.fabricNotes ||
+                item.designNotes) && (
+                <div className="mt-3 border border-gray-300 p-2 text-sm">
+                  {item.fabricSource && item.fabricSource !== "Not specified" && (
+                    <p>
+                      <span className="font-semibold text-gray-500">Fabric: </span>
+                      {item.fabricSource}
+                    </p>
+                  )}
+                  {item.fabricNotes && (
+                    <p>
+                      <span className="font-semibold text-gray-500">Fabric Notes: </span>
+                      {item.fabricNotes}
+                    </p>
+                  )}
+                  {item.designNotes && (
+                    <p>
+                      <span className="font-semibold text-gray-500">Design Notes: </span>
+                      {item.designNotes}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {(jobCardsBySerialNo.get(item.serialNo)?.length ?? 0) > 0 && (
                 <div className="mt-3">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">

@@ -14,6 +14,7 @@ import type { Customer, CustomerMeasurements } from "@/lib/types";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { MeasurementsCard } from "@/components/customers/measurements-card";
 import { PaymentSummaryCard } from "@/components/customers/payment-summary-card";
+import { TailoringProfileCard } from "@/components/customers/tailoring-profile-card";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -141,6 +142,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
           </div>
         </div>
         <div className="space-y-5">
+          <TailoringProfileCard customer={customer} />
           {canViewPayments && <PaymentSummaryCard detail={detail} />}
         </div>
       </div>

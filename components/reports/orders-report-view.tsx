@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CalendarClock, Receipt, Wallet } from "lucide-react";
+import { AlertTriangle, Ban, CalendarClock, Clock, Receipt, Wallet } from "lucide-react";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
@@ -22,7 +22,15 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 const EMPTY_REPORT: OrdersReport = {
-  summary: { totalOrders: 0, balanceDueOrders: 0, overdueOrders: 0, dueSoonDeliveries: 0 },
+  summary: {
+    totalOrders: 0,
+    balanceDueOrders: 0,
+    overdueOrders: 0,
+    dueSoonDeliveries: 0,
+    avgDeliveryDays: 0,
+    cancelledOrders: 0,
+    delayedOrders: 0,
+  },
   orders: [],
 };
 
@@ -164,6 +172,23 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
           label={t("reports.dueIn7Days")}
           value={String(report.summary.dueSoonDeliveries)}
           icon={CalendarClock}
+        />
+        <ReportStatCard
+          label="Avg Delivery Time"
+          value={`${Math.round(report.summary.avgDeliveryDays)} days`}
+          icon={Clock}
+        />
+        <ReportStatCard
+          label="Delayed Orders"
+          value={String(report.summary.delayedOrders)}
+          icon={AlertTriangle}
+          tone={report.summary.delayedOrders > 0 ? "warning" : "default"}
+        />
+        <ReportStatCard
+          label="Cancelled Orders"
+          value={String(report.summary.cancelledOrders)}
+          icon={Ban}
+          tone={report.summary.cancelledOrders > 0 ? "warning" : "default"}
         />
       </div>
 

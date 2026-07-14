@@ -30,6 +30,7 @@ type CalendarMode = "today" | "week" | "month";
 
 const EVENT_FILTERS: { type: CalendarEventType; label: string }[] = [
   { type: "Delivery", label: "Deliveries" },
+  { type: "Pickup", label: "Pickups" },
   { type: "Trial", label: "Trials" },
   { type: "Production", label: "Production" },
   { type: "Payment", label: "Payments" },
@@ -37,6 +38,7 @@ const EVENT_FILTERS: { type: CalendarEventType; label: string }[] = [
 
 const EVENT_ICONS = {
   Delivery: Truck,
+  Pickup: Truck,
   Trial: CalendarDays,
   Production: Scissors,
   Payment: IndianRupee,
@@ -55,6 +57,7 @@ function CalendarContent() {
   const [anchorDate, setAnchorDate] = useState(() => todayIso());
   const [enabledTypes, setEnabledTypes] = useState<CalendarEventType[]>([
     "Delivery",
+    "Pickup",
     "Trial",
     "Production",
     "Payment",

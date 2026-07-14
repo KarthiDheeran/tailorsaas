@@ -28,6 +28,8 @@ const EMPTY_REPORT: SalesReport = {
   totalOrders: 0,
   avgOrderValue: 0,
   rows: [],
+  monthlyRows: [],
+  garmentRows: [],
 };
 
 export function SalesReportView({ todayIso }: { todayIso: string }) {
@@ -126,41 +128,111 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
           <p className="text-sm text-ink-muted">{t("reports.noSalesInRange")}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
-          <table className="w-full text-left">
-            <thead className="text-[13px] font-semibold text-ink-muted">
-              <tr className="border-b border-border-soft">
-                <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.orders")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.grossSales")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.amountCollected")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.balancePending")}</th>
-              </tr>
-            </thead>
-            <tbody className="text-[13px]">
-              {report.rows.map((row) => (
-                <tr key={row.date} className="border-t border-border-soft">
-                  <td className="whitespace-nowrap px-5 py-3 text-ink">
-                    {formatDate(row.date)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
-                    {row.orders}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
-                    {money(row.grossSales)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
-                    {money(row.amountCollected)}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
-                    {money(row.balancePending)}
-                  </td>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownTable
+              title="Revenue by Month"
+              columns={["Month", "Orders", "Sales", "Collected"]}
+              rows={report.monthlyRows.map((row) => [
+                row.month,
+                row.orders,
+                money(row.grossSales),
+                money(row.amountCollected),
+              ])}
+            />
+            <BreakdownTable
+              title="Revenue by Garment Type"
+              columns={["Garment", "Qty", "Sales"]}
+              rows={report.garmentRows.map((row) => [
+                row.garmentType,
+                row.qty,
+                money(row.grossSales),
+              ])}
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+            <table className="w-full text-left">
+              <thead className="text-[13px] font-semibold text-ink-muted">
+                <tr className="border-b border-border-soft">
+                  <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.orders")}</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.grossSales")}</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.amountCollected")}</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-right">{t("reports.balancePending")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="text-[13px]">
+                {report.rows.map((row) => (
+                  <tr key={row.date} className="border-t border-border-soft">
+                    <td className="whitespace-nowrap px-5 py-3 text-ink">
+                      {formatDate(row.date)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                      {row.orders}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
+                      {money(row.grossSales)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                      {money(row.amountCollected)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                      {money(row.balancePending)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function BreakdownTable({
+  title,
+  columns,
+  rows,
+}: {
+  title: string;
+  columns: string[];
+  rows: Array<Array<string | number>>;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+      <div className="border-b border-border-soft px-5 py-3 text-sm font-semibold text-ink">
+        {title}
+      </div>
+      <table className="w-full text-left">
+        <thead className="text-[13px] font-semibold text-ink-muted">
+          <tr>
+            {columns.map((column, index) => (
+              <th
+                key={column}
+                className={`whitespace-nowrap px-5 py-3 ${index > 0 ? "text-right" : ""}`}
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="text-[13px]">
+          {rows.slice(0, 8).map((row) => (
+            <tr key={String(row[0])} className="border-t border-border-soft">
+              {row.map((cell, index) => (
+                <td
+                  key={`${row[0]}-${index}`}
+                  className={`whitespace-nowrap px-5 py-3 ${index > 0 ? "text-right text-ink-muted" : "text-ink"}`}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

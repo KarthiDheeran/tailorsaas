@@ -8,10 +8,17 @@ import { MEASUREMENT_FIELD_GROUPS } from "./catalog";
 export type GarmentType =
   | "Shirt"
   | "Pant"
+  | "Trouser"
   | "Blouse"
   | "Suit"
+  | "Waistcoat"
   | "Kurta"
   | "Sherwani"
+  | "Salwar Suit"
+  | "Lehenga"
+  | "Dress"
+  | "Gown"
+  | "Saree Fall/Pico"
   | "Petticoat"
   | "Alteration"
   | "Custom";
@@ -19,10 +26,17 @@ export type GarmentType =
 export const GARMENT_TYPES: GarmentType[] = [
   "Shirt",
   "Pant",
+  "Trouser",
   "Blouse",
   "Suit",
+  "Waistcoat",
   "Kurta",
   "Sherwani",
+  "Salwar Suit",
+  "Lehenga",
+  "Dress",
+  "Gown",
+  "Saree Fall/Pico",
   "Petticoat",
   "Alteration",
   "Custom",
@@ -55,29 +69,48 @@ interface GarmentTemplate {
 // CustomerMeasurements) so the same key always renders the same label.
 const FIELD_LABELS: Record<string, string> = {
   chest: "Chest",
+  bust: "Bust",
+  waist: "Waist",
+  hip: "Hip",
   shoulder: "Shoulder",
+  crossFront: "Cross Front",
+  crossBack: "Cross Back",
   sleeveLength: "Sleeve Length",
+  sleeveRound: "Sleeve Round",
   shirtLength: "Shirt Length",
   neck: "Neck",
-  waist: "Waist",
+  collar: "Collar",
   armhole: "Armhole",
   cuff: "Cuff",
-  hip: "Hip",
   pantLength: "Pant Length",
   inseam: "Inseam",
   thigh: "Thigh",
   knee: "Knee",
+  calf: "Calf",
   bottom: "Bottom",
   rise: "Rise",
-  bust: "Bust",
+  seat: "Seat",
   blouseLength: "Blouse Length",
   neckDepthFront: "Neck Depth (Front)",
   neckDepthBack: "Neck Depth (Back)",
+  neckWidth: "Neck Width",
+  dartPoint: "Dart Point",
+  princessCut: "Princess Cut",
   coatLength: "Coat Length",
   pantWaist: "Pant Waist",
   kurtaLength: "Kurta Length",
+  kameezLength: "Kameez Length",
+  salwarLength: "Salwar Length",
+  yokeLength: "Yoke Length",
+  slitLength: "Slit Length",
   sherwaniLength: "Sherwani Length",
+  waistcoatLength: "Waistcoat Length",
+  dressLength: "Dress Length",
+  lehengaLength: "Lehenga Length",
+  gownLength: "Gown Length",
   petticoatLength: "Petticoat Length",
+  sareeFallLength: "Saree Fall Length",
+  flare: "Flare",
 };
 
 function fieldsOf(...keys: string[]): MeasurementFieldDef[] {
@@ -116,15 +149,19 @@ export function pickBodyMeasurements(
 // template (e.g. legacy/free-text "particular" values from Edit Order).
 const GENERIC_MEASUREMENT_FIELDS: MeasurementFieldDef[] = fieldsOf(
   "chest",
+  "bust",
   "waist",
   "hip",
   "shoulder",
   "sleeveLength",
+  "sleeveRound",
   "neck",
   "armhole",
   "inseam",
   "thigh",
-  "bottom"
+  "bottom",
+  "shirtLength",
+  "kurtaLength"
 );
 
 const garmentTemplates: GarmentTemplate[] = [
@@ -133,7 +170,10 @@ const garmentTemplates: GarmentTemplate[] = [
     measurementFields: fieldsOf(
       "chest",
       "shoulder",
+      "crossFront",
+      "crossBack",
       "sleeveLength",
+      "sleeveRound",
       "shirtLength",
       "neck",
       "waist",
@@ -154,10 +194,12 @@ const garmentTemplates: GarmentTemplate[] = [
     measurementFields: fieldsOf(
       "waist",
       "hip",
+      "seat",
       "pantLength",
       "inseam",
       "thigh",
       "knee",
+      "calf",
       "bottom",
       "rise"
     ),
@@ -170,16 +212,39 @@ const garmentTemplates: GarmentTemplate[] = [
     ],
   },
   {
+    type: "Trouser",
+    measurementFields: fieldsOf(
+      "waist",
+      "hip",
+      "seat",
+      "pantLength",
+      "inseam",
+      "thigh",
+      "knee",
+      "calf",
+      "bottom",
+      "rise"
+    ),
+    pricing: { S: 900, M: 950, L: 1050, XL: 1150, XXL: 1300 },
+    addOns: [],
+  },
+  {
     type: "Blouse",
     measurementFields: fieldsOf(
       "bust",
       "waist",
       "shoulder",
+      "crossFront",
+      "crossBack",
       "sleeveLength",
+      "sleeveRound",
       "blouseLength",
+      "neckWidth",
       "neckDepthFront",
       "neckDepthBack",
-      "armhole"
+      "armhole",
+      "dartPoint",
+      "princessCut"
     ),
     pricing: { S: 700, M: 750, L: 850, XL: 950, XXL: 1100 },
     addOns: [
@@ -198,13 +263,36 @@ const garmentTemplates: GarmentTemplate[] = [
       "waist",
       "hip",
       "shoulder",
+      "crossFront",
+      "crossBack",
       "sleeveLength",
+      "sleeveRound",
       "coatLength",
-      "pantWaist",
-      "pantLength"
+      "neck",
+      "armhole",
+      "pantLength",
+      "inseam",
+      "thigh",
+      "bottom"
     ),
     // No standard pricing table yet — suits vary too much by fabric/style;
     // rate is manual for now. Revisit once catalog admin exists.
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Waistcoat",
+    measurementFields: fieldsOf(
+      "chest",
+      "waist",
+      "hip",
+      "shoulder",
+      "crossFront",
+      "crossBack",
+      "waistcoatLength",
+      "neck",
+      "armhole"
+    ),
     pricing: {},
     addOns: [],
   },
@@ -213,12 +301,16 @@ const garmentTemplates: GarmentTemplate[] = [
     measurementFields: fieldsOf(
       "chest",
       "shoulder",
+      "crossFront",
+      "crossBack",
       "sleeveLength",
+      "sleeveRound",
       "kurtaLength",
       "waist",
       "hip",
       "neck",
-      "armhole"
+      "armhole",
+      "slitLength"
     ),
     pricing: {},
     addOns: [],
@@ -231,13 +323,101 @@ const garmentTemplates: GarmentTemplate[] = [
     measurementFields: fieldsOf(
       "chest",
       "shoulder",
+      "crossFront",
+      "crossBack",
       "sleeveLength",
+      "sleeveRound",
       "sherwaniLength",
       "waist",
       "hip",
       "neck",
-      "armhole"
+      "armhole",
+      "coatLength"
     ),
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Salwar Suit",
+    measurementFields: fieldsOf(
+      "bust",
+      "waist",
+      "hip",
+      "shoulder",
+      "crossFront",
+      "crossBack",
+      "sleeveLength",
+      "sleeveRound",
+      "armhole",
+      "neck",
+      "neckDepthFront",
+      "neckDepthBack",
+      "kameezLength",
+      "salwarLength",
+      "bottom"
+    ),
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Lehenga",
+    measurementFields: fieldsOf(
+      "bust",
+      "waist",
+      "hip",
+      "shoulder",
+      "blouseLength",
+      "neckDepthFront",
+      "neckDepthBack",
+      "lehengaLength",
+      "flare"
+    ),
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Dress",
+    measurementFields: fieldsOf(
+      "bust",
+      "waist",
+      "hip",
+      "shoulder",
+      "crossFront",
+      "crossBack",
+      "sleeveLength",
+      "sleeveRound",
+      "armhole",
+      "neck",
+      "neckDepthFront",
+      "neckDepthBack",
+      "dressLength",
+      "flare"
+    ),
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Gown",
+    measurementFields: fieldsOf(
+      "bust",
+      "waist",
+      "hip",
+      "shoulder",
+      "crossFront",
+      "crossBack",
+      "sleeveLength",
+      "sleeveRound",
+      "armhole",
+      "neck",
+      "gownLength",
+      "flare"
+    ),
+    pricing: {},
+    addOns: [],
+  },
+  {
+    type: "Saree Fall/Pico",
+    measurementFields: fieldsOf("sareeFallLength", "waist", "hip"),
     pricing: {},
     addOns: [],
   },

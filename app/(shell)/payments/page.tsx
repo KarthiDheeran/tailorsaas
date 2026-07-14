@@ -15,12 +15,7 @@ import {
 } from "lucide-react";
 import {
   createExpenseAction,
-  getDailyClosingAction,
-  getFinancialAdjustmentsAction,
-  getExpensesAction,
-  getExpenseTotalAction,
-  getPaymentsLedgerAction,
-  getPendingDuesOrdersAction,
+  getPaymentsPageInitialDataAction,
   voidExpenseAction,
   type DailyClosingSummary,
   type FinancialAdjustmentLedgerRow,
@@ -112,8 +107,7 @@ function PaymentsPageContent() {
   // going" pulse — always scoped to today's date, independent of whatever
   // date range/mode/type/search the table below is currently filtered to,
   // so switching the table to "Yesterday" doesn't make "Today Collected"
-  // lie. Fetched via the same getPaymentsLedgerAction, just with its own
-  // always-today range and no other filters.
+  // lie. Fetched in the bundled page payload with its own always-today range.
   const [todayReport, setTodayReport] = useState<PaymentsReport>(EMPTY_REPORT);
   const [dailyClosing, setDailyClosing] = useState<DailyClosingSummary | null>(null);
   // Pending Dues tab rows. The summary card total is derived from these rows
@@ -134,18 +128,12 @@ function PaymentsPageContent() {
   const [expensesMigrationMissing, setExpensesMigrationMissing] = useState(false);
   const [tab, setTab] = useState<PaymentsTab>(canViewPayments ? "collections" : "expenses");
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Each flips true once (never back) after its own fetch's first
-  // resolution — combined below into isLoading gates so the page doesn't
-  // paint empty tables/zeroed stat cards before the first real fetch lands.
-  const [reportLoaded, setReportLoaded] = useState(false);
-  const [todayReportLoaded, setTodayReportLoaded] = useState(false);
-  const [dailyClosingLoaded, setDailyClosingLoaded] = useState(false);
-  const [pendingDuesOrdersLoaded, setPendingDuesOrdersLoaded] = useState(false);
-  const [adjustmentsLoaded, setAdjustmentsLoaded] = useState(false);
-  const [expensesLoaded, setExpensesLoaded] = useState(false);
-  const [todayExpensesLoaded, setTodayExpensesLoaded] = useState(false);
+  // First paint is bundled into one server action; later filter changes refresh in place.
+  const [initialLoaded, setInitialLoaded] = useState(false);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
+  const rangeFrom = range.from;
+  const rangeTo = range.to;
 
   useEffect(() => {
     if (!canViewPayments && canViewExpenses && tab !== "expenses") {
@@ -157,181 +145,64 @@ function PaymentsPageContent() {
   }, [canViewPayments, canViewExpenses, tab]);
 
   useEffect(() => {
-    if (!canViewPayments) return;
     let cancelled = false;
-    getPaymentsLedgerAction(
+    getPaymentsPageInitialDataAction(
       {
-        range,
+        range: { from: rangeFrom, to: rangeTo },
         paymentMode: paymentMode || undefined,
         paymentType: paymentType || undefined,
         customerQuery: query,
+        adjustmentType: adjustmentType || undefined,
+        adjustmentPaymentMode: adjustmentMode || undefined,
+        adjustmentQuery,
+        expenseCategory: expenseCategory || undefined,
+        expensePaymentMode: expenseMode || undefined,
+        expenseQuery,
       },
       todayIso
-    ).then((result) => {
-      if (!cancelled && result) setReport(result);
-      if (!cancelled) setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load payment collections."));
-      }
-    }).finally(() => {
-      if (!cancelled) setReportLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewPayments, range.from, range.to, paymentMode, paymentType, query, todayIso, refreshTick]);
-
-  useEffect(() => {
-    if (!canViewPayments) return;
-    let cancelled = false;
-    getPaymentsLedgerAction({ range: { from: todayIso, to: todayIso } }, todayIso).then(
-      (result) => {
-        if (!cancelled && result) setTodayReport(result);
-        if (!cancelled) setLoadError(null);
-      }
-    ).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load today's collections."));
-      }
-    }).finally(() => {
-      if (!cancelled) setTodayReportLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewPayments, todayIso, refreshTick]);
-
-  useEffect(() => {
-    if (!canViewPayments) return;
-    let cancelled = false;
-    getDailyClosingAction(todayIso).then((result) => {
-      if (!cancelled) setDailyClosing(result);
-      if (!cancelled) setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load daily closing."));
-      }
-    }).finally(() => {
-      if (!cancelled) setDailyClosingLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewPayments, todayIso, refreshTick, expenseRefreshKey]);
-
-  useEffect(() => {
-    if (!canViewPayments) return;
-    let cancelled = false;
-    getPendingDuesOrdersAction().then((result) => {
-      if (!cancelled && result !== null) setPendingDuesOrders(result);
-      if (!cancelled) setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load pending due orders."));
-      }
-    }).finally(() => {
-      if (!cancelled) setPendingDuesOrdersLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewPayments, refreshTick]);
-
-  useEffect(() => {
-    if (!canViewPayments) return;
-    let cancelled = false;
-    getFinancialAdjustmentsAction({
-      from: range.from,
-      to: range.to,
-      adjustmentType: adjustmentType || undefined,
-      paymentMode: adjustmentMode || undefined,
-      query: adjustmentQuery,
-      includeVoided: true,
-    }).then((result) => {
-      if (cancelled) return;
-      setAdjustmentsMigrationMissing(result === null);
-      setAdjustments(result ?? []);
-      setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load financial adjustments."));
-      }
-    }).finally(() => {
-      if (!cancelled) setAdjustmentsLoaded(true);
-    });
+    )
+      .then((result) => {
+        if (cancelled) return;
+        if (result.report) setReport(result.report);
+        if (result.todayReport) setTodayReport(result.todayReport);
+        if (result.dailyClosing) setDailyClosing(result.dailyClosing);
+        if (result.pendingDuesOrders) setPendingDuesOrders(result.pendingDuesOrders);
+        setAdjustmentsMigrationMissing(canViewPayments && result.adjustments === null);
+        setAdjustments(result.adjustments ?? []);
+        setExpensesMigrationMissing(canViewExpenses && result.expenses === null);
+        setExpenses(result.expenses ?? []);
+        setTodayExpenses(result.todayExpenses ?? 0);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load payments."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setInitialLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [
     canViewPayments,
-    range.from,
-    range.to,
+    canViewExpenses,
+    rangeFrom,
+    rangeTo,
+    paymentMode,
+    paymentType,
+    query,
     adjustmentType,
     adjustmentMode,
     adjustmentQuery,
-    refreshTick,
-  ]);
-
-  useEffect(() => {
-    if (!canViewExpenses) return;
-    let cancelled = false;
-    getExpensesAction({
-      from: range.from,
-      to: range.to,
-      category: expenseCategory || undefined,
-      paymentMode: expenseMode || undefined,
-      query: expenseQuery,
-      includeVoided: true,
-    }).then((result) => {
-      if (cancelled) return;
-      setExpensesMigrationMissing(result === null);
-      setExpenses(result ?? []);
-      setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load expenses."));
-      }
-    }).finally(() => {
-      if (!cancelled) setExpensesLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    canViewExpenses,
-    range.from,
-    range.to,
     expenseCategory,
     expenseMode,
     expenseQuery,
+    todayIso,
+    refreshTick,
     expenseRefreshKey,
   ]);
-
-  useEffect(() => {
-    if (!canViewExpenses) return;
-    let cancelled = false;
-    getExpenseTotalAction({
-      from: todayIso,
-      to: todayIso,
-    }).then((result) => {
-      if (cancelled) return;
-      setExpensesMigrationMissing(result === null);
-      setTodayExpenses(result ?? 0);
-      setLoadError(null);
-    }).catch((error) => {
-      if (!cancelled) {
-        setLoadError(getErrorMessage(error, "Failed to load today's expenses."));
-      }
-    }).finally(() => {
-      if (!cancelled) setTodayExpensesLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewExpenses, todayIso, expenseRefreshKey]);
 
   const todayCollected = todayReport.totalCollected;
   const cashToday = todayReport.byMode.find((b) => b.mode === "Cash")?.amount ?? 0;
@@ -341,16 +212,7 @@ function PaymentsPageContent() {
     0
   );
 
-  const isLoading =
-    (canViewPayments &&
-      !(
-        reportLoaded &&
-        todayReportLoaded &&
-        dailyClosingLoaded &&
-        pendingDuesOrdersLoaded &&
-        adjustmentsLoaded
-      )) ||
-    (canViewExpenses && !(expensesLoaded && todayExpensesLoaded));
+  const isLoading = !initialLoaded;
 
   function handleExportCollections() {
     downloadCsv(

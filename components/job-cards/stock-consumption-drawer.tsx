@@ -57,6 +57,8 @@ export function StockConsumptionDrawer({
       quantity: Number(quantity),
       movementDate,
       reason,
+      orderId: card.orderId,
+      jobCardId: card.persisted ? card.id : undefined,
     });
     setSaving(false);
 

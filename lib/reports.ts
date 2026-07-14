@@ -37,6 +37,7 @@ import {
   getCustomerDetail,
   type CustomerStatus,
 } from "@/lib/customers-db";
+import type { AppUser } from "@/lib/profiles";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { isActiveOrder, isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
@@ -63,6 +64,15 @@ function addDays(iso: string, days: number): string {
   const [y, m, d] = iso.split("-").map(Number);
   const ms = Date.UTC(y, m - 1, d) + days * DAY_MS;
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split("-").map(Number);
+  const [ty, tm, td] = toIso.split("-").map(Number);
+  return Math.max(
+    0,
+    Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / DAY_MS)
+  );
 }
 
 export interface DateRange {
@@ -125,12 +135,27 @@ export interface SalesRow {
   balancePending: number;
 }
 
+export interface SalesMonthlyRow {
+  month: string;
+  orders: number;
+  grossSales: number;
+  amountCollected: number;
+}
+
+export interface SalesGarmentRow {
+  garmentType: string;
+  qty: number;
+  grossSales: number;
+}
+
 export interface SalesReport {
   totalSales: number;
   revenueCollected: number;
   totalOrders: number;
   avgOrderValue: number;
   rows: SalesRow[];
+  monthlyRows: SalesMonthlyRow[];
+  garmentRows: SalesGarmentRow[];
 }
 
 export async function getSalesReport(
@@ -192,7 +217,61 @@ export async function getSalesReport(
     a.date < b.date ? 1 : -1
   );
 
-  return { totalSales, revenueCollected, totalOrders, avgOrderValue, rows };
+  const byMonth = new Map<string, SalesMonthlyRow>();
+  for (const o of ordersInRange) {
+    const month = o.orderDate.slice(0, 7);
+    const row = byMonth.get(month) ?? {
+      month,
+      orders: 0,
+      grossSales: 0,
+      amountCollected: 0,
+    };
+    row.orders += 1;
+    row.grossSales += o.totalAmount;
+    row.amountCollected += o.advancePaid;
+    byMonth.set(month, row);
+  }
+  for (const o of deliveredSettledInRange) {
+    const month = o.deliveryDate.slice(0, 7);
+    const row = byMonth.get(month) ?? {
+      month,
+      orders: 0,
+      grossSales: 0,
+      amountCollected: 0,
+    };
+    row.amountCollected += o.totalAmount - o.advancePaid;
+    byMonth.set(month, row);
+  }
+  const monthlyRows = Array.from(byMonth.values()).sort((a, b) =>
+    a.month < b.month ? 1 : -1
+  );
+
+  const byGarment = new Map<string, SalesGarmentRow>();
+  for (const o of ordersInRange) {
+    for (const item of o.items) {
+      const row = byGarment.get(item.particular) ?? {
+        garmentType: item.particular,
+        qty: 0,
+        grossSales: 0,
+      };
+      row.qty += item.qty;
+      row.grossSales += item.amount;
+      byGarment.set(item.particular, row);
+    }
+  }
+  const garmentRows = Array.from(byGarment.values()).sort(
+    (a, b) => b.grossSales - a.grossSales
+  );
+
+  return {
+    totalSales,
+    revenueCollected,
+    totalOrders,
+    avgOrderValue,
+    rows,
+    monthlyRows,
+    garmentRows,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +321,41 @@ export interface PaymentsFilters {
   overdueOnly?: boolean;
 }
 
+export interface PaymentsReportSourceData {
+  allOrders: Order[];
+  allPayments: Payment[];
+  allUsers: AppUser[];
+  allAdjustments: OrderFinancialAdjustment[];
+  financialAdjustmentsAvailable: boolean;
+}
+
+export async function getPaymentsReportSourceData(
+  supabase: SupabaseClient
+): Promise<PaymentsReportSourceData> {
+  const [allOrders, allPayments, allUsers] = await Promise.all([
+    getAllOrders(supabase),
+    getAllPayments(supabase),
+    getAppUsers(supabase),
+  ]);
+
+  let allAdjustments: OrderFinancialAdjustment[] = [];
+  let financialAdjustmentsAvailable = true;
+  try {
+    allAdjustments = await getAllOrderFinancialAdjustments(supabase);
+  } catch (error) {
+    if (!isMissingOrderFinancialAdjustmentsSchemaError(error)) throw error;
+    financialAdjustmentsAvailable = false;
+  }
+
+  return {
+    allOrders,
+    allPayments,
+    allUsers,
+    allAdjustments,
+    financialAdjustmentsAvailable,
+  };
+}
+
 // Expenses total for a date range, on payment_date — powers the Payments
 // tab's "Profit" stat (Collections − Expenses). Kept minimal (just a total,
 // not a full report) since Expenses already has its own full ledger view on
@@ -268,24 +382,25 @@ export async function getPaymentsReport(
   filters: PaymentsFilters,
   todayIso: string
 ): Promise<PaymentsReport> {
-  const [allOrders, allPayments, allUsers] = await Promise.all([
-    getAllOrders(supabase),
-    getAllPayments(supabase),
-    getAppUsers(supabase),
-  ]);
-  let allAdjustments: OrderFinancialAdjustment[] = [];
-  try {
-    allAdjustments = await getAllOrderFinancialAdjustments(supabase);
-  } catch (error) {
-    if (!isMissingOrderFinancialAdjustmentsSchemaError(error)) throw error;
-  }
-  const ordersById = new Map(allOrders.map((o) => [o.id, o]));
-  const userNameById = new Map(allUsers.map((u) => [u.id, u.full_name]));
+  return buildPaymentsReportFromSource(
+    await getPaymentsReportSourceData(supabase),
+    filters,
+    todayIso
+  );
+}
+
+export function buildPaymentsReportFromSource(
+  source: PaymentsReportSourceData,
+  filters: PaymentsFilters,
+  todayIso: string
+): PaymentsReport {
+  const ordersById = new Map(source.allOrders.map((o) => [o.id, o]));
+  const userNameById = new Map(source.allUsers.map((u) => [u.id, u.full_name]));
 
   // Date range now filters on when the payment was actually taken
   // (payment_date), not when its order was placed — this tab is a payment
   // ledger, so that's the date a shopkeeper actually means by "this range."
-  let filtered = allPayments.filter((p) => inRange(p.paymentDate, filters.range));
+  let filtered = source.allPayments.filter((p) => inRange(p.paymentDate, filters.range));
 
   if (filters.paymentMode) {
     filtered = filtered.filter((p) => p.paymentMode === filters.paymentMode);
@@ -330,7 +445,7 @@ export async function getPaymentsReport(
   // recompute trigger already applies to orders.advance_paid/balance.
   const counted = filtered.filter((p) => !p.voided);
 
-  const countedRefunds = allAdjustments.filter(
+  const countedRefunds = source.allAdjustments.filter(
     (adjustment) =>
       adjustment.adjustmentType === "Refund" &&
       !adjustment.voided &&
@@ -408,6 +523,9 @@ export interface OrdersReportSummary {
   balanceDueOrders: number;
   overdueOrders: number;
   dueSoonDeliveries: number;
+  avgDeliveryDays: number;
+  cancelledOrders: number;
+  delayedOrders: number;
 }
 
 export interface OrdersReport {
@@ -478,6 +596,15 @@ export async function getOrdersReport(
     dueSoonDeliveries: activeRangeOrders.filter(
       (o) => o.deliveryDate >= todayIso && o.deliveryDate <= weekAhead
     ).length,
+    avgDeliveryDays:
+      rangeOrders.length === 0
+        ? 0
+        : rangeOrders.reduce(
+            (sum, o) => sum + daysBetween(o.orderDate, o.deliveryDate),
+            0
+          ) / rangeOrders.length,
+    cancelledOrders: rangeOrders.filter((o) => o.status === "Cancelled").length,
+    delayedOrders: rangeOrders.filter((o) => o.status === "Delayed").length,
   };
 
   return { summary, orders: filtered };

@@ -1,11 +1,20 @@
 "use server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import {
+  createMeasurementAttachment,
+  deleteMeasurementAttachment,
+  getMeasurementAttachmentById,
+  getMeasurementAttachmentsForCustomer,
+  MEASUREMENT_ATTACHMENTS_BUCKET,
+} from "@/lib/data/measurement-attachments-db";
 import {
   createCustomer,
   getCustomerById,
   getCustomerByPhone,
+  getMeasurementHistoryForCustomer,
   getCustomerMeasurements,
   getCustomers,
   getGarmentMeasurement,
@@ -31,8 +40,12 @@ import {
 import type {
   Customer,
   CustomerMeasurements,
+  FabricSourcePreference,
   Gender,
   GarmentMeasurement,
+  MeasurementAttachment,
+  MeasurementAttachmentType,
+  MeasurementHistoryEntry,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +76,48 @@ import type {
 type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+const MEASUREMENT_ATTACHMENT_TYPES: MeasurementAttachmentType[] = [
+  "Fit Photo",
+  "Sketch",
+  "Reference",
+  "Alteration Mark",
+  "Other",
+];
+
+const ALLOWED_MEASUREMENT_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+]);
+
+const MAX_MEASUREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function sanitizeStorageSegment(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+async function withSignedUrls(
+  attachments: MeasurementAttachment[]
+): Promise<MeasurementAttachment[]> {
+  if (attachments.length === 0) return attachments;
+  const admin = createAdminClient();
+  const signed = await Promise.all(
+    attachments.map(async (attachment) => {
+      const { data } = await admin.storage
+        .from(MEASUREMENT_ATTACHMENTS_BUCKET)
+        .createSignedUrl(attachment.storagePath, 60 * 60);
+      return { ...attachment, signedUrl: data?.signedUrl };
+    })
+  );
+  return signed;
+}
 
 export async function getCustomersAction(): Promise<Customer[]> {
   const supabase = createServerClient();
@@ -106,7 +161,7 @@ export async function getCustomerListRowsAction(todayIso: string): Promise<Custo
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.view");
   if (!guard.ok) return [];
-  return getCustomerListRows(supabase, todayIso);
+  return getCustomerListRows(createAdminClient(), todayIso);
 }
 
 export async function getCustomerAreasAction(): Promise<string[]> {
@@ -146,6 +201,12 @@ export interface CustomerFormData {
   address: string;
   area: string;
   gender?: Gender;
+  categoryPreference?: string;
+  fitPreference?: string;
+  stylePreference?: string;
+  fabricSourcePreference?: FabricSourcePreference;
+  frequentComplaints?: string;
+  notes?: string;
 }
 
 export async function createCustomerAction(
@@ -187,6 +248,7 @@ export async function saveCustomerMeasurementsAction(data: {
   customerId: string;
   values: Record<string, string>;
   notes?: string;
+  source?: string;
 }): Promise<ActionResult<CustomerMeasurements>> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.editMeasurements");
@@ -230,10 +292,121 @@ export async function saveGarmentMeasurementAction(data: {
   values: Record<string, string>;
   fitNotes?: string;
   notes?: string;
+  source?: string;
 }): Promise<ActionResult<GarmentMeasurement>> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.editMeasurements");
   if (!guard.ok) return { success: false, error: guard.error };
   const record = await saveGarmentMeasurement(supabase, data);
   return { success: true, data: record };
+}
+
+export async function getMeasurementHistoryForCustomerAction(
+  customerId: string
+): Promise<MeasurementHistoryEntry[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.viewMeasurements");
+  if (!guard.ok) return [];
+  return getMeasurementHistoryForCustomer(supabase, customerId);
+}
+
+export async function getMeasurementAttachmentsForCustomerAction(
+  customerId: string
+): Promise<MeasurementAttachment[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.viewMeasurements");
+  if (!guard.ok) return [];
+  const attachments = await getMeasurementAttachmentsForCustomer(
+    createAdminClient(),
+    customerId
+  );
+  return withSignedUrls(attachments);
+}
+
+export async function uploadMeasurementAttachmentAction(
+  formData: FormData
+): Promise<ActionResult<MeasurementAttachment>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.editMeasurements");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const customerId = String(formData.get("customerId") ?? "").trim();
+  const garmentType = String(formData.get("garmentType") ?? "").trim();
+  const attachmentType = String(formData.get("attachmentType") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const file = formData.get("file");
+
+  if (!customerId) return { success: false, error: "Customer is required." };
+  if (!MEASUREMENT_ATTACHMENT_TYPES.includes(attachmentType as MeasurementAttachmentType)) {
+    return { success: false, error: "Select a valid attachment type." };
+  }
+  if (!(file instanceof File)) {
+    return { success: false, error: "Choose a file to upload." };
+  }
+  if (file.size <= 0) return { success: false, error: "File is empty." };
+  if (file.size > MAX_MEASUREMENT_ATTACHMENT_BYTES) {
+    return { success: false, error: "File must be 10 MB or smaller." };
+  }
+  if (!ALLOWED_MEASUREMENT_ATTACHMENT_MIME_TYPES.has(file.type)) {
+    return {
+      success: false,
+      error: "Only JPG, PNG, WebP, GIF, and PDF files are supported.",
+    };
+  }
+
+  const admin = createAdminClient();
+  const safeName = sanitizeStorageSegment(file.name) || "attachment";
+  const path = `${customerId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await admin.storage
+    .from(MEASUREMENT_ATTACHMENTS_BUCKET)
+    .upload(path, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+  if (uploadError) return { success: false, error: uploadError.message };
+
+  try {
+    const attachment = await createMeasurementAttachment(admin, {
+      customerId,
+      garmentType,
+      attachmentType: attachmentType as MeasurementAttachmentType,
+      fileName: file.name,
+      mimeType: file.type,
+      fileSize: file.size,
+      storagePath: path,
+      notes,
+      createdBy: guard.userId,
+    });
+    const [withUrl] = await withSignedUrls([attachment]);
+    return { success: true, data: withUrl };
+  } catch (error) {
+    await admin.storage.from(MEASUREMENT_ATTACHMENTS_BUCKET).remove([path]);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to save attachment metadata.",
+    };
+  }
+}
+
+export async function deleteMeasurementAttachmentAction(
+  id: string
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.editMeasurements");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const admin = createAdminClient();
+  const attachment = await getMeasurementAttachmentById(admin, id);
+  if (!attachment) return { success: false, error: "Attachment not found." };
+
+  const { error: storageError } = await admin.storage
+    .from(MEASUREMENT_ATTACHMENTS_BUCKET)
+    .remove([attachment.storagePath]);
+  if (storageError) return { success: false, error: storageError.message };
+
+  await deleteMeasurementAttachment(admin, id);
+  return { success: true, data: undefined };
 }

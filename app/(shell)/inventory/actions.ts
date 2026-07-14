@@ -1,5 +1,6 @@
 "use server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import {
   adjustInventoryStock,
@@ -41,6 +42,11 @@ const VALID_UNITS = new Set<InventoryUnit>(inventoryUnits);
 const VALID_MOVEMENT_TYPES = new Set<InventoryMovementType>(inventoryMovementTypes);
 const VALID_FABRIC_STATUSES = new Set<CustomerFabricStatus>(customerFabricStatuses);
 
+export interface InventoryPageData {
+  items: InventoryItem[] | null;
+  customerFabrics: CustomerFabric[] | null;
+}
+
 export async function getInventoryItemsAction(): Promise<InventoryItem[] | null> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "inventory.view");
@@ -49,6 +55,26 @@ export async function getInventoryItemsAction(): Promise<InventoryItem[] | null>
     return await getInventoryItems(supabase);
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getInventoryPageDataAction(): Promise<InventoryPageData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.view");
+  if (!guard.ok) return { items: [], customerFabrics: [] };
+
+  const dataClient = createAdminClient();
+  try {
+    const [items, customerFabrics] = await Promise.all([
+      getInventoryItems(dataClient),
+      getCustomerFabrics(dataClient),
+    ]);
+    return { items, customerFabrics };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { items: null, customerFabrics: null };
+    }
     throw error;
   }
 }
@@ -190,6 +216,12 @@ function validateInventoryItem(input: InventoryItemInput): string | null {
   }
   if (input.costPerUnit != null && (!Number.isFinite(input.costPerUnit) || input.costPerUnit < 0)) {
     return "Cost per unit must be 0 or greater.";
+  }
+  if (input.purchaseDate && !ISO_DATE.test(input.purchaseDate)) {
+    return "A valid purchase date is required.";
+  }
+  if (input.purchaseCost != null && (!Number.isFinite(input.purchaseCost) || input.purchaseCost < 0)) {
+    return "Purchase cost must be 0 or greater.";
   }
   return null;
 }

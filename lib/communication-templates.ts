@@ -4,9 +4,13 @@ import type {
 } from "@/lib/types";
 
 export const COMMUNICATION_TEMPLATE_TYPES: CommunicationTemplateType[] = [
+  "Order Confirmation",
   "Delivery Reminder",
   "Trial Reminder",
   "Payment Reminder",
+  "Ready for Pickup",
+  "Feedback Request",
+  "Promotional Message",
   "Production Reminder",
   "Delay Notice",
   "Rework Notice",
@@ -25,6 +29,16 @@ export const COMMUNICATION_TEMPLATE_PLACEHOLDERS = [
 ];
 
 export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
+  {
+    templateType: "Order Confirmation",
+    title: "Order Confirmation",
+    body: "Hi {{customer_name}}, your order {{order_number}} has been confirmed. Delivery date: {{date}}.",
+    active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
+    updatedAt: "",
+  },
   {
     templateType: "Delivery Reminder",
     title: "Delivery Reminder",
@@ -49,6 +63,36 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
     templateType: "Payment Reminder",
     title: "Payment Reminder",
     body: "Hi {{customer_name}}, payment of Rs {{balance}} is pending for order {{order_number}}.",
+    active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
+    updatedAt: "",
+  },
+  {
+    templateType: "Ready for Pickup",
+    title: "Ready for Pickup",
+    body: "Hi {{customer_name}}, your order {{order_number}} is ready for pickup. Balance due: Rs {{balance}}.",
+    active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
+    updatedAt: "",
+  },
+  {
+    templateType: "Feedback Request",
+    title: "Feedback Request",
+    body: "Hi {{customer_name}}, thank you for choosing us. Please share your feedback for order {{order_number}}.",
+    active: true,
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: false,
+    updatedAt: "",
+  },
+  {
+    templateType: "Promotional Message",
+    title: "Promotional Message",
+    body: "Hi {{customer_name}}, we have new tailoring offers and styles available. Reply here to book your next order.",
     active: true,
     whatsappEnabled: true,
     smsEnabled: false,

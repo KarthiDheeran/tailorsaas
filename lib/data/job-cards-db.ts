@@ -34,7 +34,7 @@ export interface JobCardActivitySnapshot {
 const JOB_CARD_COLUMNS = `
   id, job_card_number, order_id, order_number, customer_id, order_status,
   order_item_serial_no, unit_no, garment_type, customer_snapshot,
-  measurements_snapshot, fabric_source, fabric_notes,
+  measurements_snapshot, fabric_source, fabric_notes, design_notes,
   current_stage, assigned_staff_id, priority, due_date, trial_date,
   started_date, completed_date, cancelled, notes, created_at, updated_at
 `;
@@ -53,6 +53,7 @@ interface JobCardRow {
   measurements_snapshot: Record<string, string> | null;
   fabric_source: JobCardFabricSource;
   fabric_notes: string | null;
+  design_notes: string | null;
   current_stage: JobCardStage;
   assigned_staff_id: string | null;
   priority: TaskPriority;
@@ -81,13 +82,20 @@ export function isMissingJobCardsSchemaError(error: unknown): boolean {
 export async function getJobCards(
   supabase: SupabaseClient,
   todayIso: string,
-  staffList: Staff[] = []
+  staffList: Staff[] = [],
+  options: { assignedStaffId?: string } = {}
 ): Promise<JobCard[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("job_cards")
     .select(JOB_CARD_COLUMNS)
     .order("due_date", { ascending: true })
     .order("job_card_number", { ascending: true });
+
+  if (options.assignedStaffId) {
+    query = query.eq("assigned_staff_id", options.assignedStaffId);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
 
   const rows = ((data as unknown as JobCardRow[]) ?? []);
@@ -389,6 +397,9 @@ function mapJobCardRow(
     rate: 0,
     amount: 0,
     measurements: row.measurements_snapshot ?? undefined,
+    fabricSource: row.fabric_source,
+    fabricNotes: row.fabric_notes ?? undefined,
+    designNotes: row.design_notes?.trim() ? row.design_notes : undefined,
   };
 
   return {
@@ -414,6 +425,7 @@ function mapJobCardRow(
     priority: row.priority,
     fabricSource: row.fabric_source,
     fabricNotes: row.fabric_notes ?? undefined,
+    designNotes: row.design_notes?.trim() ? row.design_notes : undefined,
     notes: row.notes ?? undefined,
     startedDate: row.started_date ?? undefined,
     completedDate: row.completed_date ?? undefined,

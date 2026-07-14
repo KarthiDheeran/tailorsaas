@@ -5,12 +5,10 @@ import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import {
   completeJobCardAction,
-  getJobCardsAction,
   startJobCardAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
-  getStaffListRowsAction,
-  getWorkQueueRowsAction,
+  getStaffPageDataAction,
   updateStaffAction,
   updateWorkAssignmentAction,
 } from "@/app/(shell)/staff/actions";
@@ -65,16 +63,12 @@ function StaffPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      canManage ? getStaffListRowsAction(todayIso) : Promise.resolve([]),
-      getWorkQueueRowsAction(todayIso),
-      getJobCardsAction(todayIso),
-    ])
-      .then(([staffRows, queueRows, jobCards]) => {
+    getStaffPageDataAction(todayIso)
+      .then((result) => {
         if (cancelled) return;
-        setAllRows(staffRows);
-        setWorkQueueRows(queueRows);
-        setJobCardQueueRows(jobCards);
+        setAllRows(result.staffRows);
+        setWorkQueueRows(result.workQueueRows);
+        setJobCardQueueRows(result.jobCardQueueRows);
         setLoadError(null);
       })
       .catch((error) => {
@@ -88,7 +82,7 @@ function StaffPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [canManage, refreshKey, todayIso]);
+  }, [refreshKey, todayIso]);
 
   const rows = allRows.filter(({ staff }) => {
     const nameQuery = filters.nameQuery.trim().toLowerCase();

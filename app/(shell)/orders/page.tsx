@@ -5,10 +5,8 @@ import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import {
   getOrderByIdAction,
-  getOrdersAction,
-  getOrdersForCustomerAction,
+  getOrdersPageDataAction,
 } from "@/app/(shell)/orders/actions";
-import { getCustomersAction } from "@/app/(shell)/customers/actions";
 import type { Customer, Order } from "@/lib/types";
 
 import {
@@ -77,19 +75,17 @@ function OrdersPageContent() {
   // the mock arrays), not direct client-side lib/data/stub-data.ts calls.
   const [orders, setOrders] = useState<Order[]>([]);
   const [customersById, setCustomersById] = useState<Record<string, Customer>>({});
-  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   // Only gates the very first load — refreshTick-triggered refetches (status
   // change, edit save, etc.) shouldn't re-blank the table with a spinner.
   const [isLoading, setIsLoading] = useState(true);
-  const [isCustomerOrdersLoading, setIsCustomerOrdersLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getOrdersAction(), getCustomersAction()])
-      .then(([ordersResult, customersResult]) => {
+    getOrdersPageDataAction()
+      .then((result) => {
         if (cancelled) return;
-        setOrders(ordersResult);
-        setCustomersById(Object.fromEntries(customersResult.map((c) => [c.id, c])));
+        setOrders(result.orders);
+        setCustomersById(Object.fromEntries(result.customers.map((c) => [c.id, c])));
         setLoadError(null);
       })
       .catch((error) => {
@@ -104,32 +100,6 @@ function OrdersPageContent() {
       cancelled = true;
     };
   }, [refreshTick]);
-
-  useEffect(() => {
-    if (!selectedCustomer) {
-      setCustomerOrders([]);
-      return;
-    }
-    let cancelled = false;
-    setIsCustomerOrdersLoading(true);
-    getOrdersForCustomerAction(selectedCustomer.id)
-      .then((result) => {
-        if (cancelled) return;
-        setCustomerOrders(result);
-        setLoadError(null);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setLoadError(getErrorMessage(error, "Failed to load customer orders."));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsCustomerOrdersLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCustomer, refreshTick]);
 
   // New Order redirects here with ?created=1 (and optionally &orderId=... if
   // "View Order" was clicked from the success modal) on success. Read via
@@ -311,6 +281,11 @@ function OrdersPageContent() {
     const cmp = a[sortKey] < b[sortKey] ? -1 : a[sortKey] > b[sortKey] ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
   });
+  const customerOrders = selectedCustomer
+    ? orders
+        .filter((order) => order.customerId === selectedCustomer.id)
+        .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1))
+    : [];
   const totalPages = Math.max(1, Math.ceil(allOrders.length / PAGE_SIZE));
   const pagedOrders = allOrders.slice(
     (page - 1) * PAGE_SIZE,
@@ -473,17 +448,13 @@ function OrdersPageContent() {
           <h2 className="mb-3 px-1 text-sm font-medium text-ink-muted">
             {t("orders.ordersFor")} {selectedCustomer.name}
           </h2>
-          {isCustomerOrdersLoading ? (
-            <LoadingState label="Loading customer orders..." />
-          ) : (
-            <OrdersTable
-              orders={customerOrders}
-              customersById={customersById}
-              editableStatus
-              onStatusChange={handleStatusChanged}
-              onRowClick={setDetailsOrder}
-            />
-          )}
+          <OrdersTable
+            orders={customerOrders}
+            customersById={customersById}
+            editableStatus
+            onStatusChange={handleStatusChanged}
+            onRowClick={setDetailsOrder}
+          />
         </div>
       ) : (
         <>

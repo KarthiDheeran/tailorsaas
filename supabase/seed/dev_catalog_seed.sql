@@ -45,21 +45,21 @@ begin
   insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
   values (
     'Pant', 400,
-    array['waist', 'hip', 'pantLength', 'inseam', 'thigh', 'bottom'],
+    array['waist', 'hip', 'seat', 'pantLength', 'inseam', 'thigh', 'knee', 'calf', 'bottom', 'rise'],
     array[v_addon_inner_pocket, v_addon_extra_pocket, v_addon_elastic_waist]
   );
 
   insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
   values (
     'Shirt', 800,
-    array['chest', 'shoulder', 'sleeveLength', 'shirtLength', 'neck', 'waist', 'armhole', 'cuff'],
+    array['chest', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'shirtLength', 'neck', 'collar', 'waist', 'armhole', 'cuff'],
     array[v_addon_inner_pocket, v_addon_extra_pocket, v_addon_premium_buttons]
   );
 
   insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
   values (
     'Blouse', 750,
-    array['bust', 'waist', 'shoulder', 'sleeveLength', 'blouseLength', 'armhole', 'neckDepthFront', 'neckDepthBack'],
+    array['bust', 'waist', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'blouseLength', 'neckWidth', 'neckDepthFront', 'neckDepthBack', 'armhole', 'dartPoint', 'princessCut'],
     array[v_addon_boat_neck, v_addon_deep_neck, v_addon_padded, v_addon_lining]
   );
 
@@ -68,14 +68,21 @@ begin
   insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
   values (
     'Kurta', 700,
-    array['chest', 'shoulder', 'sleeveLength', 'kurtaLength', 'waist', 'neck'],
+    array['chest', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'kurtaLength', 'waist', 'hip', 'neck', 'armhole', 'slitLength'],
     array[]::uuid[]
   );
 
   insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
   values (
     'Suit', 2500,
-    array['chest', 'waist', 'hip', 'shoulder', 'sleeveLength'],
+    array['chest', 'waist', 'hip', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'coatLength', 'neck', 'armhole', 'pantLength', 'inseam', 'thigh', 'bottom'],
+    array[]::uuid[]
+  );
+
+  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  values (
+    'Dress', 0,
+    array['bust', 'waist', 'hip', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'armhole', 'neck', 'neckDepthFront', 'neckDepthBack', 'dressLength', 'flare'],
     array[]::uuid[]
   );
 

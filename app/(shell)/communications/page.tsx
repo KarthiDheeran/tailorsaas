@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Bell, CalendarDays, MessageCircle, Search, Send, Settings } from "lucide-react";
 import {
+  getCommunicationTargetsAction,
   getReminderInboxAction,
+  logWhatsAppMessageAction,
   getWhatsAppMessagesAction,
 } from "@/app/(shell)/communications/actions";
 import { markReminderSentAction } from "@/app/(shell)/calendar/actions";
@@ -15,10 +17,21 @@ import type { CalendarData, CalendarEvent } from "@/lib/calendar";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import type {
+  CommunicationTemplateType,
+  Customer,
+  Order,
   WhatsAppMessage,
   WhatsAppMessageContextType,
   WhatsAppMessageStatus,
 } from "@/lib/types";
+import { DEFAULT_COMMUNICATION_TEMPLATES, renderCommunicationTemplate } from "@/lib/communication-templates";
+
+const QUICK_TEMPLATE_TYPES: CommunicationTemplateType[] = [
+  "Order Confirmation",
+  "Ready for Pickup",
+  "Feedback Request",
+  "Promotional Message",
+];
 
 const CONTEXT_FILTERS: ("all" | WhatsAppMessageContextType)[] = [
   "all",
@@ -195,6 +208,8 @@ function ReminderInbox({
 
 function CommunicationsContent() {
   const [messages, setMessages] = useState<WhatsAppMessage[] | null>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [reminderData, setReminderData] = useState<CalendarData | null>(null);
   const [query, setQuery] = useState("");
   const [contextFilter, setContextFilter] = useState<"all" | WhatsAppMessageContextType>("all");
@@ -222,6 +237,18 @@ function CommunicationsContent() {
       .finally(() => {
         if (!cancelled) setIsLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCommunicationTargetsAction().then((result) => {
+      if (cancelled) return;
+      setCustomers(result.customers);
+      setOrders(result.orders);
+    });
     return () => {
       cancelled = true;
     };
@@ -310,6 +337,14 @@ function CommunicationsContent() {
         data={reminderData}
         pendingEventKey={pendingEventKey}
         onMarkSent={markSent}
+      />
+
+      <QuickWhatsAppComposer
+        customers={customers}
+        orders={orders}
+        onSent={() => {
+          getWhatsAppMessagesAction().then((result) => setMessages(result));
+        }}
       />
 
       {isLoading ? (
@@ -425,6 +460,149 @@ function CommunicationsContent() {
         </>
       )}
     </div>
+  );
+}
+
+function QuickWhatsAppComposer({
+  customers,
+  orders,
+  onSent,
+}: {
+  customers: Customer[];
+  orders: Order[];
+  onSent: () => void;
+}) {
+  const [templateType, setTemplateType] =
+    useState<CommunicationTemplateType>("Order Confirmation");
+  const [customerId, setCustomerId] = useState("");
+  const [orderId, setOrderId] = useState("");
+  const [manualMessage, setManualMessage] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedCustomer = customers.find((customer) => customer.id === customerId);
+  const customerOrders = selectedCustomer
+    ? orders.filter((order) => order.customerId === selectedCustomer.id)
+    : [];
+  const selectedOrder = orders.find((order) => order.id === orderId);
+  const template = DEFAULT_COMMUNICATION_TEMPLATES.find(
+    (candidate) => candidate.templateType === templateType
+  );
+  const renderedMessage = selectedCustomer
+    ? renderCommunicationTemplate(template, template?.body ?? "", {
+        customer_name: selectedCustomer.name,
+        order_number: selectedOrder?.orderNumber,
+        date: selectedOrder?.deliveryDate,
+        balance: selectedOrder?.balance ?? 0,
+      })
+    : "";
+  const message = manualMessage.trim() || renderedMessage;
+  const needsOrder = templateType !== "Promotional Message";
+
+  async function handleOpenWhatsApp() {
+    setError(null);
+    if (!selectedCustomer) {
+      setError("Select a customer.");
+      return;
+    }
+    if (needsOrder && !selectedOrder) {
+      setError("Select an order.");
+      return;
+    }
+    if (!message.trim()) {
+      setError("Message is required.");
+      return;
+    }
+    const result = await logWhatsAppMessageAction({
+      phone: selectedCustomer.phone,
+      message,
+      contextType: selectedOrder ? "Order" : "Customer",
+      contextId: selectedOrder?.id ?? selectedCustomer.id,
+      status: "Opened",
+    });
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    window.open(buildWhatsAppUrl(selectedCustomer.phone, message), "_blank", "noopener,noreferrer");
+    onSent();
+  }
+
+  return (
+    <section className="mb-6 rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-ink">Quick WhatsApp</h2>
+          <p className="text-sm text-ink-muted">
+            Send confirmations, pickup messages, feedback requests, or simple promotions.
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr]">
+        <select
+          value={templateType}
+          onChange={(event) => {
+            setTemplateType(event.target.value as CommunicationTemplateType);
+            setManualMessage("");
+          }}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+        >
+          {QUICK_TEMPLATE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+        <select
+          value={customerId}
+          onChange={(event) => {
+            setCustomerId(event.target.value);
+            setOrderId("");
+            setManualMessage("");
+          }}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+        >
+          <option value="">Select customer</option>
+          {customers.map((customer) => (
+            <option key={customer.id} value={customer.id}>
+              {customer.name} - {customer.phone}
+            </option>
+          ))}
+        </select>
+        <select
+          value={orderId}
+          onChange={(event) => {
+            setOrderId(event.target.value);
+            setManualMessage("");
+          }}
+          disabled={!needsOrder || customerOrders.length === 0}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint"
+        >
+          <option value="">{needsOrder ? "Select order" : "No order needed"}</option>
+          {customerOrders.map((order) => (
+            <option key={order.id} value={order.id}>
+              {order.orderNumber} - {order.status}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        value={manualMessage || renderedMessage}
+        onChange={(event) => setManualMessage(event.target.value)}
+        rows={3}
+        className="mt-3 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+      />
+      {error && <p className="mt-2 text-sm font-medium text-chip-red-fg">{error}</p>}
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={handleOpenWhatsApp}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+          Open WhatsApp
+        </button>
+      </div>
+    </section>
   );
 }
 

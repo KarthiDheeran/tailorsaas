@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Pencil, Printer } from "lucide-react";
 import { MEASUREMENT_FIELD_GROUPS, measurementFieldLabel } from "@/lib/catalog";
 import type { Customer, CustomerMeasurements } from "@/lib/types";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -31,7 +31,15 @@ export function MeasurementsCard({
     <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[17px] font-semibold text-ink">{t("customers.measurements")}</h3>
-        {canEdit && (
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/customers/${customer.id}/measurements/print`}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print
+          </Link>
+          {canEdit && (
           <Link
             href={`/customers/${customer.id}/measurements`}
             className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
@@ -39,7 +47,8 @@ export function MeasurementsCard({
             <Pencil className="h-3.5 w-3.5" />
             {t("customers.editMeasurements")}
           </Link>
-        )}
+          )}
+        </div>
       </div>
 
       {!hasAnything ? (

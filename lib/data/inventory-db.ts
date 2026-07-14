@@ -10,9 +10,15 @@ import type {
 } from "@/lib/types";
 
 const INVENTORY_ITEM_COLUMNS =
+  "id, item_type, name, sku, color, unit, quantity_on_hand, reorder_level, cost_per_unit, vendor_name, purchase_date, purchase_cost, active, notes, created_at, updated_at";
+
+const LEGACY_INVENTORY_ITEM_COLUMNS =
   "id, item_type, name, sku, color, unit, quantity_on_hand, reorder_level, cost_per_unit, active, notes, created_at, updated_at";
 
 const INVENTORY_MOVEMENT_COLUMNS =
+  "id, item_id, movement_type, quantity, movement_date, reason, order_id, job_card_id, recorded_by, created_at";
+
+const LEGACY_INVENTORY_MOVEMENT_COLUMNS =
   "id, item_id, movement_type, quantity, movement_date, reason, recorded_by, created_at";
 
 const CUSTOMER_FABRIC_COLUMNS =
@@ -28,6 +34,9 @@ interface InventoryItemRow {
   quantity_on_hand: number;
   reorder_level: number;
   cost_per_unit: number | null;
+  vendor_name?: string | null;
+  purchase_date?: string | null;
+  purchase_cost?: number | null;
   active: boolean;
   notes: string | null;
   created_at: string;
@@ -41,6 +50,8 @@ interface InventoryMovementRow {
   quantity: number;
   movement_date: string;
   reason: string | null;
+  order_id?: string | null;
+  job_card_id?: string | null;
   recorded_by: string | null;
   created_at: string;
 }
@@ -86,6 +97,9 @@ export interface InventoryItemInput {
   quantityOnHand: number;
   reorderLevel: number;
   costPerUnit?: number;
+  vendorName?: string;
+  purchaseDate?: string;
+  purchaseCost?: number;
   notes?: string;
 }
 
@@ -95,7 +109,22 @@ export interface StockAdjustmentInput {
   quantity: number;
   movementDate: string;
   reason?: string;
+  orderId?: string;
+  jobCardId?: string;
   recordedBy: string;
+}
+
+function isMissingInventoryPurchaseSchemaError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return (
+    candidate.code === "PGRST204" ||
+    message.includes("vendor_name") ||
+    message.includes("purchase_date") ||
+    message.includes("purchase_cost") ||
+    message.includes("order_id") ||
+    message.includes("job_card_id")
+  );
 }
 
 export interface CustomerFabricInput {
@@ -114,10 +143,18 @@ export interface CustomerFabricInput {
 export async function getInventoryItems(
   supabase: SupabaseClient
 ): Promise<InventoryItem[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("inventory_items")
     .select(INVENTORY_ITEM_COLUMNS)
     .order("name");
+  if (error && isMissingInventoryPurchaseSchemaError(error)) {
+    const fallback = await supabase
+      .from("inventory_items")
+      .select(LEGACY_INVENTORY_ITEM_COLUMNS)
+      .order("name");
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as unknown as InventoryItemRow[]) ?? []).map(mapInventoryItem);
 }
@@ -137,6 +174,9 @@ export async function createInventoryItem(
       quantity_on_hand: input.quantityOnHand,
       reorder_level: input.reorderLevel,
       cost_per_unit: input.costPerUnit ?? null,
+      vendor_name: input.vendorName?.trim() || "",
+      purchase_date: input.purchaseDate || null,
+      purchase_cost: input.purchaseCost ?? null,
       notes: input.notes?.trim() || null,
     })
     .select(INVENTORY_ITEM_COLUMNS)
@@ -161,6 +201,8 @@ export async function adjustInventoryStock(
     quantity: input.quantity,
     movement_date: input.movementDate,
     reason: input.reason?.trim() || null,
+    order_id: input.orderId ?? null,
+    job_card_id: input.jobCardId ?? null,
     recorded_by: input.recordedBy,
   });
   if (movementError) throw movementError;
@@ -188,7 +230,18 @@ export async function getInventoryMovements(
     .order("movement_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (itemId) query = query.eq("item_id", itemId);
-  const { data, error } = await query;
+  let { data, error } = await query;
+  if (error && isMissingInventoryPurchaseSchemaError(error)) {
+    let fallback = supabase
+      .from("inventory_movements")
+      .select(LEGACY_INVENTORY_MOVEMENT_COLUMNS)
+      .order("movement_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (itemId) fallback = fallback.eq("item_id", itemId);
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
   if (error) throw error;
   return ((data as unknown as InventoryMovementRow[]) ?? []).map(mapInventoryMovement);
 }
@@ -281,6 +334,9 @@ function mapInventoryItem(row: InventoryItemRow): InventoryItem {
     quantityOnHand: row.quantity_on_hand,
     reorderLevel: row.reorder_level,
     costPerUnit: row.cost_per_unit ?? undefined,
+    vendorName: row.vendor_name?.trim() ? row.vendor_name : undefined,
+    purchaseDate: row.purchase_date ?? undefined,
+    purchaseCost: row.purchase_cost ?? undefined,
     active: row.active,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
@@ -296,6 +352,8 @@ function mapInventoryMovement(row: InventoryMovementRow): InventoryMovement {
     quantity: row.quantity,
     movementDate: row.movement_date,
     reason: row.reason ?? undefined,
+    orderId: row.order_id ?? undefined,
+    jobCardId: row.job_card_id ?? undefined,
     recordedBy: row.recorded_by ?? undefined,
     createdAt: row.created_at,
   };

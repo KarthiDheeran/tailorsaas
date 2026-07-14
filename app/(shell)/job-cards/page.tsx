@@ -6,19 +6,14 @@ import { AlertTriangle, ClipboardList, Scissors, Shirt, X } from "lucide-react";
 import {
   assignJobCardAction,
   getJobCardActivityLogsAction,
-  getJobCardsAction,
+  getJobCardsPageDataAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
-  getCustomerFabricsAction,
-  getInventoryItemsAction,
   updateCustomerFabricStatusAction,
 } from "@/app/(shell)/inventory/actions";
-import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
   createWorkAssignmentAction,
-  getStaffAction,
-  getWorkAssignmentsAction,
 } from "@/app/(shell)/staff/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -176,33 +171,17 @@ function JobCardsContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getJobCardsAction(todayIso),
-      getOrdersAction(),
-      getStaffAction(),
-      getWorkAssignmentsAction(),
-      canViewInventory ? getCustomerFabricsAction() : Promise.resolve([]),
-      canViewInventory ? getInventoryItemsAction() : Promise.resolve([]),
-    ])
-      .then(
-        ([
-          jobCardsResult,
-          ordersResult,
-          staffResult,
-          assignmentsResult,
-          fabricsResult,
-          inventoryItemsResult,
-        ]) => {
-          if (cancelled) return;
-          setPersistedCards(jobCardsResult);
-          setOrders(ordersResult);
-          setStaff(staffResult.filter((member) => member.status === "Active"));
-          setAssignments(assignmentsResult);
-          setCustomerFabrics(fabricsResult ?? []);
-          setInventoryItems(inventoryItemsResult ?? []);
-          setLoadError(null);
-        }
-      )
+    getJobCardsPageDataAction(todayIso, { includeInventoryItems: canViewInventory })
+      .then((result) => {
+        if (cancelled) return;
+        setPersistedCards(result.jobCards);
+        setOrders(result.orders);
+        setStaff(result.staff.filter((member) => member.status === "Active"));
+        setAssignments(result.assignments);
+        setCustomerFabrics(result.customerFabrics ?? []);
+        setInventoryItems(result.inventoryItems ?? []);
+        setLoadError(null);
+      })
       .catch((error) => {
         if (!cancelled) {
           setLoadError(getErrorMessage(error, "Failed to load job cards."));

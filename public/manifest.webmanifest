@@ -1,0 +1,19 @@
+{
+  "name": "TailorSaaS",
+  "short_name": "TailorSaaS",
+  "description": "Mobile-first order, measurement, payment, and shop management for tailoring businesses.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

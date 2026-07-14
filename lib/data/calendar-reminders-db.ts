@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CalendarReminderType = "Delivery" | "Trial" | "Production" | "Payment";
+export type CalendarReminderType = "Delivery" | "Trial" | "Production" | "Payment" | "Pickup";
 export type CalendarReminderTargetType = "Order" | "Job Card";
 
 export interface CalendarReminder {

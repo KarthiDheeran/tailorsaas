@@ -6,8 +6,7 @@ import {
   adjustInventoryStockAction,
   createCustomerFabricAction,
   createInventoryItemAction,
-  getCustomerFabricsAction,
-  getInventoryItemsAction,
+  getInventoryPageDataAction,
   updateCustomerFabricStatusAction,
 } from "@/app/(shell)/inventory/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -61,11 +60,11 @@ function InventoryContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getInventoryItemsAction(), getCustomerFabricsAction()])
-      .then(([stockRows, fabricRows]) => {
+    getInventoryPageDataAction()
+      .then((result) => {
         if (cancelled) return;
-        setItems(stockRows);
-        setCustomerFabrics(fabricRows);
+        setItems(result.items);
+        setCustomerFabrics(result.customerFabrics);
         setLoadError(null);
       })
       .catch((error) => {
@@ -137,6 +136,9 @@ function InventoryContent() {
         "Unit",
         "Reorder Level",
         "Cost Per Unit",
+        "Vendor",
+        "Purchase Date",
+        "Purchase Cost",
         "Stock Value",
         "Status",
         "Notes",
@@ -150,6 +152,9 @@ function InventoryContent() {
         item.unit,
         item.reorderLevel,
         item.costPerUnit ?? "",
+        item.vendorName ?? "",
+        item.purchaseDate ?? "",
+        item.purchaseCost ?? "",
         item.quantityOnHand * (item.costPerUnit ?? 0),
         item.active ? "Active" : "Inactive",
         item.notes ?? "",
@@ -410,6 +415,7 @@ function StockTable({
             <th className="whitespace-nowrap px-5 py-3">Color</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">On Hand</th>
             <th className="whitespace-nowrap px-5 py-3">Reorder</th>
+            <th className="whitespace-nowrap px-5 py-3">Vendor</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">Value</th>
             {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
           </tr>
@@ -437,8 +443,16 @@ function StockTable({
                     <span className="text-ink-muted">{numberValue(item.reorderLevel)} {item.unit}</span>
                   )}
                 </td>
+                <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                  {item.vendorName || "-"}
+                </td>
                 <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
                   {money(item.quantityOnHand * (item.costPerUnit ?? 0))}
+                  {item.purchaseCost != null && (
+                    <div className="text-xs text-ink-faint">
+                      Purchase {money(item.purchaseCost)}
+                    </div>
+                  )}
                 </td>
                 {canManage && (
                   <td className="whitespace-nowrap px-5 py-3 text-right">
@@ -577,6 +591,9 @@ function StockItemDrawer({
   const [quantity, setQuantity] = useState("0");
   const [reorderLevel, setReorderLevel] = useState("0");
   const [costPerUnit, setCostPerUnit] = useState("");
+  const [vendorName, setVendorName] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [purchaseCost, setPurchaseCost] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -598,6 +615,9 @@ function StockItemDrawer({
       quantityOnHand: Number(quantity),
       reorderLevel: Number(reorderLevel),
       costPerUnit: costPerUnit ? Number(costPerUnit) : undefined,
+      vendorName,
+      purchaseDate,
+      purchaseCost: purchaseCost ? Number(purchaseCost) : undefined,
       notes,
     });
     setSaving(false);
@@ -623,6 +643,11 @@ function StockItemDrawer({
         <TextField label="Qty" type="number" value={quantity} onChange={setQuantity} />
         <TextField label="Reorder" type="number" value={reorderLevel} onChange={setReorderLevel} />
         <TextField label="Cost/Unit" type="number" value={costPerUnit} onChange={setCostPerUnit} />
+      </div>
+      <TextField label="Vendor" value={vendorName} onChange={setVendorName} placeholder="Supplier or market name" />
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Purchase Date" type="date" value={purchaseDate} onChange={setPurchaseDate} />
+        <TextField label="Purchase Cost" type="number" value={purchaseCost} onChange={setPurchaseCost} />
       </div>
       <TextareaField label="Notes" value={notes} onChange={setNotes} />
       {error && <FormError error={error} />}

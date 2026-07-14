@@ -60,7 +60,7 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
           {t("customers.editCustomerSubtitle")}
         </p>
       </div>
-      <div className="max-w-2xl">
+      <div className="max-w-3xl">
         {error && (
           <div className="mb-4 rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
             {error}
@@ -75,6 +75,12 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
             address: customer.address,
             area: customer.area,
             gender: customer.gender,
+            categoryPreference: customer.categoryPreference,
+            fitPreference: customer.fitPreference,
+            stylePreference: customer.stylePreference,
+            fabricSourcePreference: customer.fabricSourcePreference,
+            frequentComplaints: customer.frequentComplaints,
+            notes: customer.notes,
           }}
           title={t("customers.customerDetailsSection")}
           submitLabel={t("common.saveChanges")}

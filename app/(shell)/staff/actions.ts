@@ -19,9 +19,14 @@ import {
   updateStaff,
   updateWorkAssignment,
 } from "@/lib/data/staff-db";
-import { getOrderById } from "@/lib/data/orders-db";
+import {
+  getJobCards,
+  isMissingJobCardsSchemaError,
+} from "@/lib/data/job-cards-db";
+import { getAllOrders, getOrderById } from "@/lib/data/orders-db";
 import { paymentModes } from "@/lib/constants";
 import {
+  computeTaskStatus,
   getStaffListRows,
   getWorkQueueRows,
   TASK_TYPES,
@@ -29,7 +34,9 @@ import {
   type WorkQueueRow,
 } from "@/lib/staff";
 import { hasPermission } from "@/lib/permissions";
+import type { JobCard } from "@/lib/job-cards";
 import type {
+  Order,
   PaymentMode,
   Staff,
   StaffPayment,
@@ -99,6 +106,12 @@ export interface StaffFormInput {
   pieceRates?: Partial<Record<TaskType, number>>;
 }
 
+export interface StaffPageData {
+  staffRows: StaffListRow[];
+  workQueueRows: WorkQueueRow[];
+  jobCardQueueRows: JobCard[] | null;
+}
+
 function validateStaffInput(data: StaffFormInput): string | null {
   if (!data.name.trim()) return "Name is required.";
   if (!data.phone.trim()) return "Phone is required.";
@@ -138,6 +151,41 @@ export async function getWorkQueueRowsAction(todayIso: string): Promise<WorkQueu
   const guard = await requireServerPermission(supabase, "staff.view");
   if (!guard.ok) return [];
   return getWorkQueueRows(supabase, todayIso);
+}
+
+export async function getStaffPageDataAction(todayIso: string): Promise<StaffPageData> {
+  if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
+
+  const supabase = createServerClient();
+  const context = await getServerCallerContext(supabase);
+  if (!context || !hasPermission(context.permissions, "staff.view")) {
+    return { staffRows: [], workQueueRows: [], jobCardQueueRows: [] };
+  }
+
+  const canManage = hasPermission(context.permissions, "staff.manage");
+  const dataClient = createAdminClient();
+  const [staffList, assignments, orders] = await Promise.all([
+    getStaff(dataClient),
+    getWorkAssignments(dataClient),
+    getAllOrders(dataClient),
+  ]);
+
+  let jobCardQueueRows: JobCard[] | null = null;
+  try {
+    jobCardQueueRows = await getJobCards(dataClient, todayIso, staffList);
+  } catch (error) {
+    if (!isMissingJobCardsSchemaError(error)) throw error;
+  }
+
+  return {
+    staffRows: canManage
+      ? jobCardQueueRows
+        ? buildJobCardStaffListRows(staffList, jobCardQueueRows, todayIso)
+        : buildStaffListRows(staffList, assignments, todayIso)
+      : [],
+    workQueueRows: buildWorkQueueRows(staffList, assignments, orders, todayIso),
+    jobCardQueueRows,
+  };
 }
 
 export async function getStaffAction(): Promise<Staff[]> {
@@ -334,6 +382,110 @@ export async function getWorkAssignmentsAction(): Promise<WorkAssignment[]> {
   const guard = await requireServerPermission(supabase, "staff.view");
   if (!guard.ok) return [];
   return getWorkAssignments(supabase);
+}
+
+function isSameMonth(dateIso: string, todayIso: string): boolean {
+  return dateIso.slice(0, 7) === todayIso.slice(0, 7);
+}
+
+function buildStaffListRows(
+  staffList: Staff[],
+  assignments: WorkAssignment[],
+  todayIso: string
+): StaffListRow[] {
+  const assignmentsByStaff = new Map<string, WorkAssignment[]>();
+  for (const assignment of assignments) {
+    const current = assignmentsByStaff.get(assignment.assignedStaffId) ?? [];
+    current.push(assignment);
+    assignmentsByStaff.set(assignment.assignedStaffId, current);
+  }
+
+  return staffList.map((staff) => {
+    const rows = assignmentsByStaff.get(staff.id) ?? [];
+    const withStatus = rows.map((assignment) => ({
+      assignment,
+      status: computeTaskStatus(assignment, todayIso),
+    }));
+    const active = withStatus.filter(
+      ({ status }) => status !== "Completed" && status !== "Cancelled"
+    );
+    const completedThisMonth = withStatus.filter(
+      ({ assignment, status }) =>
+        status === "Completed" &&
+        assignment.completedDate &&
+        isSameMonth(assignment.completedDate, todayIso)
+    ).length;
+
+    return {
+      staff,
+      activeOrders: new Set(active.map(({ assignment }) => assignment.orderId)).size,
+      completedThisMonth,
+      pendingWork: active.length,
+    };
+  });
+}
+
+function buildJobCardStaffListRows(
+  staffList: Staff[],
+  jobCards: JobCard[],
+  todayIso: string
+): StaffListRow[] {
+  const cardsByStaff = new Map<string, JobCard[]>();
+  for (const card of jobCards) {
+    if (!card.assignedStaffId) continue;
+    const current = cardsByStaff.get(card.assignedStaffId) ?? [];
+    current.push(card);
+    cardsByStaff.set(card.assignedStaffId, current);
+  }
+
+  return staffList.map((staff) => {
+    const rows = cardsByStaff.get(staff.id) ?? [];
+    const active = rows.filter(
+      (card) =>
+        card.productionBucket !== "Closed" &&
+        card.stage !== "Ready" &&
+        card.stage !== "Delivered" &&
+        card.stage !== "Cancelled"
+    );
+    const completedThisMonth = rows.filter(
+      (card) =>
+        card.completedDate &&
+        card.completedDate.slice(0, 7) === todayIso.slice(0, 7)
+    ).length;
+
+    return {
+      staff,
+      activeOrders: new Set(active.map((card) => card.orderId)).size,
+      completedThisMonth,
+      pendingWork: active.length,
+    };
+  });
+}
+
+function buildWorkQueueRows(
+  staffList: Staff[],
+  assignments: WorkAssignment[],
+  orders: Order[],
+  todayIso: string
+): WorkQueueRow[] {
+  const staffById = new Map(staffList.map((staff) => [staff.id, staff]));
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+
+  return assignments
+    .map((assignment) => {
+      const order = ordersById.get(assignment.orderId);
+      const item = order?.items.find((i) => i.serialNo === assignment.orderItemSerialNo);
+      if (!order || !item) return null;
+      return {
+        assignment,
+        status: computeTaskStatus(assignment, todayIso),
+        order,
+        item,
+        staff: staffById.get(assignment.assignedStaffId),
+      };
+    })
+    .filter((row): row is WorkQueueRow => row !== null)
+    .sort((a, b) => (a.assignment.dueDate < b.assignment.dueDate ? -1 : 1));
 }
 
 export async function getStaffPaymentsForStaffAction(

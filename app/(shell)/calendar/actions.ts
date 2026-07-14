@@ -29,6 +29,7 @@ const VALID_REMINDER_TYPES = new Set<CalendarReminderType>([
   "Trial",
   "Production",
   "Payment",
+  "Pickup",
 ]);
 const VALID_TARGET_TYPES = new Set<CalendarReminderTargetType>(["Order", "Job Card"]);
 

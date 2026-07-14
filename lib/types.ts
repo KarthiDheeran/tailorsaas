@@ -1,4 +1,9 @@
 export type Gender = "Male" | "Female";
+export type FabricSourcePreference =
+  | "Not specified"
+  | "Customer provided"
+  | "Shop provided"
+  | "Either";
 
 export interface Customer {
   id: string;
@@ -8,6 +13,12 @@ export interface Customer {
   address: string;
   area: string;
   gender?: Gender;
+  categoryPreference?: string;
+  fitPreference?: string;
+  stylePreference?: string;
+  fabricSourcePreference?: FabricSourcePreference;
+  frequentComplaints?: string;
+  notes?: string;
 }
 
 // Per-garment-type measurements — a flexible key-value structure keyed by
@@ -40,6 +51,64 @@ export interface CustomerMeasurements {
   updatedAt: string;
 }
 
+export type MeasurementHistoryKind = "Baseline" | "Garment";
+
+export interface MeasurementHistoryEntry {
+  id: string;
+  kind: MeasurementHistoryKind;
+  customerId: string;
+  garmentType?: string;
+  values: Record<string, string>;
+  fitNotes?: string;
+  notes?: string;
+  source: string;
+  createdAt: string;
+}
+
+export type MeasurementAttachmentType =
+  | "Fit Photo"
+  | "Sketch"
+  | "Reference"
+  | "Alteration Mark"
+  | "Other";
+
+export interface MeasurementAttachment {
+  id: string;
+  customerId: string;
+  garmentType?: string;
+  attachmentType: MeasurementAttachmentType;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storagePath: string;
+  notes?: string;
+  createdAt: string;
+  signedUrl?: string;
+}
+
+export type OrderAttachmentType =
+  | "Design Reference"
+  | "Fabric Photo"
+  | "Sample Photo"
+  | "Trial Photo"
+  | "Alteration Photo"
+  | "Final Garment Photo"
+  | "Other";
+
+export interface OrderAttachment {
+  id: string;
+  orderId: string;
+  orderItemSerialNo?: number;
+  attachmentType: OrderAttachmentType;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storagePath: string;
+  notes?: string;
+  createdAt: string;
+  signedUrl?: string;
+}
+
 // Denormalized {name, phone, area} snapshot shape — used both for Order's
 // own customerSnapshot (captured at order-creation time) and, since Phase
 // 6E, as the customer-display shape Reports' Payments/Orders/Sales tabs use
@@ -55,6 +124,13 @@ export interface OrderItemAddOn {
   label: string;
   amount: number;
 }
+
+export type OrderItemFabricSource =
+  | "Not specified"
+  | "Customer provided"
+  | "Shop provided";
+
+export type AlterationChargeType = "Paid" | "Free";
 
 export interface OrderItem {
   serialNo: number;
@@ -87,6 +163,13 @@ export interface OrderItem {
   // customer's own GarmentMeasurement/CustomerMeasurements records remain
   // the live, editable source; this is just what this particular order used.
   measurements?: Record<string, string>;
+  fabricSource?: OrderItemFabricSource;
+  fabricNotes?: string;
+  designNotes?: string;
+  alterationIssue?: string;
+  alterationRequiredChange?: string;
+  alterationChargeType?: AlterationChargeType;
+  linkedOriginalOrderId?: string;
 }
 
 export type PaymentMode =
@@ -203,6 +286,9 @@ export interface InventoryItem {
   quantityOnHand: number;
   reorderLevel: number;
   costPerUnit?: number;
+  vendorName?: string;
+  purchaseDate?: string;
+  purchaseCost?: number;
   active: boolean;
   notes?: string;
   createdAt: string;
@@ -216,6 +302,8 @@ export interface InventoryMovement {
   quantity: number;
   movementDate: string;
   reason?: string;
+  orderId?: string;
+  jobCardId?: string;
   recordedBy?: string;
   createdAt: string;
 }
@@ -261,9 +349,13 @@ export interface WhatsAppMessage {
 }
 
 export type CommunicationTemplateType =
+  | "Order Confirmation"
   | "Delivery Reminder"
   | "Trial Reminder"
   | "Payment Reminder"
+  | "Ready for Pickup"
+  | "Feedback Request"
+  | "Promotional Message"
   | "Production Reminder"
   | "Delay Notice"
   | "Rework Notice";
@@ -402,6 +494,7 @@ export interface Order {
   orderDate: string;
   trialDate: string;
   deliveryDate: string;
+  deliveryPromiseNote?: string;
   items: OrderItem[];
   totalAmount: number;
   advancePaid: number;

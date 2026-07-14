@@ -29,9 +29,13 @@ import type {
   OrderFinancialAdjustment,
   OrderFinancialAdjustmentType,
   PaymentMode,
+  PaymentType,
 } from "@/lib/types";
 import {
+  buildPaymentsReportFromSource,
+  getPaymentsReportSourceData,
   getPaymentsReport,
+  type DateRange,
   type PaymentsFilters,
   type PaymentsReport,
 } from "@/lib/reports";
@@ -78,6 +82,29 @@ export interface FinancialAdjustmentLedgerRow {
   customer: CustomerSnapshot | undefined;
 }
 
+export interface PaymentsPageInitialFilters {
+  range: DateRange;
+  paymentMode?: PaymentMode;
+  paymentType?: PaymentType;
+  customerQuery?: string;
+  adjustmentType?: OrderFinancialAdjustmentType;
+  adjustmentPaymentMode?: PaymentMode;
+  adjustmentQuery?: string;
+  expenseCategory?: ExpenseCategory;
+  expensePaymentMode?: PaymentMode;
+  expenseQuery?: string;
+}
+
+export interface PaymentsPageInitialData {
+  report: PaymentsReport | null;
+  todayReport: PaymentsReport | null;
+  dailyClosing: DailyClosingSummary | null;
+  pendingDuesOrders: Order[] | null;
+  adjustments: FinancialAdjustmentLedgerRow[] | null;
+  expenses: Expense[] | null;
+  todayExpenses: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Phase 7F: the Payments page is a dedicated, day-to-day operational screen
 // — gated on orders.viewPayments — distinct from Reports' Payments tab
@@ -104,6 +131,118 @@ export async function getPaymentsLedgerAction(
   const guard = await requireServerPermission(supabase, "orders.viewPayments");
   if (!guard.ok) return null;
   return getPaymentsReport(createAdminClient(), filters, todayIso);
+}
+
+export async function getPaymentsPageInitialDataAction(
+  filters: PaymentsPageInitialFilters,
+  todayIso: string
+): Promise<PaymentsPageInitialData> {
+  const empty: PaymentsPageInitialData = {
+    report: null,
+    todayReport: null,
+    dailyClosing: null,
+    pendingDuesOrders: null,
+    adjustments: null,
+    expenses: null,
+    todayExpenses: null,
+  };
+
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!permissions) return empty;
+  if (
+    !ISO_DATE.test(todayIso) ||
+    !ISO_DATE.test(filters.range.from) ||
+    !ISO_DATE.test(filters.range.to)
+  ) {
+    throw new Error("A valid date range is required.");
+  }
+
+  const canViewPayments = hasPermission(permissions, "orders.viewPayments");
+  const canViewExpenses = hasPermission(permissions, "expenses.view");
+  const admin = createAdminClient();
+
+  let report: PaymentsReport | null = null;
+  let todayReport: PaymentsReport | null = null;
+  let dailyClosing: DailyClosingSummary | null = null;
+  let pendingDuesOrders: Order[] | null = null;
+  let adjustments: FinancialAdjustmentLedgerRow[] | null = null;
+
+  if (canViewPayments) {
+    const source = await getPaymentsReportSourceData(admin);
+    report = buildPaymentsReportFromSource(
+      source,
+      {
+        range: filters.range,
+        paymentMode: filters.paymentMode,
+        paymentType: filters.paymentType,
+        customerQuery: filters.customerQuery,
+      },
+      todayIso
+    );
+    todayReport = buildPaymentsReportFromSource(
+      source,
+      { range: { from: todayIso, to: todayIso } },
+      todayIso
+    );
+    pendingDuesOrders = source.allOrders
+      .filter(isReceivableOrder)
+      .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
+    adjustments = source.financialAdjustmentsAvailable
+      ? filterFinancialAdjustmentRows(source.allAdjustments, source.allOrders, {
+          from: filters.range.from,
+          to: filters.range.to,
+          adjustmentType: filters.adjustmentType,
+          paymentMode: filters.adjustmentPaymentMode,
+          query: filters.adjustmentQuery,
+          includeVoided: true,
+        })
+      : null;
+  }
+
+  let expenses: Expense[] | null = null;
+  let todayExpenses: number | null = null;
+  let todaysExpenseRows: Expense[] | null = null;
+  if (canViewExpenses) {
+    try {
+      expenses = await getExpenses(admin, {
+        from: filters.range.from,
+        to: filters.range.to,
+        category: filters.expenseCategory,
+        paymentMode: filters.expensePaymentMode,
+        query: filters.expenseQuery,
+        includeVoided: true,
+      });
+      todaysExpenseRows =
+        filters.range.from === todayIso &&
+        filters.range.to === todayIso &&
+        !filters.expenseCategory &&
+        !filters.expensePaymentMode &&
+        !filters.expenseQuery
+          ? expenses
+          : await getExpenses(admin, { from: todayIso, to: todayIso });
+      todayExpenses = todaysExpenseRows.reduce(
+        (sum, expense) => sum + Number(expense.amount),
+        0
+      );
+    } catch (error) {
+      if (!isMissingExpensesSchemaError(error)) throw error;
+    }
+  }
+
+  if (canViewPayments && todayReport) {
+    dailyClosing = buildDailyClosingSummary(todayIso, todayReport, todaysExpenseRows);
+  }
+
+  return {
+    report,
+    todayReport,
+    dailyClosing,
+    pendingDuesOrders,
+    adjustments,
+    expenses,
+    todayExpenses,
+  };
 }
 
 export async function getDailyClosingAction(todayIso: string): Promise<DailyClosingSummary | null> {
@@ -275,6 +414,102 @@ export async function getExpensesAction(filters: ExpenseFilters): Promise<Expens
     if (isMissingExpensesSchemaError(error)) return null;
     throw error;
   }
+}
+
+function buildDailyClosingSummary(
+  todayIso: string,
+  payments: PaymentsReport,
+  expenses: Expense[] | null
+): DailyClosingSummary {
+  const collectedByMode = new Map(payments.byMode.map((row) => [row.mode, row.amount]));
+  const expensesByMode = expenses
+    ? expenses.reduce((map, expense) => {
+        map.set(
+          expense.paymentMode,
+          (map.get(expense.paymentMode) ?? 0) + Number(expense.amount)
+        );
+        return map;
+      }, new Map<PaymentMode, number>())
+    : null;
+  const totalExpenses =
+    expenses === null
+      ? null
+      : expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+
+  const byMode: DailyClosingModeRow[] = paymentModes.map((mode) => {
+    const collected = collectedByMode.get(mode) ?? 0;
+    const expenseTotal = expensesByMode?.get(mode) ?? 0;
+    return {
+      mode,
+      collected,
+      expenses: expensesByMode ? expenseTotal : null,
+      net: expensesByMode ? collected - expenseTotal : null,
+    };
+  });
+
+  const netTotal = totalExpenses === null ? null : payments.totalCollected - totalExpenses;
+  const cashRow = byMode.find((row) => row.mode === "Cash");
+  const digitalNet =
+    netTotal === null || cashRow?.net === null || cashRow?.net === undefined
+      ? null
+      : netTotal - cashRow.net;
+
+  return {
+    date: todayIso,
+    totalCollected: payments.totalCollected,
+    totalExpenses,
+    netTotal,
+    cashInHand: cashRow?.net ?? null,
+    digitalNet,
+    byMode,
+    expensesAvailable: expenses !== null,
+  };
+}
+
+function filterFinancialAdjustmentRows(
+  adjustments: OrderFinancialAdjustment[],
+  orders: Order[],
+  filters: FinancialAdjustmentFilters
+): FinancialAdjustmentLedgerRow[] {
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const query = filters.query?.trim().toLowerCase() ?? "";
+
+  return adjustments
+    .filter((adjustment) => {
+      if (adjustment.adjustmentDate < filters.from || adjustment.adjustmentDate > filters.to) {
+        return false;
+      }
+      if (!filters.includeVoided && adjustment.voided) return false;
+      if (filters.adjustmentType && adjustment.adjustmentType !== filters.adjustmentType) {
+        return false;
+      }
+      if (filters.paymentMode && adjustment.paymentMode !== filters.paymentMode) {
+        return false;
+      }
+      if (query) {
+        const order = ordersById.get(adjustment.orderId);
+        const haystack = [
+          adjustment.reason,
+          adjustment.notes ?? "",
+          order?.orderNumber ?? "",
+          order?.customerSnapshot?.name ?? "",
+          order?.customerSnapshot?.phone ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    })
+    .map((adjustment) => {
+      const order = ordersById.get(adjustment.orderId);
+      return {
+        adjustment,
+        orderId: adjustment.orderId,
+        orderNumber: order?.orderNumber ?? "-",
+        customer: order?.customerSnapshot,
+      };
+    });
 }
 
 export async function getExpenseTotalAction(filters: ExpenseFilters): Promise<number | null> {

@@ -2,8 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Pencil, Printer, SlidersHorizontal, Wallet } from "lucide-react";
-import type { Customer, Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
+import {
+  Mail,
+  MessageCircle,
+  Pencil,
+  Phone,
+  Printer,
+  SlidersHorizontal,
+  Wallet,
+  X,
+} from "lucide-react";
+import type {
+  Customer,
+  Order,
+  OrderAttachment,
+  OrderFinancialAdjustment,
+  Payment,
+} from "@/lib/types";
 import {
   formatDate,
   OrderStatusEditor,
@@ -11,16 +26,19 @@ import {
 } from "@/components/orders/orders-table";
 import {
   getFinancialAdjustmentsForOrderAction,
+  getOrderAttachmentsAction,
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
 import { PaymentHistoryList } from "@/components/orders/payment-history-list";
 import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
 import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
-import { ContactActions } from "@/components/dashboard/contact-actions";
+import { OrderAttachmentsCard } from "@/components/orders/order-attachments-card";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { isReceivableOrder } from "@/lib/order-finance";
+import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
 
 // Print routes are opened in the SAME tab (client-side <Link> navigation),
 // not a new tab, deliberately: stub-data's in-memory orders/customers arrays
@@ -81,6 +99,80 @@ function PrintMenu({ orderId }: { orderId: string }) {
   );
 }
 
+function money(value: number) {
+  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+}
+
+function receiptUrl(orderId: string) {
+  if (typeof window === "undefined") return `/orders/${orderId}/print/customer`;
+  return `${window.location.origin}/orders/${orderId}/print/customer`;
+}
+
+function buildInvoiceShareMessage(order: Order, customer: Customer, url: string) {
+  const invoiceNumber = order.invoiceNumber ?? order.orderNumber;
+  return [
+    `Hi ${customer.name},`,
+    `Invoice ${invoiceNumber} for order ${order.orderNumber}:`,
+    `Total: ${money(order.totalAmount)}`,
+    `Paid: ${money(order.advancePaid)}`,
+    `Balance: ${money(order.balance)}`,
+    `Delivery: ${formatDate(order.deliveryDate)}`,
+    `Receipt: ${url}`,
+  ].join("\n");
+}
+
+function InvoiceShareActions({
+  order,
+  customer,
+}: {
+  order: Order;
+  customer: Customer;
+}) {
+  const url = receiptUrl(order.id);
+  const message = buildInvoiceShareMessage(order, customer, url);
+  const subject = `Invoice ${order.invoiceNumber ?? order.orderNumber}`;
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+
+  function logWhatsAppOpen() {
+    void logWhatsAppMessageAction({
+      phone: customer.phone,
+      message,
+      contextType: "Payment",
+      contextId: order.id,
+      status: "Opened",
+    });
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <a
+        href={`tel:${customer.phone}`}
+        title="Call"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+      >
+        <Phone className="h-3.5 w-3.5" />
+      </a>
+      <a
+        href={buildWhatsAppUrl(customer.phone, message)}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={logWhatsAppOpen}
+        title="Share invoice on WhatsApp"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+      >
+        <MessageCircle className="h-3.5 w-3.5" />
+      </a>
+      <a
+        href={mailto}
+        title="Share invoice by email"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+      >
+        <Mail className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
+
 export function OrderDetailsDrawer({
   order,
   customer,
@@ -114,8 +206,10 @@ export function OrderDetailsDrawer({
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
+  const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const orderId = order?.id;
 
   useEffect(() => {
     if (!order || !canViewPayments) {
@@ -138,6 +232,20 @@ export function OrderDetailsDrawer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, canViewPayments]);
+
+  useEffect(() => {
+    if (!orderId) {
+      setAttachments([]);
+      return;
+    }
+    let cancelled = false;
+    getOrderAttachmentsAction(orderId).then((result) => {
+      if (!cancelled) setAttachments(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
     setPayments(result.payments);
@@ -228,6 +336,16 @@ export function OrderDetailsDrawer({
                     {formatDate(order.deliveryDate)}
                   </p>
                 </div>
+                {order.deliveryPromiseNote && (
+                  <div className="sm:col-span-2">
+                    <p className="text-[13px] font-medium text-ink-muted">
+                      Delivery Promise
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
+                      {order.deliveryPromiseNote}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -256,6 +374,37 @@ export function OrderDetailsDrawer({
                         >
                           <td className="px-3 py-2 text-ink">
                             {item.particular}
+                            {(item.fabricSource && item.fabricSource !== "Not specified") ||
+                            item.fabricNotes ||
+                            item.designNotes ||
+                            item.alterationIssue ||
+                            item.alterationRequiredChange ||
+                            item.alterationChargeType ||
+                            item.linkedOriginalOrderId ? (
+                              <div className="mt-1 space-y-0.5 text-xs text-ink-muted">
+                                {item.fabricSource && item.fabricSource !== "Not specified" && (
+                                  <div>{t("orders.fabricSource")}: {item.fabricSource}</div>
+                                )}
+                                {item.fabricNotes && (
+                                  <div>{t("orders.fabricNotes")}: {item.fabricNotes}</div>
+                                )}
+                                {item.designNotes && (
+                                  <div>{t("orders.designNotes")}: {item.designNotes}</div>
+                                )}
+                                {item.alterationIssue && (
+                                  <div>Original issue: {item.alterationIssue}</div>
+                                )}
+                                {item.alterationRequiredChange && (
+                                  <div>Required change: {item.alterationRequiredChange}</div>
+                                )}
+                                {item.alterationChargeType && (
+                                  <div>Alteration charge: {item.alterationChargeType}</div>
+                                )}
+                                {item.linkedOriginalOrderId && (
+                                  <div>Linked original order: {item.linkedOriginalOrderId}</div>
+                                )}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-3 py-2 text-right text-ink-muted">
                             {item.qty}
@@ -353,6 +502,13 @@ export function OrderDetailsDrawer({
                   </div>
                 </>
               )}
+
+              <OrderAttachmentsCard
+                order={order}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+                canEdit={canEdit}
+              />
             </div>
 
             <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
@@ -368,12 +524,7 @@ export function OrderDetailsDrawer({
               )}
               <PrintMenu orderId={order.id} />
               {customer && (
-                <ContactActions
-                  phone={customer.phone}
-                  message={`Hi ${customer.name}, regarding your order ${order.orderNumber}.`}
-                  contextType="Order"
-                  contextId={order.id}
-                />
+                <InvoiceShareActions order={order} customer={customer} />
               )}
             </div>
           </>

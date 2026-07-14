@@ -27,7 +27,9 @@ export function FabricInfo({
   onStatusChange?: (fabric: CustomerFabric, status: CustomerFabricStatus) => void;
 }) {
   const hasCardFabric =
-    card.fabricSource != null && card.fabricSource !== "Not specified";
+    (card.fabricSource != null && card.fabricSource !== "Not specified") ||
+    !!card.fabricNotes ||
+    !!card.designNotes;
   const hasLinkedFabrics = linkedFabrics.length > 0;
 
   if (!hasCardFabric && !hasLinkedFabrics) {
@@ -38,10 +40,17 @@ export function FabricInfo({
     <div className={cn("space-y-1", compact ? "text-[11px]" : "text-xs")}>
       {hasCardFabric && (
         <div>
-          <span className="font-semibold text-ink">{card.fabricSource}</span>
+          {card.fabricSource && card.fabricSource !== "Not specified" && (
+            <span className="font-semibold text-ink">{card.fabricSource}</span>
+          )}
           {card.fabricNotes && (
             <div className="max-w-[220px] whitespace-normal text-ink-muted">
               {card.fabricNotes}
+            </div>
+          )}
+          {card.designNotes && (
+            <div className="max-w-[220px] whitespace-normal text-ink-muted">
+              Design: {card.designNotes}
             </div>
           )}
         </div>

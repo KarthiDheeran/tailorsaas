@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCustomerById } from "@/lib/data/customers-db";
 import type {
+  AlterationChargeType,
   CustomerSnapshot,
   Order,
   OrderItem,
   OrderItemAddOn,
+  OrderItemFabricSource,
   OrderStatus,
   PaymentMode,
 } from "@/lib/types";
@@ -28,7 +30,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const ORDER_ITEM_COLUMNS =
-  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 interface OrderItemRow {
   serial_no: number;
@@ -42,6 +44,13 @@ interface OrderItemRow {
   final_rate: number | null;
   amount: number;
   measurements: Record<string, string> | null;
+  fabric_source: OrderItemFabricSource | null;
+  fabric_notes: string | null;
+  design_notes: string | null;
+  alteration_issue: string | null;
+  alteration_required_change: string | null;
+  alteration_charge_type: AlterationChargeType | null;
+  linked_original_order_id: string | null;
 }
 
 function mapOrderItem(row: OrderItemRow): OrderItem {
@@ -57,21 +66,30 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
     finalRate: row.final_rate ?? undefined,
     amount: row.amount,
     measurements: row.measurements ?? undefined,
+    fabricSource: row.fabric_source ?? undefined,
+    fabricNotes: row.fabric_notes?.trim() ? row.fabric_notes : undefined,
+    designNotes: row.design_notes?.trim() ? row.design_notes : undefined,
+    alterationIssue: row.alteration_issue?.trim() ? row.alteration_issue : undefined,
+    alterationRequiredChange: row.alteration_required_change?.trim()
+      ? row.alteration_required_change
+      : undefined,
+    alterationChargeType: row.alteration_charge_type ?? undefined,
+    linkedOriginalOrderId: row.linked_original_order_id ?? undefined,
   };
 }
 
 const ORDER_COLUMNS = `
   id, order_number, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-  delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+  delivery_date, delivery_promise_note, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_at, updated_at,
-  order_items ( ${ORDER_ITEM_COLUMNS} )
+  order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
 `;
 
 const LEGACY_ORDER_COLUMNS = `
   id, order_number, customer_id, customer_snapshot, order_date, trial_date,
   delivery_date, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_at, updated_at,
-  order_items ( ${ORDER_ITEM_COLUMNS} )
+  order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
 `;
 
 interface OrderRow {
@@ -83,6 +101,7 @@ interface OrderRow {
   order_date: string;
   trial_date: string | null;
   delivery_date: string;
+  delivery_promise_note?: string | null;
   total_amount: number;
   advance_paid: number;
   balance: number;
@@ -104,6 +123,9 @@ function mapOrder(row: OrderRow): Order {
     orderDate: row.order_date,
     trialDate: row.trial_date ?? "",
     deliveryDate: row.delivery_date,
+    deliveryPromiseNote: row.delivery_promise_note?.trim()
+      ? row.delivery_promise_note
+      : undefined,
     items: [...row.order_items]
       .sort((a, b) => a.serial_no - b.serial_no)
       .map(mapOrderItem),
@@ -121,7 +143,11 @@ function mapOrder(row: OrderRow): Order {
 function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
-  return candidate.code === "PGRST204" || message.includes("invoice_number");
+  return (
+    candidate.code === "PGRST204" ||
+    message.includes("invoice_number") ||
+    message.includes("delivery_promise_note")
+  );
 }
 
 export async function getAllOrders(supabase: SupabaseClient): Promise<Order[]> {
@@ -201,6 +227,7 @@ export async function createOrder(
     orderDate: string;
     trialDate: string;
     deliveryDate: string;
+    deliveryPromiseNote?: string;
     items: OrderItem[];
     advancePaid: number;
     paymentMode: PaymentMode;
@@ -223,6 +250,7 @@ export async function createOrder(
     p_order_date: data.orderDate,
     p_trial_date: data.trialDate || null,
     p_delivery_date: data.deliveryDate,
+    p_delivery_promise_note: data.deliveryPromiseNote?.trim() || null,
     p_advance_paid: data.advancePaid,
     p_payment_mode: data.paymentMode,
     p_status: data.status ?? "In Progress",
@@ -241,6 +269,7 @@ export async function updateOrder(
   data: {
     orderDate: string;
     deliveryDate: string;
+    deliveryPromiseNote?: string;
     items: OrderItem[];
     status: OrderStatus;
   }
@@ -249,6 +278,7 @@ export async function updateOrder(
     p_order_id: id,
     p_order_date: data.orderDate,
     p_delivery_date: data.deliveryDate,
+    p_delivery_promise_note: data.deliveryPromiseNote?.trim() || null,
     p_status: data.status,
     p_items: data.items,
   });

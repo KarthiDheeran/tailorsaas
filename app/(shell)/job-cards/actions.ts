@@ -25,10 +25,28 @@ import {
   logJobCardActivity,
 } from "@/lib/data/job-card-activity-db";
 import { getAllOrders } from "@/lib/data/orders-db";
-import { getStaff } from "@/lib/data/staff-db";
+import {
+  getStaff,
+  getWorkAssignments,
+  getWorkAssignmentsForStaff,
+} from "@/lib/data/staff-db";
+import {
+  getCustomerFabrics,
+  getInventoryItems,
+  isMissingInventorySchemaError,
+} from "@/lib/data/inventory-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
-import type { JobCardActivityLog, TaskPriority, TaskType } from "@/lib/types";
+import type {
+  CustomerFabric,
+  InventoryItem,
+  JobCardActivityLog,
+  Order,
+  Staff,
+  TaskPriority,
+  TaskType,
+  WorkAssignment,
+} from "@/lib/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
@@ -65,18 +83,95 @@ const VALID_STAGES = new Set<JobCardStage>([
 ]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+export interface JobCardsPageData {
+  jobCards: JobCard[] | null;
+  orders: Order[];
+  staff: Staff[];
+  assignments: WorkAssignment[];
+  customerFabrics: CustomerFabric[] | null;
+  inventoryItems: InventoryItem[] | null;
+}
+
 export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | null> {
   const supabase = createServerClient();
-  const permissions = await getServerCallerPermissions(supabase);
+  const context = await getServerCallerContext(supabase);
+  const permissions = context?.permissions ?? null;
   if (!hasAnyPermission(permissions, ["orders.view", "staff.view"])) return [];
+
+  const assignedStaffId =
+    context &&
+    context.staffId &&
+    !hasAnyPermission(context.permissions, ["orders.view", "orders.edit", "staff.manage"])
+      ? context.staffId
+      : undefined;
 
   try {
     const staffList = await getStaff(supabase).catch(() => []);
-    return await getJobCards(supabase, todayIso, staffList);
+    return await getJobCards(supabase, todayIso, staffList, { assignedStaffId });
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return null;
     throw error;
   }
+}
+
+export async function getJobCardsPageDataAction(
+  todayIso: string,
+  options: { includeInventoryItems?: boolean } = {}
+): Promise<JobCardsPageData> {
+  const empty: JobCardsPageData = {
+    jobCards: [],
+    orders: [],
+    staff: [],
+    assignments: [],
+    customerFabrics: [],
+    inventoryItems: [],
+  };
+  if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
+
+  const supabase = createServerClient();
+  const context = await getServerCallerContext(supabase);
+  const permissions = context?.permissions ?? null;
+  const canViewWork = hasAnyPermission(permissions, ["orders.view", "staff.view"]);
+  if (!canViewWork) return empty;
+
+  const canViewOrders = hasPermission(permissions, "orders.view");
+  const canViewStaff = hasPermission(permissions, "staff.view");
+  const canViewInventory = hasPermission(permissions, "inventory.view");
+  const ownWorkOnly =
+    Boolean(context?.staffId) &&
+    !hasAnyPermission(permissions, ["orders.view", "orders.edit", "staff.manage"]);
+  const assignedStaffId = ownWorkOnly ? context!.staffId! : undefined;
+
+  const staffRead = getStaff(supabase);
+  const staffForCards = canViewStaff ? await staffRead : await staffRead.catch(() => []);
+  const visibleStaff = assignedStaffId
+    ? staffForCards.filter((staff) => staff.id === assignedStaffId)
+    : staffForCards;
+  const [jobCards, orders, staff, assignments, inventory] = await Promise.all([
+    getJobCards(supabase, todayIso, visibleStaff, { assignedStaffId }).catch((error) => {
+      if (isMissingJobCardsSchemaError(error)) return null;
+      throw error;
+    }),
+    canViewOrders && !assignedStaffId ? getAllOrders(supabase) : Promise.resolve([]),
+    canViewStaff ? Promise.resolve(visibleStaff) : Promise.resolve([]),
+    canViewStaff
+      ? assignedStaffId
+        ? getWorkAssignmentsForStaff(supabase, assignedStaffId)
+        : getWorkAssignments(supabase)
+      : Promise.resolve([]),
+    canViewInventory
+      ? getJobCardsInventoryData(supabase, Boolean(options.includeInventoryItems))
+      : Promise.resolve({ customerFabrics: [], inventoryItems: [] }),
+  ]);
+
+  return {
+    jobCards,
+    orders,
+    staff,
+    assignments,
+    customerFabrics: inventory.customerFabrics,
+    inventoryItems: inventory.inventoryItems,
+  };
 }
 
 export async function getJobCardActivityLogsAction(
@@ -266,6 +361,24 @@ async function logJobCardActivityBestEffort(input: Parameters<typeof logJobCardA
   } catch (error) {
     if (isMissingJobCardActivitySchemaError(error)) return;
     console.error("Failed to log job card activity", error);
+  }
+}
+
+async function getJobCardsInventoryData(
+  supabase: ReturnType<typeof createServerClient>,
+  includeInventoryItems: boolean
+): Promise<{ customerFabrics: CustomerFabric[] | null; inventoryItems: InventoryItem[] | null }> {
+  try {
+    const [customerFabrics, inventoryItems] = await Promise.all([
+      getCustomerFabrics(supabase),
+      includeInventoryItems ? getInventoryItems(supabase) : Promise.resolve([]),
+    ]);
+    return { customerFabrics, inventoryItems };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { customerFabrics: null, inventoryItems: null };
+    }
+    throw error;
   }
 }
 

@@ -5,19 +5,15 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock, Scissors } from "lucide-react";
 import {
   completeJobCardAction,
-  getJobCardsAction,
+  getJobCardsPageDataAction,
   moveJobCardStageAction,
   startJobCardAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
-  getCustomerFabricsAction,
   updateCustomerFabricStatusAction,
 } from "@/app/(shell)/inventory/actions";
-import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import {
-  getStaffAction,
-  getWorkAssignmentsAction,
   updateWorkAssignmentAction,
 } from "@/app/(shell)/staff/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -315,7 +311,6 @@ function ProductionContent() {
   const { currentUser, hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
   const canViewOrders = hasPermission("orders.view");
-  const canViewInventory = hasPermission("inventory.view");
   const canManageInventory = hasPermission("inventory.manage");
   const currentStaffId = currentUser?.staff_id ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -331,20 +326,14 @@ function ProductionContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getJobCardsAction(todayIso),
-      getOrdersAction(),
-      getStaffAction(),
-      getWorkAssignmentsAction(),
-      canViewInventory ? getCustomerFabricsAction() : Promise.resolve([]),
-    ])
-      .then(([jobCardsResult, ordersResult, staffResult, assignmentsResult, fabricsResult]) => {
+    getJobCardsPageDataAction(todayIso)
+      .then((result) => {
         if (cancelled) return;
-        setPersistedCards(jobCardsResult);
-        setOrders(ordersResult);
-        setStaff(staffResult);
-        setAssignments(assignmentsResult);
-        setCustomerFabrics(fabricsResult ?? []);
+        setPersistedCards(result.jobCards);
+        setOrders(result.orders);
+        setStaff(result.staff);
+        setAssignments(result.assignments);
+        setCustomerFabrics(result.customerFabrics ?? []);
         setLoadError(null);
       })
       .catch((error) => {
@@ -358,7 +347,7 @@ function ProductionContent() {
     return () => {
       cancelled = true;
     };
-  }, [canViewInventory, refreshKey, todayIso]);
+  }, [refreshKey, todayIso]);
 
   const jobCards = useMemo(
     () => persistedCards ?? buildJobCards(orders, todayIso, assignments, staff),

@@ -1,5 +1,6 @@
 "use server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   getServerCallerPermissions,
@@ -14,6 +15,7 @@ import {
   updateOrder,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
+import { getCustomers } from "@/lib/data/customers-db";
 import {
   isMissingJobCardsSchemaError,
   syncJobCardsForOrder,
@@ -29,10 +31,20 @@ import {
   recordOrderFinancialAdjustment,
   voidOrderFinancialAdjustment,
 } from "@/lib/data/order-financial-adjustments-db";
+import {
+  createOrderAttachment,
+  deleteOrderAttachment,
+  getOrderAttachmentById,
+  getOrderAttachments,
+  ORDER_ATTACHMENTS_BUCKET,
+} from "@/lib/data/order-attachments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import type {
+  Customer,
   Order,
+  OrderAttachment,
+  OrderAttachmentType,
   OrderFinancialAdjustment,
   OrderFinancialAdjustmentType,
   OrderItem,
@@ -80,6 +92,54 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+const ORDER_ATTACHMENT_TYPES: OrderAttachmentType[] = [
+  "Design Reference",
+  "Fabric Photo",
+  "Sample Photo",
+  "Trial Photo",
+  "Alteration Photo",
+  "Final Garment Photo",
+  "Other",
+];
+
+const ALLOWED_ORDER_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+]);
+
+const MAX_ORDER_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function sanitizeStorageSegment(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+async function withOrderAttachmentSignedUrls(
+  attachments: OrderAttachment[]
+): Promise<OrderAttachment[]> {
+  if (attachments.length === 0) return attachments;
+  const admin = createAdminClient();
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      const { data } = await admin.storage
+        .from(ORDER_ATTACHMENTS_BUCKET)
+        .createSignedUrl(attachment.storagePath, 60 * 60);
+      return { ...attachment, signedUrl: data?.signedUrl };
+    })
+  );
+}
+
+export interface OrdersPageData {
+  orders: Order[];
+  customers: Customer[];
+}
+
 async function trySyncJobCardsForOrder(
   supabase: ReturnType<typeof createServerClient>,
   orderId: string
@@ -96,6 +156,23 @@ export async function getOrdersAction(): Promise<Order[]> {
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
   return getAllOrders(supabase);
+}
+
+export async function getOrdersPageDataAction(): Promise<OrdersPageData> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!permissions || !hasPermission(permissions, "orders.view")) {
+    return { orders: [], customers: [] };
+  }
+
+  const dataClient = createAdminClient();
+  const [orders, customers] = await Promise.all([
+    getAllOrders(dataClient),
+    hasPermission(permissions, "customers.view")
+      ? getCustomers(dataClient)
+      : Promise.resolve([]),
+  ]);
+  return { orders, customers };
 }
 
 export async function getOrderByIdAction(id: string): Promise<Order | undefined> {
@@ -127,6 +204,7 @@ export async function createOrderAction(data: {
   orderDate: string;
   trialDate: string;
   deliveryDate: string;
+  deliveryPromiseNote?: string;
   items: OrderItem[];
   advancePaid: number;
   paymentMode: PaymentMode;
@@ -148,6 +226,7 @@ export async function updateOrderAction(
   data: {
     orderDate: string;
     deliveryDate: string;
+    deliveryPromiseNote?: string;
     items: OrderItem[];
     status: OrderStatus;
   }
@@ -180,6 +259,108 @@ export async function updateOrderStatusAction(
   if (!order) return { success: false, error: "Order not found." };
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
+}
+
+export async function getOrderAttachmentsAction(
+  orderId: string
+): Promise<OrderAttachment[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+  const attachments = await getOrderAttachments(createAdminClient(), orderId);
+  return withOrderAttachmentSignedUrls(attachments);
+}
+
+export async function uploadOrderAttachmentAction(
+  formData: FormData
+): Promise<ActionResult<OrderAttachment>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const serialRaw = String(formData.get("orderItemSerialNo") ?? "").trim();
+  const attachmentType = String(formData.get("attachmentType") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const file = formData.get("file");
+  const orderItemSerialNo = serialRaw ? Number(serialRaw) : undefined;
+
+  if (!orderId) return { success: false, error: "Order is required." };
+  if (orderItemSerialNo !== undefined && !Number.isInteger(orderItemSerialNo)) {
+    return { success: false, error: "Select a valid garment." };
+  }
+  if (!ORDER_ATTACHMENT_TYPES.includes(attachmentType as OrderAttachmentType)) {
+    return { success: false, error: "Select a valid attachment type." };
+  }
+  if (!(file instanceof File)) {
+    return { success: false, error: "Choose a file to upload." };
+  }
+  if (file.size <= 0) return { success: false, error: "File is empty." };
+  if (file.size > MAX_ORDER_ATTACHMENT_BYTES) {
+    return { success: false, error: "File must be 10 MB or smaller." };
+  }
+  if (!ALLOWED_ORDER_ATTACHMENT_MIME_TYPES.has(file.type)) {
+    return {
+      success: false,
+      error: "Only JPG, PNG, WebP, GIF, and PDF files are supported.",
+    };
+  }
+
+  const admin = createAdminClient();
+  const safeName = sanitizeStorageSegment(file.name) || "attachment";
+  const path = `${orderId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await admin.storage
+    .from(ORDER_ATTACHMENTS_BUCKET)
+    .upload(path, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+  if (uploadError) return { success: false, error: uploadError.message };
+
+  try {
+    const attachment = await createOrderAttachment(admin, {
+      orderId,
+      orderItemSerialNo,
+      attachmentType: attachmentType as OrderAttachmentType,
+      fileName: file.name,
+      mimeType: file.type,
+      fileSize: file.size,
+      storagePath: path,
+      notes,
+      createdBy: guard.userId,
+    });
+    const [withUrl] = await withOrderAttachmentSignedUrls([attachment]);
+    return { success: true, data: withUrl };
+  } catch (error) {
+    await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove([path]);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to save attachment metadata.",
+    };
+  }
+}
+
+export async function deleteOrderAttachmentAction(
+  id: string
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const admin = createAdminClient();
+  const attachment = await getOrderAttachmentById(admin, id);
+  if (!attachment) return { success: false, error: "Attachment not found." };
+
+  const { error: storageError } = await admin.storage
+    .from(ORDER_ATTACHMENTS_BUCKET)
+    .remove([attachment.storagePath]);
+  if (storageError) return { success: false, error: storageError.message };
+
+  await deleteOrderAttachment(admin, id);
+  return { success: true, data: undefined };
 }
 
 // ---------------------------------------------------------------------------

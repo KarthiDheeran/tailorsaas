@@ -15,6 +15,8 @@ import {
   updateGarmentType,
 } from "@/lib/data/catalog-db";
 import {
+  customMeasurementFieldLabel,
+  isCustomMeasurementFieldId,
   measurementFields,
   type AddOnInput,
   type CatalogAddOn,
@@ -85,6 +87,12 @@ function validateGarmentInput(
     return "Base price must be 0 or greater.";
   }
   for (const id of data.measurementFieldIds) {
+    if (isCustomMeasurementFieldId(id)) {
+      const label = customMeasurementFieldLabel(id);
+      if (!label) return "Custom measurement field name is required.";
+      if (label.length > 60) return "Custom measurement field name is too long.";
+      continue;
+    }
     if (!VALID_MEASUREMENT_FIELD_IDS.has(id)) {
       return `Unknown measurement field: ${id}.`;
     }

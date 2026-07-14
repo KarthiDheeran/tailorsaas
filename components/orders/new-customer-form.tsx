@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { Gender } from "@/lib/types";
+import type { FabricSourcePreference, Gender } from "@/lib/types";
 import { getCustomerByPhoneAction } from "@/app/(shell)/customers/actions";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -13,12 +13,26 @@ export interface NewCustomerFormValues {
   address: string;
   area: string;
   gender?: Gender;
+  categoryPreference?: string;
+  fitPreference?: string;
+  stylePreference?: string;
+  fabricSourcePreference?: FabricSourcePreference;
+  frequentComplaints?: string;
+  notes?: string;
 }
 
 const GENDER_OPTIONS: Gender[] = ["Male", "Female"];
+const FABRIC_SOURCE_OPTIONS: FabricSourcePreference[] = [
+  "Not specified",
+  "Customer provided",
+  "Shop provided",
+  "Either",
+];
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
+const textareaClass =
+  "rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
 export function NewCustomerForm({
   onSubmit,
@@ -59,6 +73,23 @@ export function NewCustomerForm({
   const [gender, setGender] = useState<Gender | undefined>(
     initialValues?.gender
   );
+  const [categoryPreference, setCategoryPreference] = useState(
+    initialValues?.categoryPreference ?? ""
+  );
+  const [fitPreference, setFitPreference] = useState(
+    initialValues?.fitPreference ?? ""
+  );
+  const [stylePreference, setStylePreference] = useState(
+    initialValues?.stylePreference ?? ""
+  );
+  const [fabricSourcePreference, setFabricSourcePreference] =
+    useState<FabricSourcePreference>(
+      initialValues?.fabricSourcePreference ?? "Not specified"
+    );
+  const [frequentComplaints, setFrequentComplaints] = useState(
+    initialValues?.frequentComplaints ?? ""
+  );
+  const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [duplicateCustomer, setDuplicateCustomer] = useState<{
     id: string;
@@ -94,6 +125,12 @@ export function NewCustomerForm({
       address: address.trim(),
       area: area.trim(),
       gender,
+      categoryPreference: categoryPreference.trim(),
+      fitPreference: fitPreference.trim(),
+      stylePreference: stylePreference.trim(),
+      fabricSourcePreference,
+      frequentComplaints: frequentComplaints.trim(),
+      notes: notes.trim(),
     };
   }
 
@@ -119,7 +156,7 @@ export function NewCustomerForm({
       className="rounded-xl border border-border-soft bg-white p-5 shadow-soft"
     >
       <h3 className="mb-4 text-[17px] font-semibold text-ink">{title}</h3>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">{t("common.name")}</span>
           <input
@@ -207,6 +244,89 @@ export function NewCustomerForm({
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-border-soft pt-5">
+        <h4 className="mb-4 text-[15px] font-semibold text-ink">
+          Tailoring Profile
+        </h4>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Category Preference
+            </span>
+            <input
+              value={categoryPreference}
+              onChange={(e) => setCategoryPreference(e.target.value)}
+              placeholder="Menswear, bridal, alterations..."
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Fabric Source
+            </span>
+            <select
+              value={fabricSourcePreference}
+              onChange={(e) =>
+                setFabricSourcePreference(e.target.value as FabricSourcePreference)
+              }
+              className={inputClass}
+            >
+              {FABRIC_SOURCE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Fit Preference
+            </span>
+            <input
+              value={fitPreference}
+              onChange={(e) => setFitPreference(e.target.value)}
+              placeholder="Slim, regular, loose, comfort..."
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Style Preference
+            </span>
+            <input
+              value={stylePreference}
+              onChange={(e) => setStylePreference(e.target.value)}
+              placeholder="Simple, embroidery, modern cut..."
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Frequent Complaints
+            </span>
+            <textarea
+              value={frequentComplaints}
+              onChange={(e) => setFrequentComplaints(e.target.value)}
+              rows={2}
+              placeholder="Shoulder feels tight, sleeve usually long..."
+              className={textareaClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Customer Notes
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Repeat-order habits, style reminders, fabric notes..."
+              className={textareaClass}
+            />
+          </label>
         </div>
       </div>
 

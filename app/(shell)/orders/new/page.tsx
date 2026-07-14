@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft } from "lucide-react";
+import { CheckCircle2, ChevronLeft, MessageCircle } from "lucide-react";
 import { orderStatuses, paymentModes } from "@/lib/constants";
 import {
   createCustomerAction,
@@ -50,6 +50,8 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { ORDER_STATUS_LABEL_KEYS } from "@/components/orders/orders-table";
+import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -57,6 +59,28 @@ function todayIso() {
 
 const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
+
+function money(value: number) {
+  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+}
+
+function orderReceiptUrl(orderId: string) {
+  if (typeof window === "undefined") return `/orders/${orderId}/print/customer`;
+  return `${window.location.origin}/orders/${orderId}/print/customer`;
+}
+
+function buildOrderConfirmationMessage(order: Order): string {
+  const customerName = order.customerSnapshot?.name ?? "Customer";
+  return [
+    `Hi ${customerName}, your order ${order.orderNumber} has been confirmed.`,
+    `Delivery date: ${order.deliveryDate}`,
+    order.deliveryPromiseNote ? `Promise note: ${order.deliveryPromiseNote}` : undefined,
+    `Total: ${money(order.totalAmount)}`,
+    `Paid: ${money(order.advancePaid)}`,
+    `Balance: ${money(order.balance)}`,
+    `Receipt: ${orderReceiptUrl(order.id)}`,
+  ].filter(Boolean).join("\n");
+}
 
 function NewOrderPageContent() {
   const router = useRouter();
@@ -85,6 +109,7 @@ function NewOrderPageContent() {
   const [orderDate, setOrderDate] = useState(todayIso());
   const [trialDate, setTrialDate] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryPromiseNote, setDeliveryPromiseNote] = useState("");
 
   const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
 
@@ -274,6 +299,7 @@ function NewOrderPageContent() {
     );
     setOrderDate(todayIso());
     setDeliveryDate("");
+    setDeliveryPromiseNote("");
     setTrialDate("");
     setStatus("In Progress");
     setAdvancePaid(0);
@@ -285,6 +311,7 @@ function NewOrderPageContent() {
     area !== initialFields.area ||
     address !== initialFields.address ||
     deliveryDate !== "" ||
+    deliveryPromiseNote.trim() !== "" ||
     trialDate !== "" ||
     advancePaid !== 0 ||
     items.some(
@@ -375,6 +402,7 @@ function NewOrderPageContent() {
         values: it.measurement.values,
         fitNotes: it.measurement.fitNotes,
         notes: it.measurement.notes,
+        source: "New order",
       });
       if (!measurementResult.success) {
         setSaving(false);
@@ -386,6 +414,7 @@ function NewOrderPageContent() {
         const baselineResult = await saveCustomerMeasurementsAction({
           customerId: customer.id,
           values: bodyMeasurements,
+          source: "New order",
         });
         if (!baselineResult.success) {
           setSaving(false);
@@ -400,6 +429,7 @@ function NewOrderPageContent() {
       orderDate,
       trialDate,
       deliveryDate,
+      deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
       items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
       advancePaid,
       paymentMode,
@@ -426,6 +456,20 @@ function NewOrderPageContent() {
     router.push("/orders?created=1");
   }
 
+  function handleWhatsAppConfirmation(order: Order) {
+    const phone = order.customerSnapshot?.phone;
+    if (!phone) return;
+    const message = buildOrderConfirmationMessage(order);
+    void logWhatsAppMessageAction({
+      phone,
+      message,
+      contextType: "Order",
+      contextId: order.id,
+      status: "Opened",
+    });
+    window.open(buildWhatsAppUrl(phone, message), "_blank", "noopener,noreferrer");
+  }
+
   // A draft view of the order for BalanceBadge's paid/due/overdue logic, so
   // Payment Status reuses the exact same computation as the rest of the app
   // instead of a second copy of the rules. An empty deliveryDate sorts as
@@ -439,6 +483,7 @@ function NewOrderPageContent() {
     orderDate,
     trialDate,
     deliveryDate: deliveryDate || "9999-12-31",
+    deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
     items: computedItems,
     totalAmount,
     advancePaid,
@@ -497,7 +542,7 @@ function NewOrderPageContent() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="relative flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.phoneNumber")}
@@ -599,7 +644,7 @@ function NewOrderPageContent() {
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
                 {t("orders.orderDates")}
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("orders.orderDate")}
@@ -645,6 +690,18 @@ function NewOrderPageContent() {
                     className={inputClass}
                   />
                 </label>
+                <label className="flex flex-col gap-1.5 sm:col-span-3">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Delivery Promise Note
+                  </span>
+                  <textarea
+                    value={deliveryPromiseNote}
+                    onChange={(e) => setDeliveryPromiseNote(e.target.value)}
+                    rows={2}
+                    placeholder="Verbal promise, pickup timing, urgency, customer expectation..."
+                    className="min-h-[44px] rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
               </div>
             </div>
 
@@ -659,6 +716,7 @@ function NewOrderPageContent() {
               onItemsChange={setItems}
               garmentTypes={garmentTypes}
               addOns={addOns}
+              previousOrders={customerDetail?.orders ?? []}
             />
 
             {canViewPayments && (
@@ -818,6 +876,16 @@ function NewOrderPageContent() {
                   >
                     {t("orders.printCustomerReceipt")}
                   </Link>
+                )}
+                {savedOrder.customerSnapshot?.phone && (
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsAppConfirmation(savedOrder)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Send WhatsApp confirmation
+                  </button>
                 )}
                 {canPrintJobCard && (
                   <Link

@@ -52,12 +52,26 @@ export const measurementFields: CatalogMeasurementField[] = [
   { id: "waist", label: "Waist" },
   { id: "hip", label: "Hip" },
   { id: "shoulder", label: "Shoulder" },
+  { id: "crossFront", label: "Cross Front" },
+  { id: "crossBack", label: "Cross Back" },
   { id: "sleeveLength", label: "Sleeve Length" },
+  { id: "sleeveRound", label: "Sleeve Round" },
   { id: "armhole", label: "Armhole" },
   { id: "neck", label: "Neck" },
+  { id: "collar", label: "Collar" },
   { id: "shirtLength", label: "Shirt Length" },
   { id: "blouseLength", label: "Blouse Length" },
   { id: "kurtaLength", label: "Kurta Length" },
+  { id: "kameezLength", label: "Kameez Length" },
+  { id: "salwarLength", label: "Salwar Length" },
+  { id: "dressLength", label: "Dress Length" },
+  { id: "lehengaLength", label: "Lehenga Length" },
+  { id: "gownLength", label: "Gown Length" },
+  { id: "coatLength", label: "Coat Length" },
+  { id: "waistcoatLength", label: "Waistcoat Length" },
+  { id: "sherwaniLength", label: "Sherwani Length" },
+  { id: "petticoatLength", label: "Petticoat Length" },
+  { id: "sareeFallLength", label: "Saree Fall Length" },
   { id: "pantLength", label: "Pant Length" },
   { id: "inseam", label: "Inseam" },
   { id: "thigh", label: "Thigh" },
@@ -67,6 +81,14 @@ export const measurementFields: CatalogMeasurementField[] = [
   { id: "cuff", label: "Cuff" },
   { id: "neckDepthFront", label: "Neck Depth Front" },
   { id: "neckDepthBack", label: "Neck Depth Back" },
+  { id: "neckWidth", label: "Neck Width" },
+  { id: "dartPoint", label: "Dart Point" },
+  { id: "princessCut", label: "Princess Cut" },
+  { id: "yokeLength", label: "Yoke Length" },
+  { id: "slitLength", label: "Slit Length" },
+  { id: "flare", label: "Flare" },
+  { id: "seat", label: "Seat" },
+  { id: "calf", label: "Calf" },
   { id: "fitNotes", label: "Fit Notes" },
   { id: "notes", label: "Notes" },
 ];
@@ -78,11 +100,34 @@ export const measurementFields: CatalogMeasurementField[] = [
 export const MEASUREMENT_FIELD_GROUPS: { title: string; fieldIds: string[] }[] = [
   {
     title: "Upper Body",
-    fieldIds: ["chest", "bust", "shoulder", "sleeveLength", "armhole", "neck", "cuff"],
+    fieldIds: [
+      "chest",
+      "bust",
+      "shoulder",
+      "crossFront",
+      "crossBack",
+      "sleeveLength",
+      "sleeveRound",
+      "armhole",
+      "neck",
+      "collar",
+      "cuff",
+    ],
   },
   {
     title: "Lower Body",
-    fieldIds: ["waist", "hip", "pantLength", "inseam", "thigh", "knee", "bottom", "rise"],
+    fieldIds: [
+      "waist",
+      "hip",
+      "seat",
+      "pantLength",
+      "inseam",
+      "thigh",
+      "knee",
+      "calf",
+      "bottom",
+      "rise",
+    ],
   },
   {
     title: "Garment Length / Style",
@@ -90,8 +135,24 @@ export const MEASUREMENT_FIELD_GROUPS: { title: string; fieldIds: string[] }[] =
       "shirtLength",
       "blouseLength",
       "kurtaLength",
+      "kameezLength",
+      "salwarLength",
+      "dressLength",
+      "lehengaLength",
+      "gownLength",
+      "coatLength",
+      "waistcoatLength",
+      "sherwaniLength",
+      "petticoatLength",
+      "sareeFallLength",
       "neckDepthFront",
       "neckDepthBack",
+      "neckWidth",
+      "dartPoint",
+      "princessCut",
+      "yokeLength",
+      "slitLength",
+      "flare",
     ],
   },
   {
@@ -100,7 +161,24 @@ export const MEASUREMENT_FIELD_GROUPS: { title: string; fieldIds: string[] }[] =
   },
 ];
 
+const CUSTOM_FIELD_PREFIX = "custom:";
+
+export function customMeasurementFieldId(label: string): string {
+  return `${CUSTOM_FIELD_PREFIX}${label.trim().replace(/\s+/g, " ")}`;
+}
+
+export function isCustomMeasurementFieldId(id: string): boolean {
+  return id.startsWith(CUSTOM_FIELD_PREFIX);
+}
+
+export function customMeasurementFieldLabel(id: string): string {
+  return id.slice(CUSTOM_FIELD_PREFIX.length).trim();
+}
+
 export function measurementFieldLabel(id: string): string {
+  if (isCustomMeasurementFieldId(id)) {
+    return customMeasurementFieldLabel(id) || "Custom Field";
+  }
   return measurementFields.find((f) => f.id === id)?.label ?? id;
 }
 

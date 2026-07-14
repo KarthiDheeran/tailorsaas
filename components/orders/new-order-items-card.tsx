@@ -6,11 +6,17 @@ import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/ac
 import {
   getAddOnsForGarment,
   calculateGarmentAmount,
-  measurementFields as catalogMeasurementFieldLibrary,
+  measurementFieldLabel,
   type CatalogAddOn,
   type CatalogGarmentType,
 } from "@/lib/catalog";
-import type { OrderItem, OrderItemAddOn } from "@/lib/types";
+import type {
+  AlterationChargeType,
+  Order,
+  OrderItem,
+  OrderItemAddOn,
+  OrderItemFabricSource,
+} from "@/lib/types";
 import {
   GarmentMeasurementModal,
   countFilledFields,
@@ -19,12 +25,13 @@ import {
 import { Select } from "@/components/ui/select";
 import { useLanguage } from "@/components/i18n/language-provider";
 
-// Global measurement field id -> label, built once from Catalog's field
-// library so a garment's linked measurementFieldIds can be rendered with
-// their real labels without duplicating the library here.
-const CATALOG_FIELD_LABELS: Record<string, string> = Object.fromEntries(
-  catalogMeasurementFieldLibrary.map((f) => [f.id, f.label])
-);
+const FABRIC_SOURCES: OrderItemFabricSource[] = [
+  "Not specified",
+  "Customer provided",
+  "Shop provided",
+];
+
+const ALTERATION_CHARGE_TYPES: AlterationChargeType[] = ["Paid", "Free"];
 
 function garmentMeasurementFields(
   garment: CatalogGarmentType | undefined
@@ -32,7 +39,7 @@ function garmentMeasurementFields(
   if (!garment) return [];
   return garment.measurementFieldIds.map((id) => ({
     key: id,
-    label: CATALOG_FIELD_LABELS[id] ?? id,
+    label: measurementFieldLabel(id),
   }));
 }
 
@@ -59,6 +66,13 @@ export interface DraftItem {
   // auto-filling it — manual override always wins for that row.
   rateOverridden: boolean;
   addOnIds: string[];
+  fabricSource: OrderItemFabricSource;
+  fabricNotes: string;
+  designNotes: string;
+  alterationIssue: string;
+  alterationRequiredChange: string;
+  alterationChargeType: AlterationChargeType;
+  linkedOriginalOrderId: string;
   // null = not yet touched in this session; the Measurements modal seeds
   // itself from customer/garment history on first open.
   measurement: GarmentMeasurementDraft | null;
@@ -71,6 +85,13 @@ export function blankDraftItem(): DraftItem {
     rate: 0,
     rateOverridden: false,
     addOnIds: [],
+    fabricSource: "Not specified",
+    fabricNotes: "",
+    designNotes: "",
+    alterationIssue: "",
+    alterationRequiredChange: "",
+    alterationChargeType: "Paid",
+    linkedOriginalOrderId: "",
     measurement: null,
   };
 }
@@ -104,8 +125,21 @@ export function orderItemToDraftItem(
     rate: item.rate,
     rateOverridden: true,
     addOnIds,
+    fabricSource: item.fabricSource ?? "Not specified",
+    fabricNotes: item.fabricNotes ?? "",
+    designNotes: item.designNotes ?? "",
+    alterationIssue: item.alterationIssue ?? "",
+    alterationRequiredChange: item.alterationRequiredChange ?? "",
+    alterationChargeType: item.alterationChargeType ?? "Paid",
+    linkedOriginalOrderId: item.linkedOriginalOrderId ?? "",
     measurement: null,
   };
+}
+
+function isAlterationGarment(
+  garment: CatalogGarmentType | undefined
+): boolean {
+  return (garment?.name ?? "").toLowerCase().includes("alteration");
 }
 
 function selectedAddOns(
@@ -167,6 +201,16 @@ export function computeOrderItems(
       finalRate,
       amount: finalRate * it.qty,
       measurements: hasMeasurements ? { ...it.measurement!.values } : undefined,
+      fabricSource: it.fabricSource,
+      fabricNotes: it.fabricNotes.trim() || undefined,
+      designNotes: it.designNotes.trim() || undefined,
+      alterationIssue: it.alterationIssue.trim() || undefined,
+      alterationRequiredChange: it.alterationRequiredChange.trim() || undefined,
+      alterationChargeType:
+        it.alterationIssue.trim() || it.alterationRequiredChange.trim()
+          ? it.alterationChargeType
+          : undefined,
+      linkedOriginalOrderId: it.linkedOriginalOrderId || undefined,
     };
   });
   const totalAmount = computedItems.reduce((sum, i) => sum + i.amount, 0);
@@ -273,6 +317,7 @@ export function NewOrderItemsCard({
   onItemsChange,
   garmentTypes,
   addOns,
+  previousOrders = [],
 }: {
   // null while the customer is still unsaved (brand-new customer) — the
   // Measurements modal simply has nothing to seed from yet in that case.
@@ -284,6 +329,7 @@ export function NewOrderItemsCard({
   // pure, synchronous find() over these arrays, not its own Supabase call.
   garmentTypes: CatalogGarmentType[];
   addOns: CatalogAddOn[];
+  previousOrders?: Order[];
 }) {
   const { t } = useLanguage();
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
@@ -413,9 +459,10 @@ export function NewOrderItemsCard({
           const measurementsFilled = hasMeasurementData(i);
           const hasMeasurementFields = (garment?.measurementFieldIds.length ?? 0) > 0;
           const measurementsDisabled = !it.garmentTypeId || !hasMeasurementFields;
+          const isAlteration = isAlterationGarment(garment);
           return (
             <div key={i} className="rounded-lg border border-border-soft p-3">
-              <div className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr] items-end gap-3">
+              <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr]">
                 <label className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("orders.garmentType")}
@@ -435,7 +482,7 @@ export function NewOrderItemsCard({
                     ))}
                   </Select>
                 </label>
-                <label className="flex min-w-0 flex-col gap-1.5">
+                <label className="flex min-w-0 flex-col gap-1.5 sm:col-auto">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.qty")}
                   </span>
@@ -447,7 +494,7 @@ export function NewOrderItemsCard({
                     className={inputClass}
                   />
                 </label>
-                <label className="flex min-w-0 flex-col gap-1.5">
+                <label className="flex min-w-0 flex-col gap-1.5 sm:col-auto">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.rate")}
                   </span>
@@ -468,6 +515,122 @@ export function NewOrderItemsCard({
                   </div>
                 </div>
               </div>
+              <div className="mt-3 grid gap-3 border-t border-border-soft pt-3 md:grid-cols-[0.8fr_1fr_1fr]">
+                <label className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    {t("orders.fabricSource")}
+                  </span>
+                  <Select
+                    value={it.fabricSource}
+                    onChange={(e) =>
+                      updateItem(i, {
+                        fabricSource: e.target.value as OrderItemFabricSource,
+                      })
+                    }
+                  >
+                    {FABRIC_SOURCES.map((source) => (
+                      <option key={source} value={source}>
+                        {source}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    {t("orders.fabricNotes")}
+                  </span>
+                  <textarea
+                    value={it.fabricNotes}
+                    onChange={(e) => updateItem(i, { fabricNotes: e.target.value })}
+                    placeholder={t("orders.fabricNotesPlaceholder")}
+                    rows={2}
+                    className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
+                <label className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    {t("orders.designNotes")}
+                  </span>
+                  <textarea
+                    value={it.designNotes}
+                    onChange={(e) => updateItem(i, { designNotes: e.target.value })}
+                    placeholder={t("orders.designNotesPlaceholder")}
+                    rows={2}
+                    className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
+              </div>
+              {isAlteration && (
+                <div className="mt-3 grid gap-3 border-t border-border-soft pt-3 md:grid-cols-2">
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      Original Issue
+                    </span>
+                    <textarea
+                      value={it.alterationIssue}
+                      onChange={(e) => updateItem(i, { alterationIssue: e.target.value })}
+                      placeholder="Too tight at waist, sleeve length wrong, torn seam..."
+                      rows={2}
+                      className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    />
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      Required Change
+                    </span>
+                    <textarea
+                      value={it.alterationRequiredChange}
+                      onChange={(e) =>
+                        updateItem(i, { alterationRequiredChange: e.target.value })
+                      }
+                      placeholder="Loosen waist 1 inch, shorten sleeves, replace zip..."
+                      rows={2}
+                      className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    />
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      Free / Paid
+                    </span>
+                    <Select
+                      value={it.alterationChargeType}
+                      onChange={(e) =>
+                        updateItem(i, {
+                          alterationChargeType: e.target.value as AlterationChargeType,
+                          rate: e.target.value === "Free" ? 0 : it.rate,
+                          rateOverridden:
+                            e.target.value === "Free" ? true : it.rateOverridden,
+                        })
+                      }
+                    >
+                      {ALTERATION_CHARGE_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      Linked Original Order
+                    </span>
+                    <Select
+                      value={it.linkedOriginalOrderId}
+                      onChange={(e) =>
+                        updateItem(i, { linkedOriginalOrderId: e.target.value })
+                      }
+                    >
+                      <option value="">Not linked</option>
+                      {previousOrders.map((order) => (
+                        <option key={order.id} value={order.id}>
+                          {order.orderNumber} -{" "}
+                          {order.items.map((item) => item.particular).join(", ")}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border-soft pt-3">
                 <AddOnsPicker
                   addOns={addOnOptions}

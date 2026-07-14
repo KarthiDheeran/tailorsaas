@@ -33,6 +33,9 @@ export const SYSTEM_ROLE_IDS = {
   ADMIN: "role-admin",
   MANAGER: "role-manager",
   STAFF: "role-staff",
+  TAILOR: "role-tailor",
+  RECEPTIONIST: "role-receptionist",
+  ACCOUNTANT: "role-accountant",
 } as const;
 
 // Manager/Staff system roles stay editable (with a "Reset to default"
@@ -71,6 +74,49 @@ export const DEFAULT_STAFF_PERMISSIONS: Permission[] = [
   "staff.view",
   "customers.viewMeasurements",
 ];
+
+export const DEFAULT_TAILOR_PERMISSIONS: Permission[] = [
+  "staff.view",
+  "customers.viewMeasurements",
+];
+
+export const DEFAULT_RECEPTIONIST_PERMISSIONS: Permission[] = [
+  "dashboard.view",
+  "calendar.view",
+  "orders.view",
+  "orders.create",
+  "orders.changeStatus",
+  "orders.viewPayments",
+  "orders.recordPayment",
+  "orders.printCustomerReceipt",
+  "orders.printJobCard",
+  "customers.view",
+  "customers.create",
+  "customers.edit",
+  "customers.viewMeasurements",
+  "customers.editMeasurements",
+  "catalog.view",
+];
+
+export const DEFAULT_ACCOUNTANT_PERMISSIONS: Permission[] = [
+  "dashboard.view",
+  "orders.view",
+  "orders.viewPayments",
+  "orders.recordPayment",
+  "orders.voidPayment",
+  "orders.printCustomerReceipt",
+  "expenses.view",
+  "expenses.manage",
+  "reports.view",
+];
+
+export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Partial<Record<string, Permission[]>> = {
+  [SYSTEM_ROLE_IDS.MANAGER]: DEFAULT_MANAGER_PERMISSIONS,
+  [SYSTEM_ROLE_IDS.STAFF]: DEFAULT_STAFF_PERMISSIONS,
+  [SYSTEM_ROLE_IDS.TAILOR]: DEFAULT_TAILOR_PERMISSIONS,
+  [SYSTEM_ROLE_IDS.RECEPTIONIST]: DEFAULT_RECEPTIONIST_PERMISSIONS,
+  [SYSTEM_ROLE_IDS.ACCOUNTANT]: DEFAULT_ACCOUNTANT_PERMISSIONS,
+};
 
 export function isAdminRole(id: string): boolean {
   return id === SYSTEM_ROLE_IDS.ADMIN;

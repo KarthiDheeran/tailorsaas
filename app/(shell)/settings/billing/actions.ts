@@ -42,7 +42,13 @@ export async function getBillingSettingsAction(): Promise<{
 export async function getPrintableBillingSettingsAction(): Promise<ShopBillingSettings> {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
-  if (!hasAnyPermission(permissions, ["orders.printCustomerReceipt", "orders.printJobCard"])) {
+  if (
+    !hasAnyPermission(permissions, [
+      "orders.printCustomerReceipt",
+      "orders.printJobCard",
+      "customers.viewMeasurements",
+    ])
+  ) {
     return DEFAULT_SHOP_BILLING_SETTINGS;
   }
 

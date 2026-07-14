@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import {
   MEASUREMENT_FIELD_GROUPS,
+  customMeasurementFieldId,
+  customMeasurementFieldLabel,
+  isCustomMeasurementFieldId,
   measurementFieldLabel,
   type CatalogAddOn,
   type CatalogGarmentType,
@@ -42,6 +45,7 @@ export function GarmentTypeDrawer({
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(
     garment?.addOnIds ?? []
   );
+  const [customFieldName, setCustomFieldName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,6 +63,18 @@ export function GarmentTypeDrawer({
     setSelectedAddOnIds((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
     );
+  }
+
+  function addCustomField() {
+    const trimmed = customFieldName.trim().replace(/\s+/g, " ");
+    if (!trimmed) return;
+    const id = customMeasurementFieldId(trimmed);
+    setSelectedFieldIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setCustomFieldName("");
+  }
+
+  function removeCustomField(id: string) {
+    setSelectedFieldIds((prev) => prev.filter((fieldId) => fieldId !== id));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -90,6 +106,8 @@ export function GarmentTypeDrawer({
     }
     onCancel();
   }
+
+  const customFieldIds = selectedFieldIds.filter(isCustomMeasurementFieldId);
 
   return (
     <>
@@ -207,6 +225,55 @@ export function GarmentTypeDrawer({
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="mt-5 border-t border-border-soft pt-4">
+                <p className="mb-2 text-[13px] font-semibold text-ink-muted">
+                  Custom Fields
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={customFieldName}
+                    onChange={(e) => setCustomFieldName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomField();
+                      }
+                    }}
+                    placeholder="e.g. Left shoulder drop"
+                    className={`${inputClass} min-w-0 flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomField}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-ink transition-colors hover:bg-surface"
+                    aria-label="Add custom field"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                {customFieldIds.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {customFieldIds.map((id) => (
+                      <span
+                        key={id}
+                        className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-soft bg-surface px-3 py-1.5 text-sm text-ink"
+                      >
+                        <span className="min-w-0 truncate">
+                          {customMeasurementFieldLabel(id)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeCustomField(id)}
+                          className="text-ink-faint transition-colors hover:text-chip-red-fg"
+                          aria-label={`Remove ${measurementFieldLabel(id)}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               {selectedFieldIds.length === 0 && !noFieldsExpected && (
                 <p className="mt-4 text-xs text-ink-faint">

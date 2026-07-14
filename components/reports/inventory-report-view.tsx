@@ -59,7 +59,19 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
     if (!report) return;
     downloadCsv(
       `inventory-report-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Item", "Type", "On Hand", "Unit", "Reorder Level", "Cost/Unit", "Value", "Low Stock"],
+      [
+        "Item",
+        "Type",
+        "On Hand",
+        "Unit",
+        "Reorder Level",
+        "Cost/Unit",
+        "Vendor",
+        "Purchase Date",
+        "Purchase Cost",
+        "Value",
+        "Low Stock",
+      ],
       report.rows.map((r) => [
         r.item.name,
         r.item.itemType,
@@ -67,6 +79,9 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
         r.item.unit,
         r.item.reorderLevel,
         r.item.costPerUnit ?? "",
+        r.item.vendorName ?? "",
+        r.item.purchaseDate ?? "",
+        r.item.purchaseCost ?? "",
         r.value,
         r.lowStock ? "Yes" : "No",
       ])
@@ -151,6 +166,7 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
             <tr className="border-b border-border-soft">
               <th className="whitespace-nowrap px-5 py-3">{t("reports.itemName")}</th>
               <th className="whitespace-nowrap px-5 py-3">{t("reports.itemType")}</th>
+              <th className="whitespace-nowrap px-5 py-3">Vendor</th>
               <th className="whitespace-nowrap px-5 py-3">{t("reports.onHand")}</th>
               <th className="whitespace-nowrap px-5 py-3">{t("reports.reorderLevel")}</th>
               {canViewPayments && (
@@ -174,6 +190,9 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
                   {row.item.sku && <div className="text-xs text-ink-muted">{row.item.sku}</div>}
                 </td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{row.item.itemType}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                  {row.item.vendorName ?? "—"}
+                </td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink">
                   {row.item.quantityOnHand} {row.item.unit}
                 </td>

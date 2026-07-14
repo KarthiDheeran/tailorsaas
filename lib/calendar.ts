@@ -15,7 +15,7 @@ import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
 import { isReceivableOrder } from "@/lib/order-finance";
 
-export type CalendarEventType = "Delivery" | "Trial" | "Production" | "Payment";
+export type CalendarEventType = "Delivery" | "Trial" | "Production" | "Payment" | "Pickup";
 export type CalendarEventTone = "blue" | "green" | "amber" | "red" | "slate";
 
 export interface CalendarEvent {
@@ -172,6 +172,39 @@ export async function getCalendarData(
         isPastDue: order.deliveryDate < input.todayIso,
       });
     }
+
+    if (order.status === "Ready" && isInRange(order.deliveryDate, input.startDate, input.endDate)) {
+      const template = templateByType.get("Ready for Pickup");
+      events.push({
+        id: `pickup:${order.id}:${order.deliveryDate}`,
+        eventKey: `pickup:${order.id}:${order.deliveryDate}`,
+        type: "Pickup",
+        date: order.deliveryDate,
+        title: order.orderNumber,
+        subtitle: `Pickup - ${customerName} - ${itemSummary(order.items.length)}`,
+        customerName,
+        customerPhone,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        tone: order.deliveryDate < input.todayIso ? "red" : "green",
+        reminderType: "Pickup",
+        reminderTargetType: "Order",
+        reminderTargetId: order.id,
+        reminderMessage: renderCommunicationTemplate(
+          template,
+          `Hi ${customerName}, your order ${order.orderNumber} is ready for pickup. Balance due: Rs ${Number(order.balance).toLocaleString("en-IN")}.`,
+          {
+            customer_name: customerName,
+            order_number: order.orderNumber,
+            date: order.deliveryDate,
+            balance: Number(order.balance).toLocaleString("en-IN"),
+          }
+        ),
+        whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
+        isPastDue: order.deliveryDate < input.todayIso,
+      });
+    }
   }
 
   for (const card of jobCards) {
@@ -290,7 +323,8 @@ function sortEvents(a: CalendarEvent, b: CalendarEvent): number {
     Trial: 1,
     Production: 2,
     Delivery: 3,
-    Payment: 4,
+    Pickup: 4,
+    Payment: 5,
   };
   return order[a.type] - order[b.type];
 }

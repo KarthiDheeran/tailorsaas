@@ -53,6 +53,7 @@ export interface JobCard {
   priority?: "Low" | "Normal" | "High";
   fabricSource?: "Not specified" | "Customer provided" | "Shop provided";
   fabricNotes?: string;
+  designNotes?: string;
   notes?: string;
   startedDate?: string;
   completedDate?: string;
@@ -106,6 +107,9 @@ export function buildJobCards(
           assignedStaffId: assignment?.assignedStaffId,
           assignedTo: assignedStaff?.name ?? "Unassigned",
           priority: assignment?.priority,
+          fabricSource: item.fabricSource,
+          fabricNotes: item.fabricNotes,
+          designNotes: item.designNotes,
           notes: assignment?.workNotes,
           startedDate: assignment?.startedDate,
           completedDate: assignment?.completedDate,

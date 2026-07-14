@@ -8,6 +8,8 @@ import type {
   Order,
   OrderItem,
   OrderItemAddOn,
+  AlterationChargeType,
+  OrderItemFabricSource,
   OrderStatus,
 } from "@/lib/types";
 import {
@@ -40,8 +42,17 @@ type DraftItem = {
   particular: string;
   qty: number;
   rate: number;
+  garmentTypeId?: string;
   size?: string;
   addOns?: OrderItemAddOn[];
+  fabricSource: OrderItemFabricSource;
+  fabricNotes: string;
+  designNotes: string;
+  alterationIssue: string;
+  alterationRequiredChange: string;
+  alterationChargeType: AlterationChargeType;
+  linkedOriginalOrderId: string;
+  measurements?: Record<string, string>;
 };
 
 function toDraftItems(items: OrderItem[]): DraftItem[] {
@@ -49,8 +60,17 @@ function toDraftItems(items: OrderItem[]): DraftItem[] {
     particular: i.particular,
     qty: i.qty,
     rate: i.rate,
+    garmentTypeId: i.garmentTypeId,
     size: i.size,
     addOns: i.addOns,
+    fabricSource: i.fabricSource ?? "Not specified",
+    fabricNotes: i.fabricNotes ?? "",
+    designNotes: i.designNotes ?? "",
+    alterationIssue: i.alterationIssue ?? "",
+    alterationRequiredChange: i.alterationRequiredChange ?? "",
+    alterationChargeType: i.alterationChargeType ?? "Paid",
+    linkedOriginalOrderId: i.linkedOriginalOrderId ?? "",
+    measurements: i.measurements,
   }));
 }
 
@@ -100,11 +120,27 @@ export function EditOrderDrawer({
   const [area, setArea] = useState(customer?.area ?? "");
   const [orderDate, setOrderDate] = useState(order?.orderDate ?? "");
   const [deliveryDate, setDeliveryDate] = useState(order?.deliveryDate ?? "");
+  const [deliveryPromiseNote, setDeliveryPromiseNote] = useState(
+    order?.deliveryPromiseNote ?? ""
+  );
   const [status, setStatus] = useState<OrderStatus>(
     order?.status ?? "In Progress"
   );
   const [items, setItems] = useState<DraftItem[]>(
-    order ? toDraftItems(order.items) : [{ particular: "", qty: 1, rate: 0 }]
+    order
+      ? toDraftItems(order.items)
+      : [{
+          particular: "",
+          qty: 1,
+          rate: 0,
+          fabricSource: "Not specified",
+          fabricNotes: "",
+          designNotes: "",
+          alterationIssue: "",
+          alterationRequiredChange: "",
+          alterationChargeType: "Paid",
+          linkedOriginalOrderId: "",
+        }]
   );
   // Measurement edits saved from the modal, keyed by garmentKey(garmentType).
   // Kept in local form state only — nothing is written to stub-data until
@@ -180,9 +216,23 @@ export function EditOrderDrawer({
     particular: it.particular,
     qty: it.qty,
     rate: it.rate,
+    garmentTypeId: it.garmentTypeId,
     size: it.size,
     addOns: it.addOns,
-    amount: it.qty * it.rate + addOnsAmount(it.addOns),
+    addOnsTotal: addOnsAmount(it.addOns) || undefined,
+    finalRate: it.rate + addOnsAmount(it.addOns),
+    amount: it.qty * (it.rate + addOnsAmount(it.addOns)),
+    measurements: measurementsByGarment[garmentKey(it.particular)]?.values ?? it.measurements,
+    fabricSource: it.fabricSource,
+    fabricNotes: it.fabricNotes.trim() || undefined,
+    designNotes: it.designNotes.trim() || undefined,
+    alterationIssue: it.alterationIssue.trim() || undefined,
+    alterationRequiredChange: it.alterationRequiredChange.trim() || undefined,
+    alterationChargeType:
+      it.alterationIssue.trim() || it.alterationRequiredChange.trim()
+        ? it.alterationChargeType
+        : undefined,
+    linkedOriginalOrderId: it.linkedOriginalOrderId || undefined,
   }));
   const totalAmount = computedItems.reduce((sum, i) => sum + i.amount, 0);
   const balance = totalAmount - order.advancePaid;
@@ -195,6 +245,7 @@ export function EditOrderDrawer({
     ...order,
     orderDate,
     deliveryDate,
+    deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
     items: computedItems,
     totalAmount,
     balance,
@@ -213,6 +264,7 @@ export function EditOrderDrawer({
     area !== (customer?.area ?? "") ||
     orderDate !== order.orderDate ||
     deliveryDate !== order.deliveryDate ||
+    deliveryPromiseNote !== (order.deliveryPromiseNote ?? "") ||
     status !== order.status ||
     JSON.stringify(items) !== JSON.stringify(toDraftItems(order.items)) ||
     measurementsDirty;
@@ -223,7 +275,21 @@ export function EditOrderDrawer({
     );
   }
   function addItem() {
-    setItems((prev) => [...prev, { particular: "", qty: 1, rate: 0 }]);
+    setItems((prev) => [
+      ...prev,
+      {
+        particular: "",
+        qty: 1,
+        rate: 0,
+        fabricSource: "Not specified",
+        fabricNotes: "",
+        designNotes: "",
+        alterationIssue: "",
+        alterationRequiredChange: "",
+        alterationChargeType: "Paid",
+        linkedOriginalOrderId: "",
+      },
+    ]);
   }
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
@@ -283,6 +349,7 @@ export function EditOrderDrawer({
           values: draft.values,
           fitNotes: draft.fitNotes,
           notes: draft.notes,
+          source: "Edit order",
         });
         if (!measurementResult.success) {
           setSubmitting(false);
@@ -294,6 +361,7 @@ export function EditOrderDrawer({
     const updated = await updateOrderAction(order.id, {
       orderDate,
       deliveryDate,
+      deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
       items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
       status,
     });
@@ -361,7 +429,7 @@ export function EditOrderDrawer({
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
                 {t("orders.customer")}
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("customers.customerName")}
@@ -411,7 +479,7 @@ export function EditOrderDrawer({
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
                 {t("orders.dates")}
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("orders.orderDate")}
@@ -436,6 +504,18 @@ export function EditOrderDrawer({
                     className={inputClass}
                   />
                 </label>
+                <label className="flex flex-col gap-1.5 sm:col-span-2">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Delivery Promise Note
+                  </span>
+                  <textarea
+                    value={deliveryPromiseNote}
+                    onChange={(e) => setDeliveryPromiseNote(e.target.value)}
+                    rows={2}
+                    placeholder="Verbal promise, pickup timing, urgency, customer expectation..."
+                    className="min-h-[44px] rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
               </div>
             </div>
 
@@ -454,7 +534,7 @@ export function EditOrderDrawer({
                 {items.map((it, i) => (
                   <div
                     key={i}
-                    className="grid grid-cols-[2fr_1fr_1fr_1fr_auto_auto] items-end gap-3"
+                    className="grid grid-cols-2 items-end gap-3 md:grid-cols-[2fr_1fr_1fr_1fr_auto_auto]"
                   >
                     <label className="flex min-w-0 flex-col gap-1.5">
                       {i === 0 && (
@@ -536,6 +616,98 @@ export function EditOrderDrawer({
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
+                    <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-2">
+                      <span className="text-[13px] font-medium text-ink-muted">
+                        {t("orders.fabricSource")}
+                      </span>
+                      <select
+                        value={it.fabricSource}
+                        onChange={(e) =>
+                          updateItem(i, {
+                            fabricSource: e.target.value as OrderItemFabricSource,
+                          })
+                        }
+                        className={`${inputClass} w-full min-w-0`}
+                      >
+                        <option value="Not specified">Not specified</option>
+                        <option value="Customer provided">Customer provided</option>
+                        <option value="Shop provided">Shop provided</option>
+                      </select>
+                    </label>
+                    <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-2">
+                      <span className="text-[13px] font-medium text-ink-muted">
+                        {t("orders.fabricNotes")}
+                      </span>
+                      <textarea
+                        value={it.fabricNotes}
+                        onChange={(e) => updateItem(i, { fabricNotes: e.target.value })}
+                        placeholder={t("orders.fabricNotesPlaceholder")}
+                        rows={2}
+                        className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      />
+                    </label>
+                    <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-2">
+                      <span className="text-[13px] font-medium text-ink-muted">
+                        {t("orders.designNotes")}
+                      </span>
+                      <textarea
+                        value={it.designNotes}
+                        onChange={(e) => updateItem(i, { designNotes: e.target.value })}
+                        placeholder={t("orders.designNotesPlaceholder")}
+                        rows={2}
+                        className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      />
+                    </label>
+                    {it.particular.toLowerCase().includes("alteration") && (
+                      <>
+                        <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-3">
+                          <span className="text-[13px] font-medium text-ink-muted">
+                            Original Issue
+                          </span>
+                          <textarea
+                            value={it.alterationIssue}
+                            onChange={(e) =>
+                              updateItem(i, { alterationIssue: e.target.value })
+                            }
+                            placeholder="Too tight at waist, sleeve length wrong, torn seam..."
+                            rows={2}
+                            className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                          />
+                        </label>
+                        <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-3">
+                          <span className="text-[13px] font-medium text-ink-muted">
+                            Required Change
+                          </span>
+                          <textarea
+                            value={it.alterationRequiredChange}
+                            onChange={(e) =>
+                              updateItem(i, { alterationRequiredChange: e.target.value })
+                            }
+                            placeholder="Loosen waist 1 inch, shorten sleeves, replace zip..."
+                            rows={2}
+                            className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                          />
+                        </label>
+                        <label className="col-span-2 flex min-w-0 flex-col gap-1.5 md:col-span-2">
+                          <span className="text-[13px] font-medium text-ink-muted">
+                            Free / Paid
+                          </span>
+                          <select
+                            value={it.alterationChargeType}
+                            onChange={(e) =>
+                              updateItem(i, {
+                                alterationChargeType: e.target.value as AlterationChargeType,
+                                rate: e.target.value === "Free" ? 0 : it.rate,
+                              })
+                            }
+                            className={`${inputClass} w-full min-w-0`}
+                          >
+                            <option value="Paid">Paid</option>
+                            <option value="Free">Free</option>
+                          </select>
+                        </label>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
