@@ -1,202 +1,131 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
-import { ChevronLeft, Printer } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, Printer } from "lucide-react";
 import {
   getCustomerByIdAction,
-  getMeasurementAttachmentsForCustomerAction,
-  getCustomerMeasurementsAction,
-  getMeasurementHistoryForCustomerAction,
-  saveCustomerMeasurementsAction,
+  getGarmentMeasurementsForCustomerAction,
+  saveGarmentMeasurementAction,
 } from "@/app/(shell)/customers/actions";
-import type {
-  Customer,
-  MeasurementAttachment,
-  MeasurementHistoryEntry,
-} from "@/lib/types";
-import { measurementFieldLabel } from "@/lib/catalog";
-import { MeasurementAttachmentsCard } from "@/components/customers/measurement-attachments-card";
+import { getActiveGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import type { CatalogGarmentType } from "@/lib/catalog";
+import type { Customer, GarmentMeasurement } from "@/lib/types";
 import { CustomerMeasurementsForm } from "@/components/customers/customer-measurements-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
-function formatHistoryDate(value: string) {
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+type CopyMessage = {
+  tone: "success" | "info";
+  text: string;
+} | null;
+
+type PendingCopy = {
+  sourceKey: string;
+  matchingFieldIds: string[];
+} | null;
+
+interface CopySource {
+  measurement: GarmentMeasurement;
+  matchingFieldIds: string[];
 }
 
-function summarizeValues(values: Record<string, string>, max = 6) {
-  const entries = Object.entries(values).filter(([, value]) => value.trim());
-  if (entries.length === 0) return "No filled fields";
-  const visible = entries
-    .slice(0, max)
-    .map(([key, value]) => `${measurementFieldLabel(key)}: ${value}`);
-  return entries.length > max
-    ? `${visible.join(", ")} +${entries.length - max} more`
-    : visible.join(", ");
+function garmentKey(name: string) {
+  return name.trim().toLowerCase();
 }
 
-function historyScopeKey(entry: MeasurementHistoryEntry) {
-  return `${entry.kind}:${entry.garmentType?.trim().toLowerCase() ?? "baseline"}`;
+function formatGarmentName(name: string) {
+  return name
+    .trim()
+    .split(/(\s+|\/|-)/)
+    .map((part) =>
+      /^[a-z]/i.test(part)
+        ? part.charAt(0).toUpperCase() + part.slice(1)
+        : part
+    )
+    .join("");
 }
 
-function changedFields(
-  current: MeasurementHistoryEntry,
-  previous: MeasurementHistoryEntry | undefined,
-  max = 4
+function hasFilledMeasurementValues(measurement: GarmentMeasurement) {
+  return Object.values(measurement.values).some((value) => value.trim() !== "");
+}
+
+function findMeasurement(
+  measurements: GarmentMeasurement[],
+  garmentName: string
 ) {
-  if (!previous) return ["Initial record"];
-
-  const changes: string[] = [];
-  const keys = new Set([
-    ...Object.keys(current.values),
-    ...Object.keys(previous.values),
-  ]);
-
-  for (const key of Array.from(keys)) {
-    const before = previous.values[key]?.trim() ?? "";
-    const after = current.values[key]?.trim() ?? "";
-    if (before === after) continue;
-    const label = measurementFieldLabel(key);
-    if (!before && after) {
-      changes.push(`${label} added`);
-    } else if (before && !after) {
-      changes.push(`${label} cleared`);
-    } else {
-      changes.push(`${label} ${before} -> ${after}`);
-    }
-  }
-
-  if ((previous.fitNotes ?? "") !== (current.fitNotes ?? "")) {
-    changes.push("Fit notes changed");
-  }
-  if ((previous.notes ?? "") !== (current.notes ?? "")) {
-    changes.push("Notes changed");
-  }
-
-  if (changes.length === 0) return ["No field changes"];
-  return changes.length > max
-    ? [...changes.slice(0, max), `+${changes.length - max} more`]
-    : changes;
+  const key = garmentKey(garmentName);
+  return measurements.find((measurement) => garmentKey(measurement.garmentType) === key);
 }
 
-function previousByEntryId(entries: MeasurementHistoryEntry[]) {
-  const byScope = new Map<string, MeasurementHistoryEntry[]>();
-  for (const entry of entries) {
-    const scoped = byScope.get(historyScopeKey(entry)) ?? [];
-    scoped.push(entry);
-    byScope.set(historyScopeKey(entry), scoped);
-  }
-
-  const previousById = new Map<string, MeasurementHistoryEntry | undefined>();
-  for (const scoped of Array.from(byScope.values())) {
-    const sorted = [...scoped].sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt)
-    );
-    sorted.forEach((entry, index) => {
-      previousById.set(entry.id, sorted[index + 1]);
-    });
-  }
-  return previousById;
+function matchingFieldIdsForCopy(
+  source: GarmentMeasurement,
+  sourceGarment: CatalogGarmentType,
+  targetGarment: CatalogGarmentType
+) {
+  const sourceFieldIds = new Set(sourceGarment.measurementFieldIds);
+  const targetFieldIds = new Set(targetGarment.measurementFieldIds);
+  return Object.entries(source.values)
+    .filter(
+      ([key, value]) =>
+        value.trim() !== "" && sourceFieldIds.has(key) && targetFieldIds.has(key)
+    )
+    .map(([key]) => key);
 }
 
-function MeasurementHistoryList({
-  entries,
-}: {
-  entries: MeasurementHistoryEntry[];
-}) {
-  const previous = previousByEntryId(entries);
+function combineNotes(measurement: GarmentMeasurement | undefined) {
+  return [measurement?.fitNotes, measurement?.notes]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join("\n");
+}
 
-  return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <h2 className="mb-4 text-[17px] font-semibold text-ink">
-        Measurement History
-      </h2>
-      {entries.length === 0 ? (
-        <p className="text-sm text-ink-muted">
-          No measurement revisions recorded yet. Future saves will appear here.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {entries.map((entry) => {
-            const changes = changedFields(entry, previous.get(entry.id));
-            return (
-              <article
-                key={entry.id}
-                className="rounded-lg border border-border-soft bg-surface/40 p-3"
-              >
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-ink">
-                      {entry.kind === "Garment"
-                        ? entry.garmentType ?? "Garment"
-                        : "Baseline"}
-                    </h3>
-                    <p className="text-xs text-ink-faint">
-                      {entry.source} - {formatHistoryDate(entry.createdAt)}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-ink-muted">
-                    {entry.kind}
-                  </span>
-                </div>
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {changes.map((change) => (
-                    <span
-                      key={change}
-                      className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-ink-muted"
-                    >
-                      {change}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-sm text-ink-muted">
-                  {summarizeValues(entry.values)}
-                </p>
-                {(entry.fitNotes || entry.notes) && (
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-ink-faint">
-                    {[entry.fitNotes, entry.notes].filter(Boolean).join(" - ")}
-                  </p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+function formatUpdatedAt(value: string | undefined) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { t } = useLanguage();
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [measurements, setMeasurements] = useState<GarmentMeasurement[]>([]);
+  const [selectedGarmentId, setSelectedGarmentId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
-  const [history, setHistory] = useState<MeasurementHistoryEntry[]>([]);
-  const [attachments, setAttachments] = useState<MeasurementAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [copySourceKey, setCopySourceKey] = useState("");
+  const [copyMessage, setCopyMessage] = useState<CopyMessage>(null);
+  const [pendingCopy, setPendingCopy] = useState<PendingCopy>(null);
+  const [returningToCustomer, setReturningToCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getCustomerByIdAction(params.id),
-      getCustomerMeasurementsAction(params.id),
-      getMeasurementHistoryForCustomerAction(params.id),
-      getMeasurementAttachmentsForCustomerAction(params.id),
-    ]).then(([c, existing, historyEntries, attachmentEntries]) => {
+      getActiveGarmentTypesAction(),
+      getGarmentMeasurementsForCustomerAction(params.id),
+    ]).then(([c, garments, existingMeasurements]) => {
       if (cancelled) return;
       setCustomer(c ?? null);
-      setValues({ ...(existing?.values ?? {}) });
-      setNotes(existing?.notes ?? "");
-      setHistory(historyEntries);
-      setAttachments(attachmentEntries);
+      const measurableGarments = garments.filter(
+        (garment) => garment.measurementFieldIds.length > 0
+      );
+      setGarmentTypes(measurableGarments);
+      setMeasurements(existingMeasurements);
+      setSelectedGarmentId("");
+      setValues({});
+      setNotes("");
       setLoaded(true);
     });
     return () => {
@@ -204,37 +133,183 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     };
   }, [params.id]);
 
+  const selectedGarment = useMemo(
+    () => garmentTypes.find((garment) => garment.id === selectedGarmentId),
+    [garmentTypes, selectedGarmentId]
+  );
+  const selectedMeasurement = useMemo(
+    () =>
+      selectedGarment
+        ? findMeasurement(measurements, selectedGarment.name)
+        : undefined,
+    [measurements, selectedGarment]
+  );
+  const copySources = useMemo(() => {
+    if (!selectedGarment) return [];
+    return measurements.reduce<CopySource[]>((sources, measurement) => {
+      if (
+        garmentKey(measurement.garmentType) === garmentKey(selectedGarment.name) ||
+        !hasFilledMeasurementValues(measurement)
+      ) {
+        return sources;
+      }
+      const sourceGarment = garmentTypes.find(
+        (garment) => garmentKey(garment.name) === garmentKey(measurement.garmentType)
+      );
+      if (!sourceGarment) return sources;
+      const matchingFieldIds = matchingFieldIdsForCopy(
+        measurement,
+        sourceGarment,
+        selectedGarment
+      );
+      if (matchingFieldIds.length === 0) return sources;
+      sources.push({ measurement, matchingFieldIds });
+      return sources;
+    }, []).sort((a, b) =>
+      a.measurement.garmentType.localeCompare(b.measurement.garmentType)
+    );
+  }, [garmentTypes, measurements, selectedGarment]);
+
   if (loaded && !customer) {
     notFound();
   }
 
-  async function handleSave() {
+  function handleGarmentChange(garmentId: string) {
+    setSelectedGarmentId(garmentId);
     setError(null);
+    setSuccessMessage(null);
+    setCopySourceKey("");
+    setCopyMessage(null);
+    setPendingCopy(null);
+    const garment = garmentTypes.find((item) => item.id === garmentId);
+    const measurement = garment
+      ? findMeasurement(measurements, garment.name)
+      : undefined;
+    setValues({ ...(measurement?.values ?? {}) });
+    setNotes(combineNotes(measurement));
+  }
+
+  function applyCopiedFields(sourceKey: string, matchingFieldIds: string[]) {
+    const source = copySources.find(
+      (item) => garmentKey(item.measurement.garmentType) === sourceKey
+    );
+    if (!source) return;
+
+    setValues((prev) => {
+      const next = { ...prev };
+      for (const key of matchingFieldIds) {
+        next[key] = source.measurement.values[key];
+      }
+      return next;
+    });
+    setCopyMessage({
+      tone: "success",
+      text: `Copied ${matchingFieldIds.length} matching fields from ${formatGarmentName(source.measurement.garmentType)}.`,
+    });
+    setPendingCopy(null);
+  }
+
+  function handleCopyMeasurements() {
+    if (!selectedGarment || !copySourceKey) return;
+    setError(null);
+    setSuccessMessage(null);
+    setCopyMessage(null);
+    setPendingCopy(null);
+
+    const source = copySources.find(
+      (item) => garmentKey(item.measurement.garmentType) === copySourceKey
+    );
+    if (!source) return;
+
+    if (source.matchingFieldIds.length === 0) {
+      setCopyMessage({
+        tone: "info",
+        text: "No matching measurement fields found.",
+      });
+      return;
+    }
+
+    const overwritesExisting = source.matchingFieldIds.some(
+      (key) => values[key]?.trim()
+    );
+    if (overwritesExisting) {
+      setPendingCopy({
+        sourceKey: copySourceKey,
+        matchingFieldIds: source.matchingFieldIds,
+      });
+      return;
+    }
+
+    applyCopiedFields(copySourceKey, source.matchingFieldIds);
+  }
+
+  async function handleSave() {
+    if (!selectedGarment) {
+      setError("Select a garment type before saving measurements.");
+      setSuccessMessage(null);
+      setCopyMessage(null);
+      setPendingCopy(null);
+      return;
+    }
+    setError(null);
+    setSuccessMessage(null);
+    setCopyMessage(null);
+    setPendingCopy(null);
     setSaving(true);
-    const result = await saveCustomerMeasurementsAction({
+    const allowedFieldIds = new Set(selectedGarment.measurementFieldIds);
+    const scopedValues = Object.fromEntries(
+      Object.entries(values)
+        .filter(([key]) => allowedFieldIds.has(key))
+        .map(([key, value]) => [key, value.trim()])
+    );
+    const result = await saveGarmentMeasurementAction({
       customerId: params.id,
-      values,
-      notes,
+      garmentType: selectedGarment.name,
+      values: scopedValues,
+      fitNotes: "",
+      notes: notes.trim(),
       source: "Customer measurements",
     });
-    setSaving(false);
     if (!result.success) {
+      setSaving(false);
       setError(result.error);
       return;
     }
-    router.push(`/customers/${params.id}`);
+    setMeasurements((prev) => {
+      const key = garmentKey(result.data.garmentType);
+      const others = prev.filter(
+        (measurement) => garmentKey(measurement.garmentType) !== key
+      );
+      return [...others, result.data].sort((a, b) =>
+        a.garmentType.localeCompare(b.garmentType)
+      );
+    });
+    setValues({ ...result.data.values });
+    setNotes(combineNotes(result.data));
+    setSuccessMessage(`${formatGarmentName(result.data.garmentType)} measurements saved.`);
+    setSaving(false);
   }
 
-  if (!customer) return null;
+  if (!loaded || !customer) {
+    return (
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+        <LoadingState label="Loading measurements..." />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6 lg:p-8">
       <button
-        onClick={() => router.push(`/customers/${params.id}`)}
-        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
+        onClick={() => {
+          setReturningToCustomer(true);
+          router.push(`/customers/${params.id}`);
+        }}
+        disabled={returningToCustomer}
+        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
       >
         <ChevronLeft className="h-4 w-4" />
-        {t("customers.backTo")} {customer.name}
+        {returningToCustomer ? "Opening..." : `${t("customers.backTo")} ${customer.name}`}
       </button>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -242,51 +317,189 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
           <h1 className="mb-1 text-[26px] font-semibold text-ink">
             {t("customers.editMeasurementsTitle")}
           </h1>
-          <p className="text-sm text-ink-muted">
-            {t("customers.editMeasurementsDesc")}
-          </p>
+          <p className="text-sm text-ink-muted">Customer: {customer.name}</p>
         </div>
-        <Link
-          href={`/customers/${params.id}/measurements/print`}
-          className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-        >
-          <Printer className="h-4 w-4" />
-          Print Measurements
-        </Link>
+        {selectedGarment ? (
+          <Link
+            href={`/customers/${params.id}/measurements/print?garmentType=${encodeURIComponent(
+              selectedGarment.name
+            )}`}
+            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          >
+            <Printer className="h-4 w-4" />
+            Print Measurements
+          </Link>
+        ) : (
+          <span className="flex h-10 cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted opacity-60">
+            <Printer className="h-4 w-4" />
+            Print Measurements
+          </span>
+        )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        <div className="min-w-0 space-y-4">
-          {error && (
-            <div className="rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
-              {error}
+      <div className="mb-5 rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+        <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">
+              Select Garment Type
+            </span>
+            <div className="relative">
+              <select
+                value={selectedGarmentId}
+                onChange={(event) => handleGarmentChange(event.target.value)}
+                className="h-11 w-full appearance-none rounded-lg border border-border bg-white py-0 pl-3.5 pr-12 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+              >
+                <option value="">Select garment type</option>
+                  {garmentTypes.map((garment) => (
+                  <option key={garment.id} value={garment.id}>
+                    {formatGarmentName(garment.name)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+            </div>
+          </label>
+          <div className="rounded-lg border border-border-soft bg-surface/60 px-3.5 py-2.5 text-sm text-ink-muted">
+            <span className="block text-[13px] font-medium">Last updated</span>
+            <span className="font-semibold text-ink">
+              {formatUpdatedAt(selectedMeasurement?.updatedAt)}
+            </span>
+          </div>
+        </div>
+        {garmentTypes.length === 0 && (
+          <p className="mt-3 text-sm text-chip-red-fg">
+            No active garment types with measurement fields found. Add measurement fields in Catalog first.
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
+          {error}
+        </div>
+      )}
+
+      {selectedGarment && copySources.length > 0 && (
+        <div className="mb-5 rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+          <h2 className="mb-3 text-[17px] font-semibold text-ink">
+            Copy from existing measurements
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-ink-muted">
+                Source garment type
+              </span>
+              <div className="relative">
+                <select
+                  value={copySourceKey}
+                  onChange={(event) => {
+                    setCopySourceKey(event.target.value);
+                    setCopyMessage(null);
+                    setPendingCopy(null);
+                  }}
+                  className="h-11 w-full appearance-none rounded-lg border border-border bg-white py-0 pl-3.5 pr-12 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">Select saved measurements</option>
+                  {copySources.map((source) => (
+                    <option
+                      key={`${source.measurement.customerId}:${source.measurement.garmentType}`}
+                      value={garmentKey(source.measurement.garmentType)}
+                    >
+                      {formatGarmentName(source.measurement.garmentType)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+              </div>
+            </label>
+            <button
+              type="button"
+              onClick={handleCopyMeasurements}
+              disabled={!copySourceKey}
+              className="h-11 rounded-lg border border-border bg-white px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Copy Fields
+            </button>
+          </div>
+          {copyMessage && (
+            <div
+              className={
+                copyMessage.tone === "success"
+                  ? "mt-3 flex items-center gap-2 rounded-lg bg-chip-mint px-3.5 py-2.5 text-sm font-medium text-chip-mint-fg"
+                  : "mt-3 rounded-lg bg-chip-info px-3.5 py-2.5 text-sm font-medium text-chip-info-fg"
+              }
+            >
+              {copyMessage.tone === "success" && (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {copyMessage.text}
             </div>
           )}
-          <CustomerMeasurementsForm
-            values={values}
-            notes={notes}
-            onValueChange={(key, value) =>
-              setValues((prev) => ({ ...prev, [key]: value }))
-            }
-            onNotesChange={setNotes}
-          />
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
-          >
-            {saving ? "Saving..." : t("customers.saveMeasurements")}
-          </button>
+          {pendingCopy && (
+            <div className="mt-3 rounded-lg border border-chip-peach bg-chip-peach px-3.5 py-3 text-sm text-chip-peach-fg">
+              <p className="font-medium">
+                This will overwrite matching {formatGarmentName(selectedGarment.name)}{" "}
+                measurement values. Continue?
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyCopiedFields(
+                      pendingCopy.sourceKey,
+                      pendingCopy.matchingFieldIds
+                    )
+                  }
+                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-chip-peach-fg shadow-sm transition-colors hover:bg-surface"
+                >
+                  Continue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingCopy(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-chip-peach-fg transition-colors hover:bg-white/70"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="space-y-5">
-          <MeasurementHistoryList entries={history} />
-          <MeasurementAttachmentsCard
-            customerId={params.id}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-          />
+      )}
+
+      {successMessage && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-chip-mint px-4 py-2.5 text-sm font-medium text-chip-mint-fg">
+          <CheckCircle2 className="h-4 w-4" />
+          {successMessage}
         </div>
-      </div>
+      )}
+
+      {selectedGarment && (
+        <CustomerMeasurementsForm
+          garmentName={selectedGarment.name}
+          fieldIds={selectedGarment.measurementFieldIds}
+          values={values}
+          notes={notes}
+          onValueChange={(key, value) =>
+            setValues((prev) => ({ ...prev, [key]: value }))
+          }
+          onNotesChange={setNotes}
+        />
+      )}
+
+      {!selectedGarment && garmentTypes.length > 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-white p-8 text-center text-sm font-medium text-ink-muted">
+          Select a garment type to enter measurements.
+        </div>
+      )}
+
+      <button
+        onClick={handleSave}
+        disabled={saving || !selectedGarment}
+        className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {saving ? "Saving..." : t("customers.saveMeasurements")}
+      </button>
     </div>
   );
 }

@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { notFound } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
 import {
   getCustomerByIdAction,
-  getCustomerMeasurementsAction,
   getGarmentMeasurementsForCustomerAction,
-  getMeasurementHistoryForCustomerAction,
 } from "@/app/(shell)/customers/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { measurementFieldLabel } from "@/lib/catalog";
@@ -16,9 +14,7 @@ import {
 } from "@/lib/data/shop-billing-settings-db";
 import type {
   Customer,
-  CustomerMeasurements,
   GarmentMeasurement,
-  MeasurementHistoryEntry,
 } from "@/lib/types";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -28,6 +24,26 @@ function formatGeneratedAt(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatUpdatedAt(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatGarmentName(name: string) {
+  return name
+    .trim()
+    .split(/(\s+|\/|-)/)
+    .map((part) =>
+      /^[a-z]/i.test(part)
+        ? part.charAt(0).toUpperCase() + part.slice(1)
+        : part
+    )
+    .join("");
 }
 
 function filledEntries(values: Record<string, string>) {
@@ -55,33 +71,13 @@ function MeasurementGrid({ values }: { values: Record<string, string> }) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value?: string }) {
-  if (!value?.trim() || value === "Not specified") return null;
-  return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-        {label}
-      </p>
-      <p className="mt-0.5 whitespace-pre-wrap text-sm font-semibold text-gray-950">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function latestHistoryDate(history: MeasurementHistoryEntry[]) {
-  return history[0]?.createdAt;
-}
-
 function MeasurementsPrintContent({ params }: { params: { id: string } }) {
+  const searchParams = useSearchParams();
+  const selectedGarmentType = searchParams.get("garmentType")?.trim() ?? "";
   const [customer, setCustomer] = useState<Customer | null | undefined>(
     undefined
   );
-  const [baseline, setBaseline] = useState<CustomerMeasurements | undefined>(
-    undefined
-  );
   const [garments, setGarments] = useState<GarmentMeasurement[]>([]);
-  const [history, setHistory] = useState<MeasurementHistoryEntry[]>([]);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
@@ -93,15 +89,11 @@ function MeasurementsPrintContent({ params }: { params: { id: string } }) {
     });
     Promise.all([
       getCustomerByIdAction(params.id),
-      getCustomerMeasurementsAction(params.id),
       getGarmentMeasurementsForCustomerAction(params.id),
-      getMeasurementHistoryForCustomerAction(params.id),
-    ]).then(([customerResult, baselineResult, garmentResults, historyResults]) => {
+    ]).then(([customerResult, garmentResults]) => {
       if (cancelled) return;
       setCustomer(customerResult ?? null);
-      setBaseline(baselineResult);
       setGarments(garmentResults);
-      setHistory(historyResults);
     });
     return () => {
       cancelled = true;
@@ -113,7 +105,13 @@ function MeasurementsPrintContent({ params }: { params: { id: string } }) {
   if (customer === undefined) return null;
   if (customer === null) notFound();
 
-  const latestRevision = latestHistoryDate(history);
+  const printableGarments = selectedGarmentType
+    ? garments.filter(
+        (garment) =>
+          garment.garmentType.trim().toLowerCase() ===
+          selectedGarmentType.toLowerCase()
+      )
+    : garments;
 
   return (
     <PrintPageFrame
@@ -142,7 +140,9 @@ function MeasurementsPrintContent({ params }: { params: { id: string } }) {
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
-              Measurement Profile
+              {selectedGarmentType
+                ? `${formatGarmentName(selectedGarmentType)} Measurements`
+                : "Measurement Profile"}
             </p>
             <p className="mt-1 text-xs text-gray-500">Generated</p>
             <p className="font-semibold">{formatGeneratedAt(generatedAt)}</p>
@@ -168,49 +168,34 @@ function MeasurementsPrintContent({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mt-6 break-inside-avoid border border-gray-400 p-4">
-        <h2 className="mb-3 text-base font-bold">Tailoring Profile</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <DetailRow label="Category" value={customer.categoryPreference} />
-          <DetailRow label="Fabric Source" value={customer.fabricSourcePreference} />
-          <DetailRow label="Fit Preference" value={customer.fitPreference} />
-          <DetailRow label="Style Preference" value={customer.stylePreference} />
-          <DetailRow label="Frequent Complaints" value={customer.frequentComplaints} />
-          <DetailRow label="Customer Notes" value={customer.notes} />
-        </div>
-      </div>
-
-      <div className="mt-6 break-inside-avoid border border-gray-400 p-4">
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <h2 className="text-base font-bold">Baseline Measurements</h2>
-          <p className="text-xs text-gray-500">
-            Updated {baseline?.updatedAt ?? "not recorded"}
-          </p>
-        </div>
-        <MeasurementGrid values={baseline?.values ?? {}} />
-        {baseline?.notes && (
-          <p className="mt-3 whitespace-pre-wrap text-sm">
-            <span className="font-semibold text-gray-500">Notes: </span>
-            {baseline.notes}
-          </p>
-        )}
+        <h2 className="mb-3 text-base font-bold">Customer Notes</h2>
+        <p className="whitespace-pre-wrap text-sm text-gray-700">
+          {customer.notes || "-"}
+        </p>
       </div>
 
       <div className="mt-6 space-y-5">
-        <h2 className="text-base font-bold">Garment-Wise Measurements</h2>
-        {garments.length === 0 ? (
+        <h2 className="text-base font-bold">
+          {selectedGarmentType
+            ? `${formatGarmentName(selectedGarmentType)} Measurements`
+            : "Garment-Wise Measurements"}
+        </h2>
+        {printableGarments.length === 0 ? (
           <div className="border border-dashed border-gray-300 p-6 text-center text-sm italic text-gray-500">
-            No garment-wise measurements saved.
+            No measurements saved for this garment type.
           </div>
         ) : (
-          garments.map((garment) => (
+          printableGarments.map((garment) => (
             <section
               key={`${garment.customerId}:${garment.garmentType}`}
               className="break-inside-avoid border border-gray-400 p-4"
             >
               <div className="mb-3 flex items-end justify-between gap-4 border-b border-gray-300 pb-2">
-                <h3 className="text-base font-bold">{garment.garmentType}</h3>
+                <h3 className="text-base font-bold">
+                  {formatGarmentName(garment.garmentType)}
+                </h3>
                 <p className="text-xs text-gray-500">
-                  Updated {garment.updatedAt}
+                  Updated {formatUpdatedAt(garment.updatedAt)}
                 </p>
               </div>
               <MeasurementGrid values={garment.values} />
@@ -232,14 +217,7 @@ function MeasurementsPrintContent({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mt-8 border-t border-gray-300 pt-3 text-xs text-gray-500">
-        <p>
-          Latest measurement revision:{" "}
-          {latestRevision ? formatGeneratedAt(latestRevision) : "not recorded"}
-        </p>
-        <p className="mt-1">
-          This printout shows the current saved measurement profile. Full
-          version history remains available in the app.
-        </p>
+        <p>This printout shows the current saved measurements.</p>
       </div>
     </PrintPageFrame>
   );

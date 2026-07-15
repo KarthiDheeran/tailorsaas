@@ -292,8 +292,8 @@ export function OrdersTable({
 
   if (orders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
-        <Inbox className="mb-1 h-6 w-6 text-ink-faint" />
+      <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border-soft py-8 text-center">
+        <Inbox className="h-5 w-5 text-ink-faint" />
         <p className="text-sm text-ink-muted">{t("orders.noOrdersYet")}</p>
       </div>
     );

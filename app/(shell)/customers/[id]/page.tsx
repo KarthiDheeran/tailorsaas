@@ -7,10 +7,12 @@ import { ChevronLeft, FileText, Plus, Pencil } from "lucide-react";
 import {
   getCustomerByIdAction,
   getCustomerDetailAction,
-  getCustomerMeasurementsAction,
+  getGarmentMeasurementsForCustomerAction,
 } from "@/app/(shell)/customers/actions";
+import { getActiveGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import type { CatalogGarmentType } from "@/lib/catalog";
 import type { CustomerDetail } from "@/lib/customers-db";
-import type { Customer, CustomerMeasurements } from "@/lib/types";
+import type { Customer, GarmentMeasurement } from "@/lib/types";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { MeasurementsCard } from "@/components/customers/measurements-card";
 import { PaymentSummaryCard } from "@/components/customers/payment-summary-card";
@@ -19,6 +21,7 @@ import { OrdersTable } from "@/components/orders/orders-table";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
 function CustomerProfilePageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -31,22 +34,24 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | undefined>(undefined);
-  const [measurements, setMeasurements] = useState<CustomerMeasurements | undefined>(
-    undefined
-  );
+  const [measurements, setMeasurements] = useState<GarmentMeasurement[]>([]);
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [returningToCustomers, setReturningToCustomers] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getCustomerByIdAction(params.id),
       getCustomerDetailAction(params.id),
-      getCustomerMeasurementsAction(params.id),
-    ]).then(([c, d, m]) => {
+      getGarmentMeasurementsForCustomerAction(params.id),
+      getActiveGarmentTypesAction(),
+    ]).then(([c, d, m, garments]) => {
       if (cancelled) return;
       setCustomer(c ?? null);
       setDetail(d);
       setMeasurements(m);
+      setGarmentTypes(garments);
       setLoaded(true);
     });
     return () => {
@@ -58,16 +63,26 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
     notFound();
   }
 
-  if (!customer || !detail) return null;
+  if (!loaded || !customer || !detail) {
+    return (
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+        <LoadingState label="Loading customer profile..." />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <button
-        onClick={() => router.push("/customers")}
-        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
+        onClick={() => {
+          setReturningToCustomers(true);
+          router.push("/customers");
+        }}
+        disabled={returningToCustomers}
+        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
       >
         <ChevronLeft className="h-4 w-4" />
-        {t("customers.backToCustomers")}
+        {returningToCustomers ? "Opening..." : t("customers.backToCustomers")}
       </button>
 
       <div className="mb-6 flex items-start justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
@@ -109,7 +124,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             <Link
               href={`/customers/${customer.id}/statement`}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-              title="Customer statement"
+              title="Customer Statement"
             >
               <FileText className="h-3.5 w-3.5" />
             </Link>
@@ -118,7 +133,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             <Link
               href={`/customers/${customer.id}/edit`}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-              title={t("common.edit")}
+              title="Edit Customer Details"
             >
               <Pencil className="h-3.5 w-3.5" />
             </Link>
@@ -128,9 +143,6 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          {canViewMeasurements && (
-            <MeasurementsCard customer={customer} measurements={measurements} />
-          )}
           <div>
             <h2 className="mb-3 text-[17px] font-semibold text-ink">
               {t("customers.orderHistory")}
@@ -140,6 +152,13 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
               customersById={{ [customer.id]: customer }}
             />
           </div>
+          {canViewMeasurements && (
+            <MeasurementsCard
+              customer={customer}
+              garmentTypes={garmentTypes}
+              measurements={measurements}
+            />
+          )}
         </div>
         <div className="space-y-5">
           <TailoringProfileCard customer={customer} />

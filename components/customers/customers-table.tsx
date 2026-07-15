@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Plus, Pencil, Inbox } from "lucide-react";
+import { Eye, Plus, Inbox } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
@@ -15,7 +15,6 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const canCreateOrder = hasPermission("orders.create");
-  const canEdit = hasPermission("customers.edit");
   const { t } = useLanguage();
 
   if (rows.length === 0) {
@@ -37,7 +36,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
             <th className="whitespace-nowrap px-5 py-3">{t("customers.customerName")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("common.phone")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("common.area")}</th>
-            <th className="whitespace-nowrap px-5 py-3 text-right">
+            <th className="whitespace-nowrap px-5 py-3 text-center">
               {t("customers.totalOrders")}
             </th>
             <th className="whitespace-nowrap px-5 py-3">{t("customers.lastOrder")}</th>
@@ -84,7 +83,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                   {customer.area}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                <td className="whitespace-nowrap px-5 py-3 text-center text-ink">
                   {totalOrders}
                 </td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
@@ -107,7 +106,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                   <div className="flex items-center justify-end gap-1.5">
                     <Link
                       href={`/customers/${customer.id}`}
-                      title={t("customers.viewCustomer")}
+                      title="View Profile"
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -115,7 +114,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                     {canCreateOrder && (
                       <Link
                         href={`/orders/new?customerId=${customer.id}`}
-                        title={t("customers.newOrder")}
+                        title="Create Order"
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -127,15 +126,6 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                       contextType="Customer"
                       contextId={customer.id}
                     />
-                    {canEdit && (
-                      <Link
-                        href={`/customers/${customer.id}/edit`}
-                        title={t("customers.editCustomer")}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Link>
-                    )}
                   </div>
                 </td>
               </tr>

@@ -68,11 +68,6 @@ interface CustomerWriteData {
   address: string;
   area: string;
   gender?: Gender;
-  categoryPreference?: string;
-  fitPreference?: string;
-  stylePreference?: string;
-  fabricSourcePreference?: FabricSourcePreference;
-  frequentComplaints?: string;
   notes?: string;
 }
 
@@ -165,11 +160,6 @@ export async function createCustomer(
       address: data.address,
       area: data.area,
       gender: data.gender ?? null,
-      category_preference: data.categoryPreference ?? "",
-      fit_preference: data.fitPreference ?? "",
-      style_preference: data.stylePreference ?? "",
-      fabric_source_preference: data.fabricSourcePreference ?? "Not specified",
-      frequent_complaints: data.frequentComplaints ?? "",
       notes: data.notes ?? "",
     })
     .select(CUSTOMER_COLUMNS)
@@ -192,21 +182,6 @@ export async function updateCustomer(
     updated_at: new Date().toISOString(),
   };
 
-  if (data.categoryPreference !== undefined) {
-    updates.category_preference = data.categoryPreference;
-  }
-  if (data.fitPreference !== undefined) {
-    updates.fit_preference = data.fitPreference;
-  }
-  if (data.stylePreference !== undefined) {
-    updates.style_preference = data.stylePreference;
-  }
-  if (data.fabricSourcePreference !== undefined) {
-    updates.fabric_source_preference = data.fabricSourcePreference;
-  }
-  if (data.frequentComplaints !== undefined) {
-    updates.frequent_complaints = data.frequentComplaints;
-  }
   if (data.notes !== undefined) {
     updates.notes = data.notes;
   }
@@ -235,7 +210,7 @@ function mapCustomerMeasurements(row: CustomerMeasurementsRow): CustomerMeasurem
     customerId: row.customer_id,
     values: row.values ?? {},
     notes: row.notes ?? undefined,
-    updatedAt: row.updated_at.slice(0, 10),
+    updatedAt: row.updated_at,
   };
 }
 
@@ -326,7 +301,7 @@ function mapGarmentMeasurement(row: GarmentMeasurementRow): GarmentMeasurement {
     values: row.values ?? {},
     fitNotes: row.fit_notes ?? undefined,
     notes: row.notes ?? undefined,
-    updatedAt: row.updated_at.slice(0, 10),
+    updatedAt: row.updated_at,
   };
 }
 

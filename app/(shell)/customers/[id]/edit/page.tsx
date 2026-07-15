@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import {
   getCustomerByIdAction,
   updateCustomerAction,
@@ -43,15 +44,24 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
     const result = await updateCustomerAction(params.id, values);
     if (!result.success) {
       setError(result.error);
-      return;
+      return { keepPending: false };
     }
     router.push(`/customers/${params.id}`);
+    return { keepPending: true };
   }
 
   if (!customer) return null;
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <button
+        onClick={() => router.push(`/customers/${params.id}`)}
+        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Back to {customer.name}
+      </button>
+
       <div className="mb-6">
         <h1 className="text-[26px] font-semibold text-ink">
           {t("customers.editCustomer")}
@@ -75,15 +85,10 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
             address: customer.address,
             area: customer.area,
             gender: customer.gender,
-            categoryPreference: customer.categoryPreference,
-            fitPreference: customer.fitPreference,
-            stylePreference: customer.stylePreference,
-            fabricSourcePreference: customer.fabricSourcePreference,
-            frequentComplaints: customer.frequentComplaints,
             notes: customer.notes,
           }}
           title={t("customers.customerDetailsSection")}
-          submitLabel={t("common.saveChanges")}
+          submitLabel="Update Customer"
         />
       </div>
     </div>

@@ -40,7 +40,6 @@ import {
 import type {
   Customer,
   CustomerMeasurements,
-  FabricSourcePreference,
   Gender,
   GarmentMeasurement,
   MeasurementAttachment,
@@ -201,11 +200,6 @@ export interface CustomerFormData {
   address: string;
   area: string;
   gender?: Gender;
-  categoryPreference?: string;
-  fitPreference?: string;
-  stylePreference?: string;
-  fabricSourcePreference?: FabricSourcePreference;
-  frequentComplaints?: string;
   notes?: string;
 }
 

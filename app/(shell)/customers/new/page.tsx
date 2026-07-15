@@ -22,9 +22,10 @@ function AddCustomerPageContent() {
     const result = await createCustomerAction(values);
     if (!result.success) {
       setError(result.error);
-      return;
+      return { keepPending: false };
     }
     router.push(`/customers/${result.data.id}`);
+    return { keepPending: true };
   }
 
   async function handleSaveAndNewOrder(values: NewCustomerFormValues) {
@@ -32,9 +33,10 @@ function AddCustomerPageContent() {
     const result = await createCustomerAction(values);
     if (!result.success) {
       setError(result.error);
-      return;
+      return { keepPending: false };
     }
     router.push(`/orders/new?customerId=${result.data.id}`);
+    return { keepPending: true };
   }
 
   return (
