@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Plus,
+  X,
+} from "lucide-react";
 import {
   getOrderByIdAction,
   getOrdersPageDataAction,
@@ -66,6 +73,7 @@ function OrdersPageContent() {
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [pendingOpenOrderId, setPendingOpenOrderId] = useState<string | null>(null);
+  const [openingNewOrderHref, setOpeningNewOrderHref] = useState<string | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -291,6 +299,9 @@ function OrdersPageContent() {
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE
   );
+  const selectedCustomerNewOrderHref = selectedCustomer
+    ? `/orders/new?customerId=${selectedCustomer.id}`
+    : "";
   const rangeStart = allOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, allOrders.length);
 
@@ -383,10 +394,16 @@ function OrdersPageContent() {
           {canCreate && (
             <Link
               href="/orders/new"
+              onClick={() => setOpeningNewOrderHref("/orders/new")}
+              aria-busy={openingNewOrderHref === "/orders/new"}
               className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
-              <Plus className="h-4 w-4" />
-              {t("orders.newOrder")}
+              {openingNewOrderHref === "/orders/new" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {openingNewOrderHref === "/orders/new" ? "Opening..." : t("orders.newOrder")}
             </Link>
           )}
         </div>
@@ -430,11 +447,19 @@ function OrdersPageContent() {
             <div className="flex items-center gap-2">
               {canCreate && (
                 <Link
-                  href={`/orders/new?customerId=${selectedCustomer.id}`}
+                  href={selectedCustomerNewOrderHref}
+                  onClick={() => setOpeningNewOrderHref(selectedCustomerNewOrderHref)}
+                  aria-busy={openingNewOrderHref === selectedCustomerNewOrderHref}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
                 >
-                  <Plus className="h-4 w-4" />
-                  {t("orders.newOrder")}
+                  {openingNewOrderHref === selectedCustomerNewOrderHref ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  {openingNewOrderHref === selectedCustomerNewOrderHref
+                    ? "Opening..."
+                    : t("orders.newOrder")}
                 </Link>
               )}
               <button

@@ -35,6 +35,7 @@ export function NewOrderSummaryPanel({
   measurements,
   garmentMeasurements,
   onRepeatOrder,
+  newCustomerPending = false,
 }: {
   customer: Customer | null;
   // Phase 5A: all fetched by the parent (app/(shell)/orders/new/page.tsx) via
@@ -46,12 +47,21 @@ export function NewOrderSummaryPanel({
   measurements: CustomerMeasurements | undefined;
   garmentMeasurements: GarmentMeasurement[];
   onRepeatOrder: (order: Order) => void;
+  newCustomerPending?: boolean;
 }) {
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const { t } = useLanguage();
 
   if (!customer) {
+    if (newCustomerPending) {
+      return (
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-border-soft bg-white p-5 text-sm text-ink-muted">
+          <User className="h-4 w-4 shrink-0 text-ink-faint" />
+          New customer details will be saved with this order.
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-3 rounded-xl border border-dashed border-border-soft bg-white p-5 text-sm text-ink-muted">
         <User className="h-4 w-4 shrink-0 text-ink-faint" />
@@ -75,6 +85,7 @@ export function NewOrderSummaryPanel({
   // priority since they're the more specific, garment-scoped source; only
   // fall back to the generic customer baseline when none exist yet.
   const todayIso = new Date().toISOString().slice(0, 10);
+  const recentOrders = detail.orders.slice(0, 3);
 
   return (
     <div className="space-y-5">
@@ -109,16 +120,6 @@ export function NewOrderSummaryPanel({
           >
             {t("common.viewProfile")}
           </Link>
-          {detail.orders.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onRepeatOrder(detail.orders[0])}
-              className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface"
-            >
-              <Repeat className="h-3.5 w-3.5" />
-              {t("orders.repeatLastOrder")}
-            </button>
-          )}
         </div>
       </Card>
 
@@ -154,10 +155,10 @@ export function NewOrderSummaryPanel({
         )}
       </Card>
 
-      {detail.orders.length > 0 && (
+      {recentOrders.length > 0 && (
         <Card title={t("orders.previousOrders")}>
           <div className="space-y-3">
-            {detail.orders.map((o) => (
+            {recentOrders.map((o) => (
               <div
                 key={o.id}
                 className="space-y-1.5 border-b border-border-soft pb-3 text-sm last:border-0 last:pb-0"

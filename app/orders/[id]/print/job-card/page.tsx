@@ -42,22 +42,34 @@ const FIELD_LABELS: Record<string, string> = Object.fromEntries(
   measurementFields.map((f) => [f.id, f.label])
 );
 
-// Measurement *values* prefer the snapshot saved on the order item itself
-// (what was actually used when this order was placed — see New Order's
-// Measurements handling); fitNotes/notes were never snapshotted onto the
-// item, so those always come from the customer's per-garment record.
+const MEASUREMENT_NOTES_KEY = "__measurementNotes";
+
+function mergeMeasurementNotes(fitNotes?: string, notes?: string): string {
+  const parts = [fitNotes?.trim() ?? "", notes?.trim() ?? ""].filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  if (parts[0].toLowerCase() === parts[1].toLowerCase()) return parts[0];
+  return parts.join("\n");
+}
+
+// Measurement values prefer the snapshot saved on the order item itself
+// (what was actually used when this order was placed). New orders store the
+// unified Measurement Notes in that snapshot; older orders may still need the
+// customer's saved garment measurement notes merged from fitNotes/notes.
 function resolveMeasurements(
   item: OrderItem,
   persisted: GarmentMeasurement | undefined
 ) {
-  const values =
+  const rawValues =
     item.measurements && Object.keys(item.measurements).length > 0
       ? item.measurements
       : persisted?.values ?? {};
+  const { [MEASUREMENT_NOTES_KEY]: snapshotNotes, ...values } = rawValues;
   return {
     values,
-    fitNotes: persisted?.fitNotes ?? "",
-    notes: persisted?.notes ?? "",
+    measurementNotes:
+      snapshotNotes?.trim() ||
+      mergeMeasurementNotes(persisted?.fitNotes, persisted?.notes),
   };
 }
 
@@ -232,7 +244,7 @@ function TailorJobCardPrintPageContent({
 
       <div className="mt-6 space-y-6">
         {order.items.map((item) => {
-          const { values, fitNotes, notes } = resolveMeasurements(
+          const { values, measurementNotes } = resolveMeasurements(
             item,
             measurementsByItem[item.serialNo]
           );
@@ -334,20 +346,12 @@ function TailorJobCardPrintPageContent({
                 )}
               </div>
 
-              {fitNotes && (
-                <p className="mt-3 text-sm">
+              {measurementNotes && (
+                <p className="mt-3 whitespace-pre-line text-sm">
                   <span className="font-semibold text-gray-500">
-                    {t("common.fitNotes")}:{" "}
+                    Measurement Notes:{" "}
                   </span>
-                  {fitNotes}
-                </p>
-              )}
-              {notes && (
-                <p className="mt-1 text-sm">
-                  <span className="font-semibold text-gray-500">
-                    {t("common.notes")}:{" "}
-                  </span>
-                  {notes}
+                  {measurementNotes}
                 </p>
               )}
             </div>

@@ -102,6 +102,10 @@ function sanitizeStorageSegment(value: string) {
     .slice(0, 80);
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return (error as { code?: string }).code === "23505";
+}
+
 async function withSignedUrls(
   attachments: MeasurementAttachment[]
 ): Promise<MeasurementAttachment[]> {
@@ -211,8 +215,15 @@ export async function createCustomerAction(
   if (!guard.ok) return { success: false, error: guard.error };
   if (!data.name.trim()) return { success: false, error: "Name is required." };
   if (!data.phone.trim()) return { success: false, error: "Phone is required." };
-  const customer = await createCustomer(supabase, data);
-  return { success: true, data: customer };
+  try {
+    const customer = await createCustomer(supabase, data);
+    return { success: true, data: customer };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { success: false, error: "A customer with this phone number already exists." };
+    }
+    throw error;
+  }
 }
 
 export async function updateCustomerAction(

@@ -54,8 +54,8 @@ function computeStatus(
   todayIso: string
 ): CustomerStatus {
   if (outstandingBalance > 0) return "Has Balance";
+  if (!lastOrderDate) return "Active";
   if (
-    lastOrderDate &&
     daysBetween(lastOrderDate, todayIso) <= RECENT_WINDOW_DAYS
   ) {
     return "Active";

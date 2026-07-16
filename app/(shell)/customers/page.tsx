@@ -77,6 +77,16 @@ function CustomersPageContent() {
     }
     return true;
   });
+  const hasActiveFilters =
+    filters.query.trim() !== "" ||
+    filters.area !== "" ||
+    filters.balance !== "all" ||
+    filters.activity !== "all";
+  const countLabel = hasActiveFilters
+    ? `${rows.length} ${t("customers.of")} ${allRows.length} ${t(
+        "customers.shown"
+      )}`
+    : `${allRows.length} ${t("customers.onRecord")}`;
 
   function handleExportCustomers() {
     const canViewPayments = hasPermission("orders.viewPayments");
@@ -116,7 +126,7 @@ function CustomersPageContent() {
             {t("customers.title")}
           </h1>
           <p className="text-sm text-ink-muted">
-            {allRows.length} {t("customers.onRecord")}
+            {countLabel}
           </p>
         </div>
         <div className="flex items-center gap-2">

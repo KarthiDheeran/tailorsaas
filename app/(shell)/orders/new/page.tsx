@@ -1,41 +1,42 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, MessageCircle } from "lucide-react";
-import { orderStatuses, paymentModes } from "@/lib/constants";
+import { CheckCircle2, ChevronLeft, Loader2, MessageCircle } from "lucide-react";
+import { paymentModes } from "@/lib/constants";
 import {
-  createCustomerAction,
   getCustomerByIdAction,
   getCustomerByPhoneAction,
   getCustomerDetailAction,
   getCustomerMeasurementsAction,
   getGarmentMeasurementsForCustomerAction,
-  saveCustomerMeasurementsAction,
   saveGarmentMeasurementAction,
-  searchCustomersByPhoneAction,
-  updateCustomerAction,
+  searchCustomersAction,
 } from "@/app/(shell)/customers/actions";
-import { createOrderAction, generateNextOrderNumberAction } from "@/app/(shell)/orders/actions";
+import {
+  createOrderAction,
+  createOrderForNewCustomerAction,
+} from "@/app/(shell)/orders/actions";
 import {
   getActiveGarmentTypesAction,
   getAddOnsAction,
 } from "@/app/(shell)/catalog/actions";
 import type { CustomerDetail } from "@/lib/customers-db";
 import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
-import { pickBodyMeasurements } from "@/lib/garment-catalog";
 import type {
   Customer,
   CustomerMeasurements,
   GarmentMeasurement,
   Gender,
   Order,
-  OrderStatus,
   PaymentMode,
 } from "@/lib/types";
 import { BalanceBadge } from "@/components/orders/orders-table";
-import { countFilledFields } from "@/components/orders/garment-measurement-modal";
+import {
+  countFilledFields,
+  measurementValuesOnly,
+} from "@/components/orders/garment-measurement-modal";
 import {
   NewOrderItemsCard,
   blankDraftItem,
@@ -49,7 +50,6 @@ import { cn } from "@/lib/utils";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { ORDER_STATUS_LABEL_KEYS } from "@/components/orders/orders-table";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
 
@@ -59,6 +59,16 @@ function todayIso() {
 
 const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
+
+type CustomerEntryMode = "search" | "selected" | "new";
+
+const emptyCustomerDraft = {
+  phone: "",
+  name: "",
+  area: "",
+  address: "",
+  gender: "Male" as Gender,
+};
 
 function money(value: number) {
   return `Rs ${Number(value).toLocaleString("en-IN")}`;
@@ -84,6 +94,7 @@ function buildOrderConfirmationMessage(order: Order): string {
 
 function NewOrderPageContent() {
   const router = useRouter();
+  const customerSearchRef = useRef<HTMLDivElement>(null);
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -91,19 +102,12 @@ function NewOrderPageContent() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customerId");
-
-  // Non-mutating peek at the next order number, frozen for this session —
-  // the real number is (re)computed by createOrderAction itself at save
-  // time. Phase 5A: fetched via a Server Action, so it starts blank and
-  // fills in a moment after mount rather than being ready on first paint.
-  const [orderNumberPreview, setOrderNumberPreview] = useState("");
-  const [status, setStatus] = useState<OrderStatus>("In Progress");
-
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
-  const [area, setArea] = useState("");
-  const [address, setAddress] = useState("");
-  const [gender, setGender] = useState<Gender>("Male");
+  const [customerMode, setCustomerMode] = useState<CustomerEntryMode>("search");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [customerResultsOpen, setCustomerResultsOpen] = useState(false);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [customerSearchCompleted, setCustomerSearchCompleted] = useState(false);
+  const [newCustomer, setNewCustomer] = useState(emptyCustomerDraft);
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
 
   const [orderDate, setOrderDate] = useState(todayIso());
@@ -119,7 +123,9 @@ function NewOrderPageContent() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [leavingToOrders, setLeavingToOrders] = useState(false);
 
   // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
   // once here and threaded down to NewOrderItemsCard as props — every
@@ -142,7 +148,12 @@ function NewOrderPageContent() {
     };
   }, []);
 
-  const [phoneSuggestions, setPhoneSuggestions] = useState<Customer[]>([]);
+  const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
+  const [duplicateCustomer, setDuplicateCustomer] = useState<Customer | null>(null);
+  const [phoneDuplicateCustomer, setPhoneDuplicateCustomer] = useState<Customer | null>(null);
+  const [phoneDuplicateChecking, setPhoneDuplicateChecking] = useState(false);
+  const [similarNameCustomers, setSimilarNameCustomers] = useState<Customer[]>([]);
+  const [similarNameChecking, setSimilarNameChecking] = useState(false);
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | undefined>(
     undefined
   );
@@ -156,20 +167,17 @@ function NewOrderPageContent() {
   // isDirty's baseline — starts blank, updated once if a prefill customer
   // loads, so "dirty" only reflects changes made *after* the form settled
   // into its starting state (prefilled or not).
-  const [initialFields, setInitialFields] = useState({
-    phone: "",
-    name: "",
-    area: "",
-    address: "",
-  });
-
   function applyCustomer(c: Customer) {
     setMatchedCustomer(c);
-    setPhone(c.phone);
-    setName(c.name);
-    setArea(c.area);
-    setAddress(c.address);
-    setGender(c.gender ?? "Male");
+    setCustomerMode("selected");
+    setCustomerSearchQuery("");
+    setCustomerSearchResults([]);
+    setCustomerResultsOpen(false);
+    setCustomerSearchCompleted(false);
+    setDuplicateCustomer(null);
+    setPhoneDuplicateCustomer(null);
+    setSimilarNameCustomers([]);
+    setNewCustomer(emptyCustomerDraft);
   }
 
   // Prefill from ?customerId= (the "New Order" link from an already-selected
@@ -181,7 +189,6 @@ function NewOrderPageContent() {
     getCustomerByIdAction(prefillCustomerId).then((c) => {
       if (cancelled || !c) return;
       applyCustomer(c);
-      setInitialFields({ phone: c.phone, name: c.name, area: c.area, address: c.address });
     });
     return () => {
       cancelled = true;
@@ -189,31 +196,90 @@ function NewOrderPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillCustomerId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    generateNextOrderNumberAction().then((n) => {
-      if (!cancelled) setOrderNumberPreview(n);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Phone-suggestions autosuggest — only searches once a customer isn't
   // already matched, same trigger condition as before.
   useEffect(() => {
-    if (matchedCustomer || !phone.trim()) {
-      setPhoneSuggestions([]);
+    if (customerMode !== "search" || !customerSearchQuery.trim()) {
+      setCustomerSearchResults([]);
+      setCustomerResultsOpen(false);
+      setCustomerSearchLoading(false);
+      setCustomerSearchCompleted(false);
       return;
     }
     let cancelled = false;
-    searchCustomersByPhoneAction(phone).then((results) => {
-      if (!cancelled) setPhoneSuggestions(results);
+    setCustomerSearchLoading(true);
+    setCustomerSearchCompleted(false);
+    searchCustomersAction(customerSearchQuery).then((results) => {
+      if (cancelled) return;
+      setCustomerSearchResults(results.slice(0, 8));
+      setCustomerSearchLoading(false);
+      setCustomerSearchCompleted(true);
+      setCustomerResultsOpen(
+        !!customerSearchRef.current?.contains(document.activeElement)
+      );
     });
     return () => {
       cancelled = true;
+      setCustomerSearchLoading(false);
     };
-  }, [phone, matchedCustomer]);
+  }, [customerMode, customerSearchQuery]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!customerSearchRef.current?.contains(event.target as Node)) {
+        setCustomerResultsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  useEffect(() => {
+    const phone = newCustomer.phone.trim();
+    if (customerMode !== "new" || !/^\d{10}$/.test(phone)) {
+      setPhoneDuplicateCustomer(null);
+      setPhoneDuplicateChecking(false);
+      return;
+    }
+    let cancelled = false;
+    setPhoneDuplicateChecking(true);
+    getCustomerByPhoneAction(phone).then((customer) => {
+      if (cancelled) return;
+      setPhoneDuplicateCustomer(customer ?? null);
+      setPhoneDuplicateChecking(false);
+    });
+    return () => {
+      cancelled = true;
+      setPhoneDuplicateChecking(false);
+    };
+  }, [customerMode, newCustomer.phone]);
+
+  useEffect(() => {
+    const name = newCustomer.name.trim();
+    if (customerMode !== "new" || name.length < 2) {
+      setSimilarNameCustomers([]);
+      setSimilarNameChecking(false);
+      return;
+    }
+    let cancelled = false;
+    setSimilarNameChecking(true);
+    searchCustomersAction(name).then((customers) => {
+      if (cancelled) return;
+      const normalized = name.toLowerCase();
+      setSimilarNameCustomers(
+        customers
+          .filter((customer) =>
+            customer.name.toLowerCase().includes(normalized)
+          )
+          .slice(0, 4)
+      );
+      setSimilarNameChecking(false);
+    });
+    return () => {
+      cancelled = true;
+      setSimilarNameChecking(false);
+    };
+  }, [customerMode, newCustomer.name]);
 
   // Previous Orders / saved-measurements summary panel data — re-fetched
   // whenever the matched customer changes.
@@ -243,8 +309,12 @@ function NewOrderPageContent() {
   const { computedItems, totalAmount } = computeOrderItems(items, garmentTypes, addOns);
   const balance = totalAmount - advancePaid;
 
-  const trimmedPhone = phone.trim();
-  const trimmedName = name.trim();
+  const trimmedNewPhone = newCustomer.phone.trim();
+  const trimmedNewName = newCustomer.name.trim();
+  const isCreatingNewCustomer = customerMode === "new";
+  const hasSelectedCustomer = customerMode === "selected" && matchedCustomer;
+  const phoneInvalid =
+    isCreatingNewCustomer && trimmedNewPhone && !/^\d{10}$/.test(trimmedNewPhone);
   const anyGarmentSelected = items.some((it) => it.garmentTypeId);
   const hasInvalidQtyOrRate = items.some(
     (it) => it.garmentTypeId && (it.qty <= 0 || it.rate < 0)
@@ -260,10 +330,37 @@ function NewOrderPageContent() {
   } else if (!hasValidItem) {
     itemsError = t("validation.itemRequired");
   }
+  const deliveryDateError = !deliveryDate
+    ? t("validation.deliveryDateRequired")
+    : deliveryDate < orderDate
+      ? "Delivery date cannot be before order date."
+      : undefined;
+  const trialDateError =
+    trialDate && deliveryDate && trialDate > deliveryDate
+      ? "Trial date cannot be after delivery date."
+      : undefined;
   const errors = {
-    phone: !trimmedPhone ? t("validation.phoneRequired") : undefined,
-    name: !trimmedName ? t("validation.customerNameRequired") : undefined,
-    deliveryDate: !deliveryDate ? t("validation.deliveryDateRequired") : undefined,
+    customer:
+      !hasSelectedCustomer && !isCreatingNewCustomer
+        ? "Select an existing customer or create a new customer."
+        : undefined,
+    phone: isCreatingNewCustomer
+      ? !trimmedNewPhone
+        ? t("validation.phoneRequired")
+        : phoneInvalid
+          ? t("validation.phoneInvalid")
+          : undefined
+      : undefined,
+    phoneDuplicate:
+      isCreatingNewCustomer && phoneDuplicateCustomer
+        ? "A customer with this phone number already exists."
+        : undefined,
+    name:
+      isCreatingNewCustomer && !trimmedNewName
+        ? t("validation.customerNameRequired")
+        : undefined,
+    deliveryDate: deliveryDateError,
+    trialDate: trialDateError,
     items: itemsError,
     advancePaid:
       advancePaid < 0
@@ -278,19 +375,41 @@ function NewOrderPageContent() {
     applyCustomer(c);
   }
 
-  async function handlePhoneBlur() {
-    if (matchedCustomer) return;
-    const exact = await getCustomerByPhoneAction(phone.trim());
-    if (exact) handleSelectCustomer(exact);
-  }
-
   function handleChangeCustomer() {
     setMatchedCustomer(null);
-    setPhone("");
-    setName("");
-    setArea("");
-    setAddress("");
-    setGender("Male");
+    setCustomerMode("search");
+    setCustomerSearchQuery("");
+    setCustomerSearchResults([]);
+    setCustomerResultsOpen(false);
+    setCustomerSearchCompleted(false);
+    setDuplicateCustomer(null);
+    setPhoneDuplicateCustomer(null);
+    setSimilarNameCustomers([]);
+  }
+
+  function handleCreateNewCustomer() {
+    const query = customerSearchQuery.trim();
+    setMatchedCustomer(null);
+    setDuplicateCustomer(null);
+    setPhoneDuplicateCustomer(null);
+    setSimilarNameCustomers([]);
+    setCustomerResultsOpen(false);
+    setCustomerSearchCompleted(false);
+    setNewCustomer({
+      ...emptyCustomerDraft,
+      phone: /^\d/.test(query) ? query.replace(/\D/g, "").slice(0, 10) : "",
+      name: /^\d/.test(query) ? "" : query,
+    });
+    setCustomerMode("new");
+  }
+
+  function handleCancelNewCustomer() {
+    setNewCustomer(emptyCustomerDraft);
+    setDuplicateCustomer(null);
+    setPhoneDuplicateCustomer(null);
+    setSimilarNameCustomers([]);
+    setCustomerSearchCompleted(false);
+    setCustomerMode("search");
   }
 
   function handleRepeatOrder(order: Order) {
@@ -301,15 +420,17 @@ function NewOrderPageContent() {
     setDeliveryDate("");
     setDeliveryPromiseNote("");
     setTrialDate("");
-    setStatus("In Progress");
     setAdvancePaid(0);
   }
 
   const isDirty =
-    phone !== initialFields.phone ||
-    name !== initialFields.name ||
-    area !== initialFields.area ||
-    address !== initialFields.address ||
+    customerMode !== (prefillCustomerId ? "selected" : "search") ||
+    customerSearchQuery.trim() !== "" ||
+    newCustomer.phone !== "" ||
+    newCustomer.name !== "" ||
+    newCustomer.area !== "" ||
+    newCustomer.address !== "" ||
+    newCustomer.gender !== "Male" ||
     deliveryDate !== "" ||
     deliveryPromiseNote.trim() !== "" ||
     trialDate !== "" ||
@@ -325,6 +446,7 @@ function NewOrderPageContent() {
 
   function handleCancel() {
     if (isDirty && !window.confirm(t("orders.discardChanges"))) return;
+    setLeavingToOrders(true);
     router.push("/orders");
   }
 
@@ -332,114 +454,119 @@ function NewOrderPageContent() {
     setSubmitAttempted(true);
     if (hasErrors) return;
     setSaveError(null);
+    setProfileUpdateWarning(null);
     setSaving(true);
 
     const validItems = computedItems.filter(
       (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
     );
 
-    // Resolve the customer, preventing an accidental duplicate: if this
-    // phone number already belongs to a *different* customer than the one
-    // the form was seeded from (e.g. the shopkeeper never blurred the Phone
-    // field to trigger the usual auto-match), reuse that existing record
-    // instead of creating a new one. That found record is used as-is rather
-    // than overwritten with this form's values, since the shopkeeper was
-    // never actually editing it.
-    const existingByPhone = await getCustomerByPhoneAction(trimmedPhone);
-    let customer: Customer;
-    if (existingByPhone && existingByPhone.id !== matchedCustomer?.id) {
-      customer = existingByPhone;
-    } else if (matchedCustomer) {
-      const fieldsChanged =
-        trimmedName !== matchedCustomer.name ||
-        trimmedPhone !== matchedCustomer.phone ||
-        area.trim() !== matchedCustomer.area ||
-        address.trim() !== matchedCustomer.address ||
-        gender !== matchedCustomer.gender;
-      if (fieldsChanged) {
-        const result = await updateCustomerAction(matchedCustomer.id, {
-          name: trimmedName,
-          phone: trimmedPhone,
-          address: address.trim(),
-          area: area.trim(),
-          gender,
-        });
-        if (!result.success) {
-          setSaving(false);
-          setSaveError(result.error);
-          return;
-        }
-        customer = result.data;
-      } else {
-        customer = matchedCustomer;
-      }
-    } else {
-      const result = await createCustomerAction({
-        name: trimmedName,
-        phone: trimmedPhone,
-        address: address.trim(),
-        area: area.trim(),
-        gender,
-      });
-      if (!result.success) {
-        setSaving(false);
-        setSaveError(result.error);
-        return;
-      }
-      customer = result.data;
+    const profileUpdateCounts = new Map<string, number>();
+    for (const it of items) {
+      if (!it.measurement?.updateCustomerMeasurements) continue;
+      if (countFilledFields(it.measurement) === 0) continue;
+      const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
+      if (!garment) continue;
+      profileUpdateCounts.set(
+        garment.name,
+        (profileUpdateCounts.get(garment.name) ?? 0) + 1
+      );
+    }
+    const duplicateProfileUpdate = Array.from(profileUpdateCounts.entries()).find(
+      ([, count]) => count > 1
+    );
+    if (duplicateProfileUpdate) {
+      setSaving(false);
+      setSaveError(
+        `Choose only one ${duplicateProfileUpdate[0]} item to update the customer's saved measurements.`
+      );
+      return;
     }
 
-    // Persist any measurement edits: the per-garment-type record (reused for
-    // this customer's future orders of the same garment type) and a merge
-    // into the customer's general body-measurement baseline.
-    for (const it of items) {
-      const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
-      if (!garment || !it.measurement) continue;
-      if (countFilledFields(it.measurement) === 0) continue;
-      const measurementResult = await saveGarmentMeasurementAction({
-        customerId: customer.id,
-        garmentType: garment.name,
-        values: it.measurement.values,
-        fitNotes: it.measurement.fitNotes,
-        notes: it.measurement.notes,
-        source: "New order",
-      });
-      if (!measurementResult.success) {
-        setSaving(false);
-        setSaveError(measurementResult.error);
-        return;
-      }
-      const bodyMeasurements = pickBodyMeasurements(it.measurement.values);
-      if (Object.keys(bodyMeasurements).length > 0) {
-        const baselineResult = await saveCustomerMeasurementsAction({
-          customerId: customer.id,
-          values: bodyMeasurements,
+    async function persistMeasurementEdits(customerId: string): Promise<string | null> {
+      for (const it of items) {
+        const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
+        if (!garment || !it.measurement) continue;
+        if (!it.measurement.updateCustomerMeasurements) continue;
+        if (countFilledFields(it.measurement) === 0) continue;
+        const measurementValues = measurementValuesOnly(it.measurement.values);
+        const measurementResult = await saveGarmentMeasurementAction({
+          customerId,
+          garmentType: garment.name,
+          values: measurementValues,
+          fitNotes: "",
+          notes: it.measurement.notes,
           source: "New order",
         });
-        if (!baselineResult.success) {
-          setSaving(false);
-          setSaveError(baselineResult.error);
-          return;
+        if (!measurementResult.success) {
+          return measurementResult.error;
         }
       }
+      return null;
     }
 
-    const created = await createOrderAction({
-      customerId: customer.id,
-      orderDate,
-      trialDate,
-      deliveryDate,
-      deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
-      items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
-      advancePaid,
-      paymentMode,
-      status,
-    });
-    setSaving(false);
+    let created: Awaited<ReturnType<typeof createOrderAction>>;
+    if (matchedCustomer) {
+      created = await createOrderAction({
+        customerId: matchedCustomer.id,
+        orderDate,
+        trialDate,
+        deliveryDate,
+        deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
+        items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
+        advancePaid,
+        paymentMode,
+      });
+    } else {
+      const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
+      if (existingByPhone) {
+        setSaving(false);
+        setDuplicateCustomer(existingByPhone);
+        setPhoneDuplicateCustomer(existingByPhone);
+        setSaveError("A customer with this phone number already exists.");
+        return;
+      }
+      created = await createOrderForNewCustomerAction({
+        customer: {
+          name: trimmedNewName,
+          phone: trimmedNewPhone,
+          address: newCustomer.address.trim(),
+          area: newCustomer.area.trim(),
+          gender: newCustomer.gender,
+        },
+        order: {
+          orderDate,
+          trialDate,
+          deliveryDate,
+          deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
+          items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
+          advancePaid,
+          paymentMode,
+        },
+      });
+    }
     if (!created.success) {
+      setSaving(false);
+      if (created.error === "A customer with this phone number already exists.") {
+        const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
+        if (existingByPhone) {
+          setPhoneDuplicateCustomer(existingByPhone);
+          setDuplicateCustomer(existingByPhone);
+        }
+      }
       setSaveError(created.error);
       return;
     }
+    const measurementError = await persistMeasurementEdits(created.data.customerId);
+    if (measurementError) {
+      setSaving(false);
+      setProfileUpdateWarning(
+        `Order was created, but saved customer measurements were not updated: ${measurementError}`
+      );
+      setSavedOrder(created.data);
+      return;
+    }
+    setSaving(false);
 
     // Show the success state with print options rather than redirecting
     // immediately — the shopkeeper's very next step is usually printing the
@@ -449,10 +576,12 @@ function NewOrderPageContent() {
 
   function handleViewOrder() {
     if (!savedOrder) return;
+    setLeavingToOrders(true);
     router.push(`/orders?created=1&orderId=${savedOrder.id}`);
   }
 
   function handleBackToOrders() {
+    setLeavingToOrders(true);
     router.push("/orders?created=1");
   }
 
@@ -478,7 +607,7 @@ function NewOrderPageContent() {
   // unset date is treated as far in the future here instead.
   const draftOrderForBadge: Order = {
     id: "draft",
-    orderNumber: orderNumberPreview,
+    orderNumber: "Draft",
     customerId: matchedCustomer?.id ?? "",
     orderDate,
     trialDate,
@@ -489,7 +618,7 @@ function NewOrderPageContent() {
     advancePaid,
     balance,
     paymentMode,
-    status,
+    status: "In Progress",
   };
 
   return (
@@ -498,31 +627,25 @@ function NewOrderPageContent() {
         <button
           type="button"
           onClick={handleCancel}
-          className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
+          disabled={leavingToOrders}
+          aria-busy={leavingToOrders}
+          className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink disabled:cursor-wait disabled:opacity-70"
         >
-          <ChevronLeft className="h-4 w-4" />
-          {t("orders.backToOrders")}
+          {leavingToOrders ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+          {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
         </button>
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-[26px] font-semibold text-ink">{t("orders.newOrder")}</h1>
-            <p className="text-sm text-ink-muted">{orderNumberPreview}</p>
+            <p className="text-sm text-ink-muted">
+              Order number will be assigned on save.
+            </p>
           </div>
-          <label className="flex items-center gap-2">
-            <span className="text-[13px] font-medium text-ink-muted">{t("common.status")}</span>
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as OrderStatus)}
-              className="w-auto min-w-[150px] font-semibold"
-            >
-              {orderStatuses.map((s) => (
-                <option key={s} value={s}>
-                  {t(ORDER_STATUS_LABEL_KEYS[s])}
-                </option>
-              ))}
-            </Select>
-          </label>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
@@ -532,60 +655,139 @@ function NewOrderPageContent() {
                 <h3 className="text-[17px] font-semibold text-ink">
                   {t("orders.customerDetails")}
                 </h3>
-                {matchedCustomer && (
+                {customerMode === "new" && (
                   <button
                     type="button"
-                    onClick={handleChangeCustomer}
+                    onClick={handleCancelNewCustomer}
                     className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                   >
-                    {t("orders.changeCustomer")}
+                    Back to Customer Search
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <label className="relative flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.phoneNumber")}
-                  </span>
+              <div className="space-y-3">
+                {customerMode === "selected" && matchedCustomer && (
+                  <div className="rounded-lg border border-primary/20 bg-primary-tint px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase text-primary">
+                          Selected Customer
+                        </div>
+                        <div className="truncate text-sm font-semibold text-ink">
+                          {matchedCustomer.name}
+                        </div>
+                        <div className="mt-0.5 text-sm text-ink-muted">
+                          {matchedCustomer.phone} · {matchedCustomer.area || "-"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleChangeCustomer}
+                        className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                      >
+                        {t("orders.changeCustomer")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div
+                  ref={customerSearchRef}
+                  className={cn("relative", customerMode !== "search" && "hidden")}
+                >
+                  <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">Customer</span>
                   <input
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    onBlur={handlePhoneBlur}
-                    placeholder="10-digit phone number"
+                    value={customerSearchQuery}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setCustomerResultsOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (customerSearchResults.length > 0) setCustomerResultsOpen(true);
+                    }}
+                    placeholder="Search by phone number or customer name"
                     className={cn(
                       inputClass,
-                      submitAttempted && errors.phone && "border-chip-red-fg"
+                      (customerSearchLoading ||
+                        (customerResultsOpen && customerSearchResults.length > 0)) &&
+                        "rounded-b-none",
+                      submitAttempted && errors.customer && "border-chip-red-fg"
                     )}
                   />
-                  {phoneSuggestions.length > 0 && (
-                    <ul className="absolute left-0 top-full z-10 mt-1 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
-                      {phoneSuggestions.map((c) => (
-                        <li key={c.id}>
+                  </label>
+                  {customerSearchLoading && (
+                    <div className="-mt-px h-0.5 overflow-hidden bg-primary-tint">
+                      <div className="h-full w-1/2 animate-pulse bg-primary" />
+                    </div>
+                  )}
+                  {customerSearchLoading && customerSearchResults.length === 0 && (
+                    <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
+                      Searching...
+                    </div>
+                  )}
+                  {customerResultsOpen &&
+                    customerSearchCompleted &&
+                    !customerSearchLoading &&
+                    customerSearchResults.length === 0 && (
+                      <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
+                        No customers found.
+                      </div>
+                    )}
+                  {customerResultsOpen && customerSearchResults.length > 0 && (
+                    <ul className="-mt-px max-h-56 overflow-y-auto rounded-b-lg border border-border border-t-0 bg-primary-tint/15 shadow-soft">
+                      {customerSearchResults.map((c) => (
+                        <li key={c.id} className="border-b border-border-soft last:border-b-0">
                           <button
                             type="button"
-                            onMouseDown={() => handleSelectCustomer(c)}
-                            className="block w-full px-4 py-3 text-left text-sm hover:bg-surface"
+                            onClick={() => handleSelectCustomer(c)}
+                            className="block w-full cursor-pointer px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-white/70 focus:bg-white"
                           >
-                            <span className="font-medium text-ink">{c.name}</span>
-                            <span className="text-ink-muted"> — {c.phone}</span>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate font-semibold text-ink">
+                                  {c.name}
+                                </div>
+                                <div className="text-ink-muted">
+                                  {c.phone} · {c.area || "-"}
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-primary">
+                                Select
+                              </span>
+                            </div>
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {submitAttempted && errors.phone && (
-                    <p className="text-xs text-chip-red-fg">{errors.phone}</p>
+                  {submitAttempted && errors.customer && (
+                    <p className="text-xs text-chip-red-fg">{errors.customer}</p>
                   )}
-                </label>
+                </div>
+                {customerMode === "search" &&
+                  !customerResultsOpen &&
+                  !customerSearchLoading && (
+                  <button
+                    type="button"
+                    onClick={handleCreateNewCustomer}
+                    className="text-left text-sm font-semibold text-primary hover:underline"
+                  >
+                    + Create New Customer
+                  </button>
+                )}
+                {customerMode === "new" && (
+                  <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    {t("customers.customerName")}
+                    Customer Name
                   </span>
                   <input
                     required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    value={newCustomer.name}
+                    onChange={(e) =>
+                      setNewCustomer((current) => ({ ...current, name: e.target.value }))
+                    }
                     className={cn(
                       inputClass,
                       submitAttempted && errors.name && "border-chip-red-fg"
@@ -597,11 +799,42 @@ function NewOrderPageContent() {
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
+                    {t("common.phoneNumber")}
+                  </span>
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={newCustomer.phone}
+                    onChange={(e) =>
+                      setNewCustomer((current) => ({
+                        ...current,
+                        phone: e.target.value.replace(/\D/g, "").slice(0, 10),
+                      }))
+                    }
+                    placeholder="10-digit phone number"
+                    className={cn(
+                      inputClass,
+                      (phoneDuplicateCustomer ||
+                        (submitAttempted && errors.phone)) &&
+                        "border-chip-red-fg"
+                    )}
+                  />
+                  {submitAttempted && errors.phone && (
+                    <p className="text-xs text-chip-red-fg">{errors.phone}</p>
+                  )}
+                  {phoneDuplicateChecking && (
+                    <p className="text-xs text-ink-muted">Checking phone...</p>
+                  )}
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.area")}
                   </span>
                   <input
-                    value={area}
-                    onChange={(e) => setArea(e.target.value)}
+                    value={newCustomer.area}
+                    onChange={(e) =>
+                      setNewCustomer((current) => ({ ...current, area: e.target.value }))
+                    }
                     className={inputClass}
                   />
                 </label>
@@ -610,8 +843,10 @@ function NewOrderPageContent() {
                     {t("common.address")}
                   </span>
                   <input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    value={newCustomer.address}
+                    onChange={(e) =>
+                      setNewCustomer((current) => ({ ...current, address: e.target.value }))
+                    }
                     className={inputClass}
                   />
                 </label>
@@ -624,10 +859,12 @@ function NewOrderPageContent() {
                       <button
                         key={g}
                         type="button"
-                        onClick={() => setGender(g)}
+                        onClick={() =>
+                          setNewCustomer((current) => ({ ...current, gender: g }))
+                        }
                         className={cn(
                           "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
-                          gender === g
+                          newCustomer.gender === g
                             ? "border-primary bg-primary text-white"
                             : "border-border bg-white text-ink hover:bg-surface"
                         )}
@@ -637,6 +874,72 @@ function NewOrderPageContent() {
                     ))}
                   </div>
                 </div>
+                  </div>
+                  {phoneDuplicateCustomer && (
+                    <div className="rounded-lg border border-chip-red-fg/20 bg-chip-red px-3.5 py-3 text-sm">
+                      <div className="font-semibold text-chip-red-fg">
+                        A customer with this phone number already exists.
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-ink">
+                            {phoneDuplicateCustomer.name}
+                          </div>
+                          <div className="text-ink-muted">
+                            {phoneDuplicateCustomer.phone} · {phoneDuplicateCustomer.area || "-"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectCustomer(phoneDuplicateCustomer)}
+                          className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          Use Existing Customer
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {similarNameCustomers.length > 0 && (
+                    <div className="rounded-lg border border-border-soft bg-surface px-3.5 py-3 text-sm">
+                      <div className="mb-2 font-semibold text-ink">
+                        Similar customers found
+                      </div>
+                      <div className="divide-y divide-border-soft">
+                        {similarNameCustomers.map((customer) => (
+                          <div
+                            key={customer.id}
+                            className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-ink">
+                                {customer.name}
+                              </div>
+                              <div className="text-ink-muted">
+                                {customer.phone} · {customer.area || "-"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCustomer(customer)}
+                              className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                            >
+                              Use Existing Customer
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {similarNameChecking && similarNameCustomers.length === 0 && (
+                    <p className="text-xs text-ink-muted">Checking similar names...</p>
+                  )}
+                  {duplicateCustomer && !phoneDuplicateCustomer && (
+                    <div className="rounded-lg bg-chip-red px-3.5 py-2.5 text-xs font-medium text-chip-red-fg">
+                      This phone number already belongs to {duplicateCustomer.name}. Select that customer instead.
+                    </div>
+                  )}
+                </>
+                )}
               </div>
             </div>
 
@@ -687,8 +990,16 @@ function NewOrderPageContent() {
                     type="date"
                     value={trialDate}
                     onChange={(e) => setTrialDate(e.target.value)}
-                    className={inputClass}
+                    className={cn(
+                      inputClass,
+                      submitAttempted && errors.trialDate && "border-chip-red-fg"
+                    )}
                   />
+                  {submitAttempted && errors.trialDate && (
+                    <p className="text-xs text-chip-red-fg">
+                      {errors.trialDate}
+                    </p>
+                  )}
                 </label>
                 <label className="flex flex-col gap-1.5 sm:col-span-3">
                   <span className="text-[13px] font-medium text-ink-muted">
@@ -801,6 +1112,7 @@ function NewOrderPageContent() {
               measurements={customerMeasurements}
               garmentMeasurements={customerGarmentMeasurements}
               onRepeatOrder={handleRepeatOrder}
+              newCustomerPending={customerMode === "new"}
             />
           </div>
         </div>
@@ -868,6 +1180,11 @@ function NewOrderPageContent() {
               <p className="mt-1 text-sm text-ink-muted">
                 {savedOrder.orderNumber}
               </p>
+              {profileUpdateWarning && (
+                <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-left text-xs font-medium text-chip-red-fg">
+                  {profileUpdateWarning}
+                </p>
+              )}
               <div className="mt-5 space-y-2">
                 {canPrintReceipt && (
                   <Link
@@ -898,16 +1215,22 @@ function NewOrderPageContent() {
                 <button
                   type="button"
                   onClick={handleViewOrder}
-                  className="block w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                  disabled={leavingToOrders}
+                  aria-busy={leavingToOrders}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-wait disabled:opacity-70"
                 >
-                  {t("orders.viewOrder")}
+                  {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {leavingToOrders ? "Opening orders..." : t("orders.viewOrder")}
                 </button>
                 <button
                   type="button"
                   onClick={handleBackToOrders}
-                  className="block w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface"
+                  disabled={leavingToOrders}
+                  aria-busy={leavingToOrders}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-70"
                 >
-                  {t("orders.backToOrders")}
+                  {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
                 </button>
               </div>
             </div>

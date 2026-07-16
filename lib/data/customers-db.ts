@@ -100,10 +100,15 @@ export async function searchCustomers(
 ): Promise<Customer[]> {
   const q = query.trim();
   if (!q) return [];
+  const phoneQuery = q.replace(/\D/g, "");
+  const filters = [`name.ilike.%${q}%`, `phone.ilike.%${q}%`];
+  if (phoneQuery && phoneQuery !== q) {
+    filters.push(`phone.ilike.%${phoneQuery}%`);
+  }
   const { data, error } = await supabase
     .from("customers")
     .select(CUSTOMER_COLUMNS)
-    .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+    .or(filters.join(","))
     .order("name");
   if (error) throw error;
   return ((data as CustomerRow[]) ?? []).map(mapCustomer);
@@ -166,6 +171,14 @@ export async function createCustomer(
     .single();
   if (error) throw error;
   return mapCustomer(row as CustomerRow);
+}
+
+export async function deleteCustomer(
+  supabase: SupabaseClient,
+  id: string
+): Promise<void> {
+  const { error } = await supabase.from("customers").delete().eq("id", id);
+  if (error) throw error;
 }
 
 export async function updateCustomer(

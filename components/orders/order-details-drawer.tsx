@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  FileText,
   Mail,
   MessageCircle,
   Pencil,
@@ -30,10 +31,6 @@ import {
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
-import { PaymentHistoryList } from "@/components/orders/payment-history-list";
-import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
-import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
-import { OrderAttachmentsCard } from "@/components/orders/order-attachments-card";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { isReceivableOrder } from "@/lib/order-finance";
@@ -119,6 +116,10 @@ function buildInvoiceShareMessage(order: Order, customer: Customer, url: string)
     `Delivery: ${formatDate(order.deliveryDate)}`,
     `Receipt: ${url}`,
   ].join("\n");
+}
+
+function hasMeasurementSnapshot(item: Order["items"][number]) {
+  return Object.values(item.measurements ?? {}).some((value) => value.trim() !== "");
 }
 
 function InvoiceShareActions({
@@ -208,7 +209,6 @@ export function OrderDetailsDrawer({
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
   const [showRecordModal, setShowRecordModal] = useState(false);
-  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const orderId = order?.id;
 
   useEffect(() => {
@@ -252,16 +252,6 @@ export function OrderDetailsDrawer({
     onOrderUpdated(result.order);
   }
 
-  function handleAdjustmentChanged(result: {
-    order: Order;
-    payments: Payment[];
-    adjustments: OrderFinancialAdjustment[];
-  }) {
-    setPayments(result.payments);
-    setAdjustments(result.adjustments);
-    onOrderUpdated(result.order);
-  }
-
   return (
     <>
       <div
@@ -271,13 +261,13 @@ export function OrderDetailsDrawer({
         }`}
       />
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-y-auto bg-white shadow-soft transition-transform duration-300 ease-in-out sm:w-[420px] ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white shadow-soft transition-transform duration-300 ease-in-out sm:w-[520px] lg:w-[560px] ${
           order ? "translate-x-0" : "translate-x-full"
         }`}
       >
         {order && (
           <>
-            <div className="flex items-start justify-between border-b border-border-soft px-6 py-5">
+            <div className="sticky top-0 z-10 flex shrink-0 items-start justify-between border-b border-border-soft bg-white px-6 py-4">
               <div>
                 <p className="text-[17px] font-semibold text-ink">
                   {order.orderNumber}
@@ -299,7 +289,7 @@ export function OrderDetailsDrawer({
               </button>
             </div>
 
-            <div className="flex-1 space-y-6 px-6 py-5">
+            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
               <div>
                 <p className="text-[13px] font-medium text-ink-muted">
                   {t("orders.customer")}
@@ -336,13 +326,13 @@ export function OrderDetailsDrawer({
                     {formatDate(order.deliveryDate)}
                   </p>
                 </div>
-                {order.deliveryPromiseNote && (
-                  <div className="sm:col-span-2">
+                {order.trialDate && (
+                  <div>
                     <p className="text-[13px] font-medium text-ink-muted">
-                      Delivery Promise
+                      {t("orders.trialDate")}
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
-                      {order.deliveryPromiseNote}
+                    <p className="mt-1 text-sm text-ink">
+                      {formatDate(order.trialDate)}
                     </p>
                   </div>
                 )}
@@ -373,38 +363,19 @@ export function OrderDetailsDrawer({
                           className="border-t border-border-soft"
                         >
                           <td className="px-3 py-2 text-ink">
-                            {item.particular}
-                            {(item.fabricSource && item.fabricSource !== "Not specified") ||
-                            item.fabricNotes ||
-                            item.designNotes ||
-                            item.alterationIssue ||
-                            item.alterationRequiredChange ||
-                            item.alterationChargeType ||
-                            item.linkedOriginalOrderId ? (
-                              <div className="mt-1 space-y-0.5 text-xs text-ink-muted">
-                                {item.fabricSource && item.fabricSource !== "Not specified" && (
-                                  <div>{t("orders.fabricSource")}: {item.fabricSource}</div>
-                                )}
-                                {item.fabricNotes && (
-                                  <div>{t("orders.fabricNotes")}: {item.fabricNotes}</div>
-                                )}
-                                {item.designNotes && (
-                                  <div>{t("orders.designNotes")}: {item.designNotes}</div>
-                                )}
-                                {item.alterationIssue && (
-                                  <div>Original issue: {item.alterationIssue}</div>
-                                )}
-                                {item.alterationRequiredChange && (
-                                  <div>Required change: {item.alterationRequiredChange}</div>
-                                )}
-                                {item.alterationChargeType && (
-                                  <div>Alteration charge: {item.alterationChargeType}</div>
-                                )}
-                                {item.linkedOriginalOrderId && (
-                                  <div>Linked original order: {item.linkedOriginalOrderId}</div>
-                                )}
-                              </div>
-                            ) : null}
+                            <div className="font-medium">{item.particular}</div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {item.addOns && item.addOns.length > 0 && (
+                                <span className="rounded-full bg-primary-tint px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                  {item.addOns.length} add-ons
+                                </span>
+                              )}
+                              {hasMeasurementSnapshot(item) && (
+                                <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
+                                  Measurements saved
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2 text-right text-ink-muted">
                             {item.qty}
@@ -453,79 +424,91 @@ export function OrderDetailsDrawer({
                     <PaymentStatusBadge order={order} />
                   </div>
                   {canRecordPayment && (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-3 space-y-2">
                       {isReceivableOrder(order) && (
                         <button
                           type="button"
                           onClick={() => setShowRecordModal(true)}
-                          className="flex items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                           {t("orders.recordPayment")}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setShowAdjustmentModal(true)}
-                        className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                      <Link
+                        href={`/orders/${order.id}#adjustments`}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-muted transition-colors hover:text-primary hover:underline"
                       >
-                        <SlidersHorizontal className="h-3.5 w-3.5" />
-                        Adjustment
-                      </button>
+                        <SlidersHorizontal className="h-3 w-3" />
+                        Manage adjustments
+                      </Link>
                     </div>
                   )}
                 </div>
               )}
 
-              {canViewPayments && (
-                <>
-                  <div>
-                    <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                      Adjustments
-                    </p>
-                    <FinancialAdjustmentsList
-                      order={order}
-                      adjustments={adjustments}
-                      onVoided={handleAdjustmentChanged}
-                    />
+              {(payments.length > 0 || adjustments.length > 0 || attachments.length > 0) && (
+                <div className="rounded-lg border border-border-soft bg-white p-4">
+                  <p className="mb-3 text-[13px] font-medium text-ink-muted">
+                    Details
+                  </p>
+                  <div className="space-y-2 text-sm">
+                    {canViewPayments && payments.length > 0 && (
+                      <Link
+                        href={`/orders/${order.id}#payments`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                      >
+                        <span>Payments</span>
+                        <span className="font-semibold">{payments.length}</span>
+                      </Link>
+                    )}
+                    {canViewPayments && adjustments.length > 0 && (
+                      <Link
+                        href={`/orders/${order.id}#adjustments`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                      >
+                        <span>Adjustments</span>
+                        <span className="font-semibold">{adjustments.length}</span>
+                      </Link>
+                    )}
+                    {attachments.length > 0 && (
+                      <Link
+                        href={`/orders/${order.id}#attachments`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                      >
+                        <span>Attachments</span>
+                        <span className="font-semibold">{attachments.length}</span>
+                      </Link>
+                    )}
                   </div>
-
-                  <div>
-                    <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                      {t("orders.paymentHistory")}
-                    </p>
-                    <PaymentHistoryList
-                      order={order}
-                      payments={payments}
-                      onVoided={handlePaymentChanged}
-                    />
-                  </div>
-                </>
+                </div>
               )}
-
-              <OrderAttachmentsCard
-                order={order}
-                attachments={attachments}
-                onAttachmentsChange={setAttachments}
-                canEdit={canEdit}
-              />
             </div>
 
-            <div className="flex items-center gap-2 border-t border-border-soft px-6 py-4">
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => onEdit(order)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {t("orders.editOrder")}
-                </button>
-              )}
-              <PrintMenu orderId={order.id} />
-              {customer && (
-                <InvoiceShareActions order={order} customer={customer} />
-              )}
+            <div className="shrink-0 space-y-3 border-t border-border-soft px-6 py-4">
+              <Link
+                href={`/orders/${order.id}`}
+                className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                View Full Order
+              </Link>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(order)}
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                  )}
+                  <PrintMenu orderId={order.id} />
+                </div>
+                {customer && <InvoiceShareActions order={order} customer={customer} />}
+              </div>
             </div>
           </>
         )}
@@ -537,16 +520,6 @@ export function OrderDetailsDrawer({
           onRecorded={(result) => {
             handlePaymentChanged(result);
             setShowRecordModal(false);
-          }}
-        />
-      )}
-      {order && showAdjustmentModal && (
-        <FinancialAdjustmentModal
-          order={order}
-          onClose={() => setShowAdjustmentModal(false)}
-          onRecorded={(result) => {
-            handleAdjustmentChanged(result);
-            setShowAdjustmentModal(false);
           }}
         />
       )}

@@ -19,7 +19,10 @@ import type {
 } from "@/lib/types";
 import {
   GarmentMeasurementModal,
+  MEASUREMENT_NOTES_KEY,
   countFilledFields,
+  measurementNotesFromValues,
+  measurementValuesOnly,
   type GarmentMeasurementDraft,
 } from "@/components/orders/garment-measurement-modal";
 import { Select } from "@/components/ui/select";
@@ -132,7 +135,16 @@ export function orderItemToDraftItem(
     alterationRequiredChange: item.alterationRequiredChange ?? "",
     alterationChargeType: item.alterationChargeType ?? "Paid",
     linkedOriginalOrderId: item.linkedOriginalOrderId ?? "",
-    measurement: null,
+    measurement: item.measurements
+      ? {
+          garmentType: item.particular,
+          values: measurementValuesOnly(item.measurements),
+          fitNotes: "",
+          notes: measurementNotesFromValues(item.measurements),
+          updateCustomerMeasurements: false,
+          hasCustomerDefaultMeasurements: false,
+        }
+      : null,
   };
 }
 
@@ -200,7 +212,14 @@ export function computeOrderItems(
       addOnsTotal: addOnsTotal > 0 ? addOnsTotal : undefined,
       finalRate,
       amount: finalRate * it.qty,
-      measurements: hasMeasurements ? { ...it.measurement!.values } : undefined,
+      measurements: hasMeasurements
+        ? {
+            ...measurementValuesOnly(it.measurement!.values),
+            ...(it.measurement!.notes.trim()
+              ? { [MEASUREMENT_NOTES_KEY]: it.measurement!.notes.trim() }
+              : {}),
+          }
+        : undefined,
       fabricSource: it.fabricSource,
       fabricNotes: it.fabricNotes.trim() || undefined,
       designNotes: it.designNotes.trim() || undefined,
@@ -219,6 +238,29 @@ export function computeOrderItems(
 
 const inputClass =
   "h-11 w-full min-w-0 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
+
+const itemCardClass = "overflow-hidden rounded-lg border border-border-soft bg-white";
+const itemCardHeaderClass =
+  "flex items-center justify-between gap-3 border-b border-border-soft bg-primary-tint/60 px-4 py-1.5";
+const itemCardBodyClass = "p-4";
+
+function orderItemActionButtonClass({
+  disabled,
+  saved,
+}: {
+  disabled?: boolean;
+  saved?: boolean;
+}) {
+  const base =
+    "flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors";
+  if (disabled) {
+    return `${base} cursor-not-allowed border-border-soft text-ink-faint`;
+  }
+  if (saved) {
+    return `${base} cursor-pointer border-primary bg-primary-tint text-primary hover:bg-primary/10`;
+  }
+  return `${base} cursor-pointer border-border bg-white text-ink hover:bg-surface`;
+}
 
 function AddOnsPicker({
   addOns,
@@ -271,11 +313,10 @@ function AddOnsPicker({
               ? t("orders.noAddOnsConfigured")
               : t("orders.selectAddOns")
         }
-        className={`flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${
-          disabled
-            ? "cursor-not-allowed border-border-soft text-ink-faint"
-            : "cursor-pointer border-border text-ink hover:bg-surface"
-        }`}
+        className={orderItemActionButtonClass({
+          disabled,
+          saved: selected.length > 0,
+        })}
       >
         <Tag className="h-3.5 w-3.5 shrink-0" />
         {label}
@@ -423,10 +464,29 @@ export function NewOrderItemsCard({
     const it = items[index];
     const garmentName = findGarmentById(garmentTypes, it.garmentTypeId)?.name ?? "";
     if (it.measurement) return it.measurement;
-    if (!customerId) return { garmentType: garmentName, values: {}, fitNotes: "", notes: "" };
+    if (!customerId) return {
+      garmentType: garmentName,
+      values: {},
+      fitNotes: "",
+      notes: "",
+      updateCustomerMeasurements: false,
+      hasCustomerDefaultMeasurements: false,
+    };
     const seed = seedCache[`${customerId}::${garmentName.toLowerCase()}`];
-    if (!seed) return { garmentType: garmentName, values: {}, fitNotes: "", notes: "" };
-    return { garmentType: garmentName, ...seed };
+    if (!seed) return {
+      garmentType: garmentName,
+      values: {},
+      fitNotes: "",
+      notes: "",
+      updateCustomerMeasurements: false,
+      hasCustomerDefaultMeasurements: false,
+    };
+    const seededDraft = { garmentType: garmentName, ...seed };
+    return {
+      ...seededDraft,
+      updateCustomerMeasurements: false,
+      hasCustomerDefaultMeasurements: countFilledFields(seededDraft) > 0,
+    };
   }
   function hasMeasurementData(index: number): boolean {
     const it = items[index];
@@ -451,7 +511,7 @@ export function NewOrderItemsCard({
           <Plus className="h-4 w-4" /> {t("orders.addItem")}
         </button>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-8">
         {items.map((it, i) => {
           const garment = findGarmentById(garmentTypes, it.garmentTypeId);
           const addOnOptions = garment ? getAddOnsForGarment(garment, addOns) : [];
@@ -461,7 +521,23 @@ export function NewOrderItemsCard({
           const measurementsDisabled = !it.garmentTypeId || !hasMeasurementFields;
           const isAlteration = isAlterationGarment(garment);
           return (
-            <div key={i} className="rounded-lg border border-border-soft p-3">
+            <div key={i} className={itemCardClass}>
+              <div className={itemCardHeaderClass}>
+                <p className="text-[15px] font-semibold text-ink">
+                  Item {i + 1}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => removeItem(i)}
+                  disabled={items.length === 1}
+                  title={t("orders.removeItem")}
+                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-white px-2.5 text-xs font-medium text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                  {t("orders.deleteItem")}
+                </button>
+              </div>
+              <div className={itemCardBodyClass}>
               <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr]">
                 <label className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
@@ -649,27 +725,15 @@ export function NewOrderItemsCard({
                         ? t("orders.noMeasurementFieldsConfigured")
                         : undefined
                   }
-                  className={`flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${
-                    measurementsDisabled
-                      ? "cursor-not-allowed border-border-soft text-ink-faint"
-                      : measurementsFilled
-                        ? "cursor-pointer border-primary text-primary hover:bg-primary-tint"
-                        : "cursor-pointer border-border text-ink hover:bg-surface"
-                  }`}
+                  className={orderItemActionButtonClass({
+                    disabled: measurementsDisabled,
+                    saved: measurementsFilled,
+                  })}
                 >
                   <Ruler className="h-3.5 w-3.5 shrink-0" />
                   {measurementsFilled ? t("orders.measurementsAdded") : t("orders.measurements")}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => removeItem(i)}
-                  disabled={items.length === 1}
-                  title={t("orders.removeItem")}
-                  className="ml-auto flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  {t("orders.deleteItem")}
-                </button>
+              </div>
               </div>
             </div>
           );

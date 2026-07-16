@@ -15,7 +15,12 @@ import {
   updateOrder,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
-import { getCustomers } from "@/lib/data/customers-db";
+import {
+  createCustomer,
+  deleteCustomer,
+  getCustomerByPhone,
+  getCustomers,
+} from "@/lib/data/customers-db";
 import {
   isMissingJobCardsSchemaError,
   syncJobCardsForOrder,
@@ -42,6 +47,7 @@ import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import type {
   Customer,
+  Gender,
   Order,
   OrderAttachment,
   OrderAttachmentType,
@@ -151,6 +157,10 @@ async function trySyncJobCardsForOrder(
   }
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return (error as { code?: string }).code === "23505";
+}
+
 export async function getOrdersAction(): Promise<Order[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");
@@ -208,7 +218,6 @@ export async function createOrderAction(data: {
   items: OrderItem[];
   advancePaid: number;
   paymentMode: PaymentMode;
-  status?: OrderStatus;
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
@@ -216,7 +225,81 @@ export async function createOrderAction(data: {
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
-  const order = await createOrder(supabase, data);
+  const order = await createOrder(supabase, { ...data, status: "In Progress" });
+  await trySyncJobCardsForOrder(supabase, order.id);
+  return { success: true, data: order };
+}
+
+export async function createOrderForNewCustomerAction(data: {
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    area: string;
+    gender?: Gender;
+  };
+  order: {
+    orderDate: string;
+    trialDate: string;
+    deliveryDate: string;
+    deliveryPromiseNote?: string;
+    items: OrderItem[];
+    advancePaid: number;
+    paymentMode: PaymentMode;
+  };
+}): Promise<ActionResult<Order>> {
+  const supabase = createServerClient();
+  const orderGuard = await requireServerPermission(supabase, "orders.create");
+  if (!orderGuard.ok) return { success: false, error: orderGuard.error };
+  const customerGuard = await requireServerPermission(supabase, "customers.create");
+  if (!customerGuard.ok) return { success: false, error: customerGuard.error };
+  if (!data.customer.name.trim()) return { success: false, error: "Name is required." };
+  if (!data.customer.phone.trim()) return { success: false, error: "Phone is required." };
+  if (!/^\d{10}$/.test(data.customer.phone.trim())) {
+    return { success: false, error: "Phone number must be exactly 10 digits." };
+  }
+  if (data.order.items.length === 0) {
+    return { success: false, error: "At least one item is required." };
+  }
+
+  const existing = await getCustomerByPhone(supabase, data.customer.phone.trim());
+  if (existing) {
+    return {
+      success: false,
+      error: "A customer with this phone number already exists.",
+    };
+  }
+
+  let customer: Customer;
+  try {
+    customer = await createCustomer(supabase, {
+      name: data.customer.name.trim(),
+      phone: data.customer.phone.trim(),
+      address: data.customer.address.trim(),
+      area: data.customer.area.trim(),
+      gender: data.customer.gender,
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return {
+        success: false,
+        error: "A customer with this phone number already exists.",
+      };
+    }
+    throw error;
+  }
+
+  let order: Order;
+  try {
+    order = await createOrder(supabase, {
+      ...data.order,
+      customerId: customer.id,
+      status: "In Progress",
+    });
+  } catch (error) {
+    await deleteCustomer(createAdminClient(), customer.id);
+    throw error;
+  }
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
 }

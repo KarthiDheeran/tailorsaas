@@ -10,24 +10,51 @@ export interface GarmentMeasurementDraft {
   values: Record<string, string>;
   fitNotes: string;
   notes: string;
+  updateCustomerMeasurements?: boolean;
+  hasCustomerDefaultMeasurements?: boolean;
+}
+
+export const MEASUREMENT_NOTES_KEY = "__measurementNotes";
+
+export function mergeMeasurementNotes(fitNotes?: string, notes?: string): string {
+  const parts = [fitNotes?.trim() ?? "", notes?.trim() ?? ""].filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  if (parts[0].toLowerCase() === parts[1].toLowerCase()) return parts[0];
+  return parts.join("\n");
+}
+
+export function measurementValuesOnly(
+  values: Record<string, string>
+): Record<string, string> {
+  const cleanValues = { ...values };
+  delete cleanValues[MEASUREMENT_NOTES_KEY];
+  return cleanValues;
+}
+
+export function measurementNotesFromValues(values?: Record<string, string>): string {
+  return values?.[MEASUREMENT_NOTES_KEY]?.trim() ?? "";
 }
 
 export function blankGarmentDraft(garmentType: string): GarmentMeasurementDraft {
-  return { garmentType, values: {}, fitNotes: "", notes: "" };
+  return {
+    garmentType,
+    values: {},
+    fitNotes: "",
+    notes: "",
+    updateCustomerMeasurements: false,
+    hasCustomerDefaultMeasurements: false,
+  };
 }
 
 // Count of non-blank entries, used for the Measurements summary section's
 // "N fields saved" line — a simple fill-rate signal, not tied to any fixed
 // denominator since fields are all optional.
 export function countFilledFields(draft: GarmentMeasurementDraft): number {
-  const filledValues = Object.values(draft.values).filter(
+  const filledValues = Object.values(measurementValuesOnly(draft.values)).filter(
     (v) => v.trim() !== ""
   ).length;
-  return (
-    filledValues +
-    (draft.fitNotes.trim() ? 1 : 0) +
-    (draft.notes.trim() ? 1 : 0)
-  );
+  return filledValues + (mergeMeasurementNotes(draft.fitNotes, draft.notes) ? 1 : 0);
 }
 
 const inputClass =
@@ -48,12 +75,31 @@ export function GarmentMeasurementModal({
 }) {
   const { t } = useLanguage();
   const [values, setValues] = useState<Record<string, string>>(initial.values);
-  const [fitNotes, setFitNotes] = useState(initial.fitNotes);
-  const [notes, setNotes] = useState(initial.notes);
+  const [measurementNotes, setMeasurementNotes] = useState(
+    mergeMeasurementNotes(initial.fitNotes, initial.notes)
+  );
+  const [updateCustomerMeasurements, setUpdateCustomerMeasurements] = useState(
+    initial.updateCustomerMeasurements ?? false
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ garmentType: initial.garmentType, values, fitNotes, notes });
+    if (
+      updateCustomerMeasurements &&
+      initial.hasCustomerDefaultMeasurements &&
+      !window.confirm(
+        `This will replace the customer's saved ${initial.garmentType} measurements. Continue?`
+      )
+    ) {
+      return;
+    }
+    onSave({
+      garmentType: initial.garmentType,
+      values: measurementValuesOnly(values),
+      fitNotes: "",
+      notes: measurementNotes,
+      updateCustomerMeasurements,
+    });
   }
 
   return (
@@ -105,34 +151,34 @@ export function GarmentMeasurementModal({
               </div>
             ) : (
               <p className="text-sm text-ink-muted">
-                No standard measurement fields for this garment type — use Fit
-                Notes/Notes below.
+                No standard measurement fields for this garment type - use
+                Measurement Notes below.
               </p>
             )}
 
             <label className="mt-4 flex flex-col gap-1.5">
               <span className="text-[13px] font-medium text-ink-muted">
-                {t("common.fitNotes")}
+                Measurement Notes
               </span>
               <textarea
-                value={fitNotes}
-                onChange={(e) => setFitNotes(e.target.value)}
-                rows={2}
-                placeholder="e.g. fit preference, comfort notes, special instructions"
+                value={measurementNotes}
+                onChange={(e) => setMeasurementNotes(e.target.value)}
+                rows={3}
+                placeholder="Fit preference, ease, posture, comfort notes, measurement-specific instructions..."
                 className="rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
               />
             </label>
 
-            <label className="mt-4 flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-ink-muted">
-                {t("common.notes")}
-              </span>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            <label className="mt-3 flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={updateCustomerMeasurements}
+                onChange={(e) => setUpdateCustomerMeasurements(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
               />
+              <span className="text-[13px] font-medium text-ink-muted">
+                Save as customer&apos;s default {initial.garmentType} measurements
+              </span>
             </label>
 
             <div className="mt-5 flex items-center gap-2">
