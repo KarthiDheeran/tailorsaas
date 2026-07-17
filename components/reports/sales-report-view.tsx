@@ -17,9 +17,10 @@ import {
 import { paymentModes } from "@/lib/constants";
 import type { PaymentMode } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 function money(n: number) {
-  return `₹${n.toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 const EMPTY_REPORT: SalesReport = {

@@ -9,10 +9,11 @@ import type {
   Order,
 } from "@/lib/types";
 import type { CustomerDetail } from "@/lib/customers-db";
-import { BalanceBadge, OrderStatusChip, formatDate } from "@/components/orders/orders-table";
+import { formatDate } from "@/components/orders/orders-table";
 import { countFilledFields } from "@/components/orders/garment-measurement-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 function Card({
   title,
@@ -35,18 +36,15 @@ export function NewOrderSummaryPanel({
   measurements,
   garmentMeasurements,
   onRepeatOrder,
+  repeatCopyMessage,
   newCustomerPending = false,
 }: {
   customer: Customer | null;
-  // Phase 5A: all fetched by the parent (app/(shell)/orders/new/page.tsx) via
-  // Server Actions rather than this panel calling
-  // getCustomerDetail/getCustomerMeasurements/getGarmentMeasurementsForCustomer
-  // itself — undefined while the parent's fetch for the current customer is
-  // still in flight.
   detail: CustomerDetail | undefined;
   measurements: CustomerMeasurements | undefined;
   garmentMeasurements: GarmentMeasurement[];
   onRepeatOrder: (order: Order) => void;
+  repeatCopyMessage?: string | null;
   newCustomerPending?: boolean;
 }) {
   const { hasPermission } = useCurrentUser();
@@ -73,7 +71,7 @@ export function NewOrderSummaryPanel({
   if (!detail) {
     return (
       <div className="rounded-xl border border-border-soft bg-white p-5 text-sm text-ink-muted shadow-soft">
-        Loading customer summary…
+        Loading customer summary...
       </div>
     );
   }
@@ -81,11 +79,10 @@ export function NewOrderSummaryPanel({
   const filledMeasurementCount = measurements
     ? Object.values(measurements.values).filter((v) => v.trim() !== "").length
     : 0;
-  // Per-garment-type saved records (e.g. "Blouse: 9 fields saved") take
-  // priority since they're the more specific, garment-scoped source; only
-  // fall back to the generic customer baseline when none exist yet.
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const recentOrders = detail.orders.slice(0, 3);
+  const recentOrders = [...detail.orders]
+    .filter((order) => order.status !== "Cancelled")
+    .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1))
+    .slice(0, 3);
 
   return (
     <div className="space-y-5">
@@ -93,7 +90,7 @@ export function NewOrderSummaryPanel({
         <div className="space-y-1.5 text-sm">
           <p className="font-semibold text-ink">{customer.name}</p>
           <p className="text-ink-muted">{customer.phone}</p>
-          <p className="text-ink-muted">{customer.area || "—"}</p>
+          <p className="text-ink-muted">{customer.area || "-"}</p>
           <div className="flex items-center justify-between pt-2">
             <span className="text-ink-muted">{t("orders.totalOrders")}</span>
             <span className="font-medium text-ink">{detail.orders.length}</span>
@@ -101,14 +98,14 @@ export function NewOrderSummaryPanel({
           <div className="flex items-center justify-between">
             <span className="text-ink-muted">{t("orders.lastOrder")}</span>
             <span className="font-medium text-ink">
-              {detail.lastOrderDate ? formatDate(detail.lastOrderDate) : "—"}
+              {detail.lastOrderDate ? formatDate(detail.lastOrderDate) : "-"}
             </span>
           </div>
           {canViewPayments && (
             <div className="flex items-center justify-between">
               <span className="text-ink-muted">{t("orders.outstandingBalance")}</span>
               <span className="font-medium text-ink">
-                ₹{detail.outstandingBalance.toLocaleString("en-IN")}
+                {formatCurrency(detail.outstandingBalance)}
               </span>
             </div>
           )}
@@ -157,34 +154,33 @@ export function NewOrderSummaryPanel({
 
       {recentOrders.length > 0 && (
         <Card title={t("orders.previousOrders")}>
+          {repeatCopyMessage && (
+            <p className="mb-3 rounded-lg bg-chip-mint px-3 py-2 text-xs font-medium text-chip-mint-fg">
+              {repeatCopyMessage}
+            </p>
+          )}
           <div className="space-y-3">
             {recentOrders.map((o) => (
               <div
                 key={o.id}
                 className="space-y-1.5 border-b border-border-soft pb-3 text-sm last:border-0 last:pb-0"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-primary">
                     {o.orderNumber}
                   </span>
-                  <span className="text-ink-muted">{formatDate(o.orderDate)}</span>
+                  <span className="shrink-0 text-ink-muted">
+                    {formatDate(o.orderDate)}
+                  </span>
                 </div>
                 <p className="break-words text-ink-muted">
                   {o.items.map((i) => `${i.particular} x${i.qty}`).join(", ")}
                 </p>
-                {canViewPayments && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-ink-muted">Total</span>
-                    <span className="font-medium text-ink">
-                      ₹{o.totalAmount.toLocaleString("en-IN")}
-                    </span>
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <OrderStatusChip status={o.status} />
-                  {canViewPayments && (
-                    <BalanceBadge order={o} todayIso={todayIso} />
-                  )}
+                <div className="flex items-center justify-between">
+                  <span className="text-ink-muted">Total</span>
+                  <span className="font-medium text-ink">
+                    {formatCurrency(o.totalAmount)}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -192,7 +188,7 @@ export function NewOrderSummaryPanel({
                   className="flex items-center gap-1.5 pt-1 text-xs font-semibold text-primary hover:underline"
                 >
                   <Repeat className="h-3 w-3" />
-                  Repeat Order
+                  Use This Order
                 </button>
               </div>
             ))}

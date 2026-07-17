@@ -3,9 +3,10 @@
 import { formatDate } from "@/components/orders/orders-table";
 import type { CustomerDetail } from "@/lib/customers-db";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 function money(amount: number) {
-  return `₹${amount.toLocaleString("en-IN")}`;
+  return formatCurrency(amount);
 }
 
 export function PaymentSummaryCard({ detail }: { detail: CustomerDetail }) {

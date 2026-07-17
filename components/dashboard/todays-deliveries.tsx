@@ -1,5 +1,6 @@
 import type { Order } from "@/lib/types";
 import { ContactActions } from "@/components/dashboard/contact-actions";
+import { formatCurrency } from "@/lib/currency";
 
 export function TodaysDeliveries({ orders }: { orders: Order[] }) {
   return (
@@ -63,7 +64,7 @@ export function TodaysDeliveries({ orders }: { orders: Order[] }) {
                     <td className="whitespace-nowrap px-5 py-3 text-right">
                       {order.balance > 0 ? (
                         <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
-                          ₹{order.balance.toLocaleString("en-IN")}
+                          {formatCurrency(order.balance)}
                         </span>
                       ) : (
                         <span className="inline-block rounded-full bg-chip-mint px-3 py-1 text-xs font-semibold text-chip-mint-fg">

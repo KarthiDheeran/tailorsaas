@@ -1,36 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ExternalLink, FileUp, ImageIcon, Trash2 } from "lucide-react";
-import {
-  deleteOrderAttachmentAction,
-  uploadOrderAttachmentAction,
-} from "@/app/(shell)/orders/actions";
-import type {
-  Order,
-  OrderAttachment,
-  OrderAttachmentType,
-} from "@/lib/types";
-
-const ATTACHMENT_TYPES: OrderAttachmentType[] = [
-  "Design Reference",
-  "Fabric Photo",
-  "Sample Photo",
-  "Trial Photo",
-  "Alteration Photo",
-  "Final Garment Photo",
-  "Other",
-];
-
-const ATTACHMENT_HELP: Record<OrderAttachmentType, string> = {
-  "Design Reference": "Customer-approved inspiration or WhatsApp/Pinterest/Instagram reference.",
-  "Fabric Photo": "Fabric, border, lining, trims, or customer-provided material.",
-  "Sample Photo": "Existing garment or sample to copy.",
-  "Trial Photo": "Trial fitting photos and visible correction points.",
-  "Alteration Photo": "Before/after alteration or repair evidence.",
-  "Final Garment Photo": "Finished garment photo before pickup or delivery.",
-  Other: "Any supporting file for this order.",
-};
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { ExternalLink, ImageIcon, Pencil, X } from "lucide-react";
+import type { Order, OrderAttachment } from "@/lib/types";
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -45,154 +19,55 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function itemLabel(order: Order, serialNo: number | undefined) {
-  if (!serialNo) return undefined;
-  const item = order.items.find((candidate) => candidate.serialNo === serialNo);
-  return item ? `${item.serialNo}. ${item.particular}` : `Item ${serialNo}`;
+function itemLabel(order: Order, attachment: OrderAttachment) {
+  const item = attachment.orderItemId
+    ? order.items.find((candidate) => candidate.id === attachment.orderItemId)
+    : attachment.orderItemSerialNo
+      ? order.items.find((candidate) => candidate.serialNo === attachment.orderItemSerialNo)
+      : undefined;
+  if (!item) return undefined;
+  return `Item ${item.serialNo} — ${item.particular}`;
 }
 
 export function OrderAttachmentsCard({
   order,
   attachments,
-  onAttachmentsChange,
   canEdit,
 }: {
   order: Order;
   attachments: OrderAttachment[];
-  onAttachmentsChange: (attachments: OrderAttachment[]) => void;
   canEdit: boolean;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [attachmentType, setAttachmentType] =
-    useState<OrderAttachmentType>("Design Reference");
-  const [orderItemSerialNo, setOrderItemSerialNo] = useState("");
-  const [notes, setNotes] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] =
+    useState<OrderAttachment | null>(null);
 
-  async function handleUpload() {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      setError("Choose a file to upload.");
-      return;
+  useEffect(() => {
+    if (!previewAttachment) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setPreviewAttachment(null);
     }
-
-    setError(null);
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("orderId", order.id);
-    formData.append("orderItemSerialNo", orderItemSerialNo);
-    formData.append("attachmentType", attachmentType);
-    formData.append("notes", notes);
-    formData.append("file", file);
-
-    const result = await uploadOrderAttachmentAction(formData);
-    setUploading(false);
-    if (!result.success) {
-      setError(result.error);
-      return;
-    }
-    onAttachmentsChange([result.data, ...attachments]);
-    setOrderItemSerialNo("");
-    setNotes("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  async function handleDelete(attachment: OrderAttachment) {
-    if (!window.confirm(`Delete ${attachment.fileName}?`)) return;
-    setError(null);
-    setDeletingId(attachment.id);
-    const result = await deleteOrderAttachmentAction(attachment.id);
-    setDeletingId(null);
-    if (!result.success) {
-      setError(result.error);
-      return;
-    }
-    onAttachmentsChange(attachments.filter((item) => item.id !== attachment.id));
-  }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewAttachment]);
 
   return (
     <div>
-      <p className="mb-2 text-[13px] font-medium text-ink-muted">
-        Attachments / Photos
-      </p>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] font-medium text-ink-muted">
+          Attachments / Photos
+        </p>
+        {canEdit && (
+          <Link
+            href={`/orders/${order.id}/edit#attachments`}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Manage Attachments
+          </Link>
+        )}
+      </div>
 
-      {canEdit && (
-        <div className="space-y-3 rounded-lg border border-border-soft bg-surface/40 p-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-ink-muted">
-                Type
-              </span>
-              <select
-                value={attachmentType}
-                onChange={(event) =>
-                  setAttachmentType(event.target.value as OrderAttachmentType)
-                }
-                className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                {ATTACHMENT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-ink-muted">
-                Garment
-              </span>
-              <select
-                value={orderItemSerialNo}
-                onChange={(event) => setOrderItemSerialNo(event.target.value)}
-                className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                <option value="">Whole order</option>
-                {order.items.map((item) => (
-                  <option key={item.serialNo} value={item.serialNo}>
-                    {item.serialNo}. {item.particular}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-ink-muted">
-              Notes
-            </span>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              rows={2}
-              placeholder={ATTACHMENT_HELP[attachmentType]}
-              className="rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-              className="min-w-0 flex-1 text-sm text-ink-muted file:mr-3 file:h-9 file:rounded-lg file:border-0 file:bg-white file:px-3 file:text-sm file:font-semibold file:text-ink"
-            />
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={uploading}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
-            >
-              <FileUp className="h-4 w-4" />
-              {uploading ? "Uploading..." : "Upload"}
-            </button>
-          </div>
-          {error && (
-            <p className="text-sm font-medium text-chip-red-fg">{error}</p>
-          )}
-        </div>
-      )}
-
-      <div className="mt-3 space-y-3">
+      <div className="space-y-3">
         {attachments.length === 0 ? (
           <p className="text-sm text-ink-muted">
             No order photos or reference files attached yet.
@@ -209,11 +84,11 @@ export function OrderAttachmentsCard({
                     <span className="rounded-full bg-primary-tint px-2.5 py-1 text-xs font-semibold text-primary">
                       {attachment.attachmentType}
                     </span>
-                    {attachment.orderItemSerialNo && (
-                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted">
-                        {itemLabel(order, attachment.orderItemSerialNo)}
-                      </span>
-                    )}
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted">
+                      {attachment.orderItemId || attachment.orderItemSerialNo
+                        ? itemLabel(order, attachment) ?? "Item unavailable"
+                        : "Whole order"}
+                    </span>
                   </div>
                   <p className="mt-2 truncate text-sm font-semibold text-ink">
                     {attachment.fileName}
@@ -235,37 +110,29 @@ export function OrderAttachmentsCard({
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   )}
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(attachment)}
-                      disabled={deletingId === attachment.id}
-                      title="Delete attachment"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:opacity-60"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
                 </div>
               </div>
               {attachment.mimeType.startsWith("image/") && attachment.signedUrl && (
-                <a
-                  href={attachment.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 block overflow-hidden rounded-lg border border-border-soft bg-surface"
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(attachment)}
+                  className="mt-3 block w-full overflow-hidden rounded-lg border border-border-soft bg-surface text-left transition-colors hover:bg-surface"
                 >
-                  <div
-                    role="img"
-                    aria-label={attachment.fileName}
-                    className="h-44 w-full bg-cover bg-center transition-transform hover:scale-[1.01]"
-                    style={{ backgroundImage: `url(${attachment.signedUrl})` }}
-                  />
+                  <div className="relative h-44 w-full bg-surface sm:h-56 lg:h-72">
+                    <Image
+                      src={attachment.signedUrl}
+                      alt={attachment.fileName}
+                      fill
+                      unoptimized
+                      sizes="(min-width: 640px) 640px, 100vw"
+                      className="object-contain p-2"
+                    />
+                  </div>
                   <div className="flex items-center gap-1.5 border-t border-border-soft px-3 py-2 text-xs font-medium text-ink-muted">
                     <ImageIcon className="h-3.5 w-3.5" />
-                    Open photo
+                    Preview photo
                   </div>
-                </a>
+                </button>
               )}
               {attachment.notes && (
                 <p className="mt-2 whitespace-pre-wrap text-sm text-ink-muted">
@@ -276,6 +143,36 @@ export function OrderAttachmentsCard({
           ))
         )}
       </div>
+
+      {previewAttachment?.signedUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft">
+            <div className="flex items-center justify-between border-b border-border-soft px-4 py-3">
+              <p className="min-w-0 truncate text-sm font-semibold text-ink">
+                {previewAttachment.fileName}
+              </p>
+              <button
+                type="button"
+                onClick={() => setPreviewAttachment(null)}
+                aria-label="Close preview"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="relative h-[calc(100vh-8rem)] min-h-0 bg-surface">
+              <Image
+                src={previewAttachment.signedUrl}
+                alt={previewAttachment.fileName}
+                fill
+                unoptimized
+                sizes="100vw"
+                className="object-contain p-3"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

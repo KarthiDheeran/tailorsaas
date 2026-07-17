@@ -31,11 +31,12 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { downloadCsv } from "@/lib/csv";
+import { formatCurrency } from "@/lib/currency";
 
 type InventoryTab = "stock" | "customer-fabric";
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 function numberValue(n: number) {

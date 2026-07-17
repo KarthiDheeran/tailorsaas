@@ -5,10 +5,11 @@ import { formatDate } from "@/components/orders/orders-table";
 import { PaymentTypeChip } from "@/components/orders/payment-history-list";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { PaymentRow } from "@/lib/reports";
+import { formatCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 // Phase 7F: extracted from components/reports/payments-report-view.tsx so

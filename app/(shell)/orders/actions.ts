@@ -42,6 +42,7 @@ import {
   getOrderAttachmentById,
   getOrderAttachments,
   ORDER_ATTACHMENTS_BUCKET,
+  updateOrderAttachment,
 } from "@/lib/data/order-attachments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
@@ -209,6 +210,36 @@ export async function generateNextOrderNumberAction(): Promise<string> {
   return peekNextOrderNumber(supabase);
 }
 
+function validateOrderDates(data: {
+  orderDate: string;
+  trialDate: string;
+  deliveryDate: string;
+}): string | null {
+  const isIsoDateValue = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || month < 1 || month > 12 || day < 1) return false;
+    return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+  };
+  if (!data.orderDate) return "Order date is required.";
+  if (!data.deliveryDate) return "Delivery date is required.";
+  if (!isIsoDateValue(data.orderDate)) return "Order date is invalid.";
+  if (!isIsoDateValue(data.deliveryDate)) return "Delivery date is invalid.";
+  if (data.trialDate && !isIsoDateValue(data.trialDate)) {
+    return "Trial date is invalid.";
+  }
+  if (data.deliveryDate < data.orderDate) {
+    return "Delivery date cannot be before order date.";
+  }
+  if (data.trialDate && data.trialDate < data.orderDate) {
+    return "Trial date cannot be before order date.";
+  }
+  if (data.trialDate && data.trialDate > data.deliveryDate) {
+    return "Trial date cannot be after delivery date.";
+  }
+  return null;
+}
+
 export async function createOrderAction(data: {
   customerId: string;
   orderDate: string;
@@ -225,6 +256,8 @@ export async function createOrderAction(data: {
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
+  const dateError = validateOrderDates(data);
+  if (dateError) return { success: false, error: dateError };
   const order = await createOrder(supabase, { ...data, status: "In Progress" });
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
@@ -261,6 +294,8 @@ export async function createOrderForNewCustomerAction(data: {
   if (data.order.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
+  const dateError = validateOrderDates(data.order);
+  if (dateError) return { success: false, error: dateError };
 
   const existing = await getCustomerByPhone(supabase, data.customer.phone.trim());
   if (existing) {
@@ -308,6 +343,7 @@ export async function updateOrderAction(
   id: string,
   data: {
     orderDate: string;
+    trialDate: string;
     deliveryDate: string;
     deliveryPromiseNote?: string;
     items: OrderItem[];
@@ -320,6 +356,8 @@ export async function updateOrderAction(
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
+  const dateError = validateOrderDates(data);
+  if (dateError) return { success: false, error: dateError };
   const order = await updateOrder(supabase, id, data);
   if (!order) return { success: false, error: "Order not found." };
   await trySyncJobCardsForOrder(supabase, order.id);
@@ -363,6 +401,7 @@ export async function uploadOrderAttachmentAction(
 
   const orderId = String(formData.get("orderId") ?? "").trim();
   const serialRaw = String(formData.get("orderItemSerialNo") ?? "").trim();
+  const orderItemId = String(formData.get("orderItemId") ?? "").trim();
   const attachmentType = String(formData.get("attachmentType") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
   const file = formData.get("file");
@@ -370,6 +409,16 @@ export async function uploadOrderAttachmentAction(
 
   if (!orderId) return { success: false, error: "Order is required." };
   if (orderItemSerialNo !== undefined && !Number.isInteger(orderItemSerialNo)) {
+    return { success: false, error: "Select a valid garment." };
+  }
+  const order = await getOrderById(supabase, orderId);
+  if (!order) return { success: false, error: "Order not found." };
+  const associatedItem = orderItemId
+    ? order.items.find((item) => item.id === orderItemId)
+    : orderItemSerialNo !== undefined
+      ? order.items.find((item) => item.serialNo === orderItemSerialNo)
+      : undefined;
+  if ((orderItemId || orderItemSerialNo !== undefined) && !associatedItem) {
     return { success: false, error: "Select a valid garment." };
   }
   if (!ORDER_ATTACHMENT_TYPES.includes(attachmentType as OrderAttachmentType)) {
@@ -403,7 +452,8 @@ export async function uploadOrderAttachmentAction(
   try {
     const attachment = await createOrderAttachment(admin, {
       orderId,
-      orderItemSerialNo,
+      orderItemId: associatedItem?.id,
+      orderItemSerialNo: associatedItem?.serialNo,
       attachmentType: attachmentType as OrderAttachmentType,
       fileName: file.name,
       mimeType: file.type,
@@ -424,6 +474,45 @@ export async function uploadOrderAttachmentAction(
           : "Failed to save attachment metadata.",
     };
   }
+}
+
+export async function updateOrderAttachmentAction(data: {
+  id: string;
+  orderItemId?: string;
+  orderItemSerialNo?: number;
+  attachmentType: OrderAttachmentType;
+  notes?: string;
+}): Promise<ActionResult<OrderAttachment>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  if (!data.id) return { success: false, error: "Attachment is required." };
+  if (!ORDER_ATTACHMENT_TYPES.includes(data.attachmentType)) {
+    return { success: false, error: "Select a valid attachment type." };
+  }
+  const existing = await getOrderAttachmentById(createAdminClient(), data.id);
+  if (!existing) return { success: false, error: "Attachment not found." };
+  const order = await getOrderById(supabase, existing.orderId);
+  if (!order) return { success: false, error: "Order not found." };
+  const associatedItem = data.orderItemId
+    ? order.items.find((item) => item.id === data.orderItemId)
+    : data.orderItemSerialNo !== undefined
+      ? order.items.find((item) => item.serialNo === data.orderItemSerialNo)
+      : undefined;
+  if ((data.orderItemId || data.orderItemSerialNo !== undefined) && !associatedItem) {
+    return { success: false, error: "Select a valid garment." };
+  }
+
+  const attachment = await updateOrderAttachment(createAdminClient(), data.id, {
+    orderItemId: associatedItem?.id,
+    orderItemSerialNo: associatedItem?.serialNo,
+    attachmentType: data.attachmentType,
+    notes: data.notes,
+  });
+  if (!attachment) return { success: false, error: "Attachment not found." };
+  const [withUrl] = await withOrderAttachmentSignedUrls([attachment]);
+  return { success: true, data: withUrl };
 }
 
 export async function deleteOrderAttachmentAction(

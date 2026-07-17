@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   FileText,
+  Loader2,
   Mail,
   MessageCircle,
   Pencil,
@@ -22,6 +23,7 @@ import type {
 } from "@/lib/types";
 import {
   formatDate,
+  formatOptionalDate,
   OrderStatusEditor,
   PaymentStatusBadge,
 } from "@/components/orders/orders-table";
@@ -36,15 +38,11 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { isReceivableOrder } from "@/lib/order-finance";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
+import { formatCurrency } from "@/lib/currency";
 
-// Print routes are opened in the SAME tab (client-side <Link> navigation),
-// not a new tab, deliberately: stub-data's in-memory orders/customers arrays
-// only live in this browser tab's JS session (see lib/data/stub-data.ts) —
-// a genuinely new tab would re-run from seed data and could show "order not
-// found" for any order created this session. Same-tab Link navigation keeps
-// the existing in-memory state intact.
 function PrintMenu({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
+  const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -73,19 +71,47 @@ function PrintMenu({ orderId }: { orderId: string }) {
               <li>
                 <Link
                   href={`/orders/${orderId}/print/customer`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setOpeningPrint("receipt");
+                    window.setTimeout(() => {
+                      setOpeningPrint(null);
+                      setOpen(false);
+                    }, 900);
+                  }}
                   className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
                 >
-                  {t("orders.customerReceipt")}
+                  <span className="flex items-center gap-1.5">
+                    {openingPrint === "receipt" && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    {openingPrint === "receipt" ? "Opening..." : t("orders.customerReceipt")}
+                  </span>
                 </Link>
               </li>
             )}
             {canPrintJobCard && (
               <li>
                 <Link
-                  href={`/orders/${orderId}/print/job-card`}
+                  href={`/orders/${orderId}/job-cards/print`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setOpeningPrint("job-card");
+                    window.setTimeout(() => {
+                      setOpeningPrint(null);
+                      setOpen(false);
+                    }, 900);
+                  }}
                   className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
                 >
-                  {t("orders.tailorJobCard")}
+                  <span className="flex items-center gap-1.5">
+                    {openingPrint === "job-card" && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    {openingPrint === "job-card" ? "Opening..." : "Print All Job Cards"}
+                  </span>
                 </Link>
               </li>
             )}
@@ -97,7 +123,7 @@ function PrintMenu({ orderId }: { orderId: string }) {
 }
 
 function money(value: number) {
-  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
 }
 
 function receiptUrl(orderId: string) {
@@ -179,7 +205,6 @@ export function OrderDetailsDrawer({
   customer,
   onClose,
   onStatusChange,
-  onEdit,
   onOrderUpdated,
 }: {
   order: Order | null;
@@ -189,7 +214,6 @@ export function OrderDetailsDrawer({
   customer: Customer | undefined;
   onClose: () => void;
   onStatusChange: () => void;
-  onEdit: (order: Order) => void;
   // Phase 7C: called with the freshly re-fetched Order after a payment is
   // recorded or voided (advance_paid/balance/payment_status all change via
   // the ledger trigger). The parent owns `order` as state (it's what gets
@@ -209,6 +233,8 @@ export function OrderDetailsDrawer({
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
   const [showRecordModal, setShowRecordModal] = useState(false);
+  const [openingEdit, setOpeningEdit] = useState(false);
+  const [openingFullOrder, setOpeningFullOrder] = useState(false);
   const orderId = order?.id;
 
   useEffect(() => {
@@ -251,6 +277,8 @@ export function OrderDetailsDrawer({
     setPayments(result.payments);
     onOrderUpdated(result.order);
   }
+
+  const formattedTrialDate = formatOptionalDate(order?.trialDate);
 
   return (
     <>
@@ -326,13 +354,13 @@ export function OrderDetailsDrawer({
                     {formatDate(order.deliveryDate)}
                   </p>
                 </div>
-                {order.trialDate && (
+                {formattedTrialDate && (
                   <div>
                     <p className="text-[13px] font-medium text-ink-muted">
                       {t("orders.trialDate")}
                     </p>
                     <p className="mt-1 text-sm text-ink">
-                      {formatDate(order.trialDate)}
+                      {formattedTrialDate}
                     </p>
                   </div>
                 )}
@@ -383,10 +411,10 @@ export function OrderDetailsDrawer({
                           {canViewPayments && (
                             <>
                               <td className="px-3 py-2 text-right text-ink-muted">
-                                ₹{item.rate.toLocaleString("en-IN")}
+                                {formatCurrency(item.rate)}
                               </td>
                               <td className="px-3 py-2 text-right text-ink">
-                                ₹{item.amount.toLocaleString("en-IN")}
+                                {formatCurrency(item.amount)}
                               </td>
                             </>
                           )}
@@ -402,19 +430,19 @@ export function OrderDetailsDrawer({
                   <div className="flex items-center justify-between py-1">
                     <span className="text-sm text-ink-muted">{t("common.total")}</span>
                     <span className="text-sm font-semibold text-ink">
-                      ₹{order.totalAmount.toLocaleString("en-IN")}
+                      {formatCurrency(order.totalAmount)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-1">
                     <span className="text-sm text-ink-muted">{t("common.paid")}</span>
                     <span className="text-sm font-semibold text-ink">
-                      ₹{order.advancePaid.toLocaleString("en-IN")}
+                      {formatCurrency(order.advancePaid)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-1">
                     <span className="text-sm text-ink-muted">{t("common.balance")}</span>
                     <span className="text-sm font-semibold text-ink">
-                      ₹{order.balance.toLocaleString("en-IN")}
+                      {formatCurrency(order.balance)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-1">
@@ -488,22 +516,33 @@ export function OrderDetailsDrawer({
             <div className="shrink-0 space-y-3 border-t border-border-soft px-6 py-4">
               <Link
                 href={`/orders/${order.id}`}
+                onClick={() => setOpeningFullOrder(true)}
+                aria-busy={openingFullOrder}
                 className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
-                <FileText className="h-3.5 w-3.5" />
-                View Full Order
+                {openingFullOrder ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5" />
+                )}
+                {openingFullOrder ? "Opening..." : "View Full Order"}
               </Link>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => onEdit(order)}
+                    <Link
+                      href={`/orders/${order.id}/edit`}
+                      onClick={() => setOpeningEdit(true)}
+                      aria-busy={openingEdit}
                       className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit
-                    </button>
+                      {openingEdit ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Pencil className="h-3.5 w-3.5" />
+                      )}
+                      {openingEdit ? "Opening..." : "Edit"}
+                    </Link>
                   )}
                   <PrintMenu orderId={order.id} />
                 </div>

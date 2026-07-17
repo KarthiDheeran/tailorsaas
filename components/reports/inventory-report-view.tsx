@@ -10,6 +10,7 @@ import type { InventoryReport } from "@/lib/reports";
 import type { InventoryItemType } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/currency";
 
 const ITEM_TYPES: InventoryItemType[] = [
   "Fabric",
@@ -22,7 +23,7 @@ const ITEM_TYPES: InventoryItemType[] = [
 ];
 
 function money(n: number) {
-  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 // Inventory tab — the "low-stock report" item. A point-in-time snapshot

@@ -15,10 +15,11 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
+import { formatCurrency } from "@/lib/currency";
 import type { Customer, Order, Payment } from "@/lib/types";
 
 function money(value: number) {
-  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
 }
 
 function receiptNumber(order: Order, payment: Payment, settings: ShopBillingSettings) {

@@ -6,6 +6,7 @@ import { recordPaymentAction } from "@/app/(shell)/orders/actions";
 import { paymentModes } from "@/lib/constants";
 import type { Order, Payment, PaymentMode } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 // Centered modal, above OrderDetailsDrawer's z-50 — same layering convention
 // as GarmentMeasurementModal (z-[60]/z-[70] over a drawer). Client-side
@@ -102,7 +103,7 @@ export function RecordPaymentModal({
         <p className="mb-4 text-sm text-ink-muted">
           {t("orders.remainingBalance")}:{" "}
           <span className="font-semibold text-ink">
-            ₹{order.balance.toLocaleString("en-IN")}
+            {formatCurrency(order.balance)}
           </span>
         </p>
 

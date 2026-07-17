@@ -44,6 +44,13 @@ import {
   orderItemToDraftItem,
   type DraftItem,
 } from "@/components/orders/new-order-items-card";
+import {
+  OrderAttachmentDraftCard,
+  uploadQueuedOrderAttachmentsDetailed,
+  type AttachmentUploadFailure,
+  type AttachmentItemOption,
+  type QueuedOrderAttachment,
+} from "@/components/orders/order-attachment-draft-card";
 import { NewOrderSummaryPanel } from "@/components/orders/new-order-summary-panel";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -52,6 +59,7 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
+import { formatCurrency } from "@/lib/currency";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -71,7 +79,7 @@ const emptyCustomerDraft = {
 };
 
 function money(value: number) {
-  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
 }
 
 function orderReceiptUrl(orderId: string) {
@@ -116,6 +124,8 @@ function NewOrderPageContent() {
   const [deliveryPromiseNote, setDeliveryPromiseNote] = useState("");
 
   const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
+  const [queuedAttachments, setQueuedAttachments] = useState<QueuedOrderAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   const [advancePaid, setAdvancePaid] = useState(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
@@ -124,6 +134,11 @@ function NewOrderPageContent() {
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
+  const [attachmentUploadFailures, setAttachmentUploadFailures] = useState<
+    AttachmentUploadFailure[]
+  >([]);
+  const [attachmentUploadCount, setAttachmentUploadCount] = useState(0);
+  const [repeatCopyMessage, setRepeatCopyMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [leavingToOrders, setLeavingToOrders] = useState(false);
 
@@ -178,6 +193,7 @@ function NewOrderPageContent() {
     setPhoneDuplicateCustomer(null);
     setSimilarNameCustomers([]);
     setNewCustomer(emptyCustomerDraft);
+    setRepeatCopyMessage(null);
   }
 
   // Prefill from ?customerId= (the "New Order" link from an already-selected
@@ -322,6 +338,38 @@ function NewOrderPageContent() {
   const hasValidItem = computedItems.some(
     (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
   );
+  const attachmentItemOptions: AttachmentItemOption[] = [];
+  let predictedSerialNo = 1;
+  items.forEach((item, index) => {
+    const computed = computedItems[index];
+    const valid = item.garmentTypeId && computed.qty > 0 && computed.rate >= 0;
+    const garmentName =
+      garmentTypes.find((garment) => garment.id === item.garmentTypeId)?.name ||
+      computed.particular ||
+      "Unselected item";
+    attachmentItemOptions.push({
+      key: item.draftKey,
+      label: `Item ${index + 1} — ${garmentName}`,
+      serialNo: valid ? predictedSerialNo : undefined,
+    });
+    if (valid) predictedSerialNo += 1;
+  });
+  const attachmentValidationError =
+    queuedAttachments.find((attachment) => attachment.error)?.error ??
+    (queuedAttachments.some(
+      (attachment) =>
+        attachment.orderItemKey &&
+        !attachmentItemOptions.some((option) => option.key === attachment.orderItemKey)
+    )
+      ? "Reassign or remove attachments linked to deleted items."
+      : queuedAttachments.some(
+            (attachment) =>
+              attachment.orderItemKey &&
+              !attachmentItemOptions.find((option) => option.key === attachment.orderItemKey)
+                ?.serialNo
+          )
+        ? "Attachments can only be linked to valid garment items."
+        : undefined);
   let itemsError: string | undefined;
   if (!anyGarmentSelected) {
     itemsError = t("validation.selectGarmentForItem");
@@ -336,9 +384,11 @@ function NewOrderPageContent() {
       ? "Delivery date cannot be before order date."
       : undefined;
   const trialDateError =
-    trialDate && deliveryDate && trialDate > deliveryDate
-      ? "Trial date cannot be after delivery date."
-      : undefined;
+    trialDate && orderDate && trialDate < orderDate
+      ? "Trial date cannot be before order date."
+      : trialDate && deliveryDate && trialDate > deliveryDate
+        ? "Trial date cannot be after delivery date."
+        : undefined;
   const errors = {
     customer:
       !hasSelectedCustomer && !isCreatingNewCustomer
@@ -362,6 +412,7 @@ function NewOrderPageContent() {
     deliveryDate: deliveryDateError,
     trialDate: trialDateError,
     items: itemsError,
+    attachments: attachmentValidationError,
     advancePaid:
       advancePaid < 0
         ? t("validation.paidCannotBeNegative")
@@ -385,6 +436,7 @@ function NewOrderPageContent() {
     setDuplicateCustomer(null);
     setPhoneDuplicateCustomer(null);
     setSimilarNameCustomers([]);
+    setRepeatCopyMessage(null);
   }
 
   function handleCreateNewCustomer() {
@@ -412,15 +464,39 @@ function NewOrderPageContent() {
     setCustomerMode("search");
   }
 
-  function handleRepeatOrder(order: Order) {
-    setItems(
-      order.items.map((item) => orderItemToDraftItem(item, garmentTypes, addOns))
+  function hasMeaningfulItemDraftData() {
+    return items.some(
+      (it) =>
+        it.garmentTypeId !== "" ||
+        it.qty !== 1 ||
+        it.rate !== 0 ||
+        it.rateOverridden ||
+        it.addOnIds.length > 0 ||
+        it.fabricSource !== "Not specified" ||
+        it.fabricNotes.trim() !== "" ||
+        it.designNotes.trim() !== "" ||
+        it.alterationIssue.trim() !== "" ||
+        it.alterationRequiredChange.trim() !== "" ||
+        it.linkedOriginalOrderId !== "" ||
+        it.measurement !== null
     );
-    setOrderDate(todayIso());
-    setDeliveryDate("");
-    setDeliveryPromiseNote("");
-    setTrialDate("");
-    setAdvancePaid(0);
+  }
+
+  function handleRepeatOrder(order: Order) {
+    if (
+      hasMeaningfulItemDraftData() &&
+      !window.confirm("Using this order will replace the current order items. Continue?")
+    ) {
+      return;
+    }
+    setItems(
+      order.items.map((item) => ({
+        ...orderItemToDraftItem(item, garmentTypes, addOns),
+        draftKey: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        orderItemId: undefined,
+      }))
+    );
+    setRepeatCopyMessage(`Order ${order.orderNumber} copied into this draft.`);
   }
 
   const isDirty =
@@ -435,6 +511,7 @@ function NewOrderPageContent() {
     deliveryPromiseNote.trim() !== "" ||
     trialDate !== "" ||
     advancePaid !== 0 ||
+    queuedAttachments.length > 0 ||
     items.some(
       (it) =>
         it.garmentTypeId !== "" ||
@@ -454,7 +531,10 @@ function NewOrderPageContent() {
     setSubmitAttempted(true);
     if (hasErrors) return;
     setSaveError(null);
+    setAttachmentError(null);
     setProfileUpdateWarning(null);
+    setAttachmentUploadFailures([]);
+    setAttachmentUploadCount(0);
     setSaving(true);
 
     const validItems = computedItems.filter(
@@ -557,15 +637,43 @@ function NewOrderPageContent() {
       setSaveError(created.error);
       return;
     }
+    const postSaveWarnings: string[] = [];
     const measurementError = await persistMeasurementEdits(created.data.customerId);
     if (measurementError) {
-      setSaving(false);
-      setProfileUpdateWarning(
-        `Order was created, but saved customer measurements were not updated: ${measurementError}`
+      postSaveWarnings.push(
+        `Saved customer measurements were not updated: ${measurementError}`
       );
-      setSavedOrder(created.data);
-      return;
     }
+    if (queuedAttachments.length > 0) {
+      const savedAttachmentItemOptions = attachmentItemOptions.map((option) => {
+        const savedItem = option.serialNo
+          ? created.data.items.find((item) => item.serialNo === option.serialNo)
+          : undefined;
+        return {
+          ...option,
+          orderItemId: savedItem?.id,
+          serialNo: savedItem?.serialNo ?? option.serialNo,
+        };
+      });
+      const attachmentResult = await uploadQueuedOrderAttachmentsDetailed({
+        orderId: created.data.id,
+        queued: queuedAttachments,
+        itemOptions: savedAttachmentItemOptions,
+      });
+      setAttachmentUploadCount(attachmentResult.uploadedCount);
+      if (attachmentResult.failures.length > 0) {
+        setAttachmentUploadFailures(attachmentResult.failures);
+        setQueuedAttachments((current) =>
+          current.filter((attachment) =>
+            attachmentResult.failures.some((failure) => failure.id === attachment.id)
+          )
+        );
+      } else {
+        setAttachmentUploadFailures([]);
+        setQueuedAttachments([]);
+      }
+    }
+    setProfileUpdateWarning(postSaveWarnings.join(" "));
     setSaving(false);
 
     // Show the success state with print options rather than redirecting
@@ -578,6 +686,12 @@ function NewOrderPageContent() {
     if (!savedOrder) return;
     setLeavingToOrders(true);
     router.push(`/orders?created=1&orderId=${savedOrder.id}`);
+  }
+
+  function handleOpenOrderAttachments() {
+    if (!savedOrder) return;
+    setLeavingToOrders(true);
+    router.push(`/orders/${savedOrder.id}#attachments`);
   }
 
   function handleBackToOrders() {
@@ -1028,6 +1142,14 @@ function NewOrderPageContent() {
               garmentTypes={garmentTypes}
               addOns={addOns}
               previousOrders={customerDetail?.orders ?? []}
+              autoSnapshotDefaultMeasurements
+            />
+
+            <OrderAttachmentDraftCard
+              itemOptions={attachmentItemOptions}
+              queued={queuedAttachments}
+              onQueuedChange={setQueuedAttachments}
+              error={(submitAttempted && errors.attachments) || attachmentError}
             />
 
             {canViewPayments && (
@@ -1041,7 +1163,7 @@ function NewOrderPageContent() {
                     {t("common.total")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    ₹{totalAmount.toLocaleString("en-IN")}
+                    {formatCurrency(totalAmount)}
                   </div>
                 </div>
                 <label className="flex flex-col gap-1.5">
@@ -1072,7 +1194,7 @@ function NewOrderPageContent() {
                     {t("common.balance")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    ₹{balance.toLocaleString("en-IN")}
+                    {formatCurrency(balance)}
                   </div>
                 </div>
                 <label className="flex flex-col gap-1.5">
@@ -1112,6 +1234,7 @@ function NewOrderPageContent() {
               measurements={customerMeasurements}
               garmentMeasurements={customerGarmentMeasurements}
               onRepeatOrder={handleRepeatOrder}
+              repeatCopyMessage={repeatCopyMessage}
               newCustomerPending={customerMode === "new"}
             />
           </div>
@@ -1126,15 +1249,15 @@ function NewOrderPageContent() {
             ) : canViewPayments ? (
               <>
                 <span>
-                  {t("common.total")}: <span className="font-semibold text-ink">₹{totalAmount.toLocaleString("en-IN")}</span>
+                  {t("common.total")}: <span className="font-semibold text-ink">{formatCurrency(totalAmount)}</span>
                 </span>
                 <span className="text-border">|</span>
                 <span>
-                  {t("common.paid")}: <span className="font-semibold text-ink">₹{advancePaid.toLocaleString("en-IN")}</span>
+                  {t("common.paid")}: <span className="font-semibold text-ink">{formatCurrency(advancePaid)}</span>
                 </span>
                 <span className="text-border">|</span>
                 <span>
-                  {t("common.balance")}: <span className="font-semibold text-ink">₹{balance.toLocaleString("en-IN")}</span>
+                  {t("common.balance")}: <span className="font-semibold text-ink">{formatCurrency(balance)}</span>
                 </span>
               </>
             ) : (
@@ -1175,11 +1298,36 @@ function NewOrderPageContent() {
                 <CheckCircle2 className="h-6 w-6 text-chip-mint-fg" />
               </div>
               <h3 className="text-[17px] font-semibold text-ink">
-                {t("orders.orderCreatedSuccess")}
+                {attachmentUploadFailures.length > 0
+                  ? `${savedOrder.orderNumber} was created with attachment issues`
+                  : t("orders.orderCreatedSuccess")}
               </h3>
               <p className="mt-1 text-sm text-ink-muted">
                 {savedOrder.orderNumber}
               </p>
+              {attachmentUploadFailures.length > 0 && (
+                <div className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-left text-xs font-medium text-chip-red-fg">
+                  <p>
+                    Order {savedOrder.orderNumber} was created, but{" "}
+                    {attachmentUploadFailures.length} attachment
+                    {attachmentUploadFailures.length === 1 ? "" : "s"} could not be uploaded.
+                  </p>
+                  {attachmentUploadCount > 0 && (
+                    <p className="mt-1">
+                      {attachmentUploadCount} attachment
+                      {attachmentUploadCount === 1 ? "" : "s"} uploaded successfully.
+                    </p>
+                  )}
+                  <div className="mt-2 space-y-1">
+                    <p>Failed attachments:</p>
+                    {attachmentUploadFailures.map((failure) => (
+                      <p key={failure.id}>
+                        {failure.fileName} - {failure.error}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
               {profileUpdateWarning && (
                 <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-left text-xs font-medium text-chip-red-fg">
                   {profileUpdateWarning}
@@ -1189,10 +1337,26 @@ function NewOrderPageContent() {
                 {canPrintReceipt && (
                   <Link
                     href={`/orders/${savedOrder.id}/print/customer`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                   >
                     {t("orders.printCustomerReceipt")}
                   </Link>
+                )}
+                {attachmentUploadFailures.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleOpenOrderAttachments}
+                    disabled={leavingToOrders}
+                    aria-busy={leavingToOrders}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {leavingToOrders
+                      ? "Opening order..."
+                      : "Open Order and Retry Attachments"}
+                  </button>
                 )}
                 {savedOrder.customerSnapshot?.phone && (
                   <button
@@ -1206,10 +1370,12 @@ function NewOrderPageContent() {
                 )}
                 {canPrintJobCard && (
                   <Link
-                    href={`/orders/${savedOrder.id}/print/job-card`}
+                    href={`/orders/${savedOrder.id}/job-cards/print`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                   >
-                    {t("orders.printTailorJobCard")}
+                    Print All Job Cards
                   </Link>
                 )}
                 <button

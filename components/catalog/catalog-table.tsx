@@ -4,6 +4,7 @@ import { Pencil, Power, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CatalogGarmentType } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 export function CatalogTable({
   garmentTypes,
@@ -66,7 +67,7 @@ export function CatalogTable({
                 {garment.name}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                ₹{garment.basePrice.toLocaleString("en-IN")}
+                {formatCurrency(garment.basePrice)}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                 {garment.measurementFieldIds.length}{" "}

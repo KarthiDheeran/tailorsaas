@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { formatDate } from "@/components/orders/orders-table";
 import type { FinancialAdjustmentLedgerRow } from "@/app/(shell)/payments/actions";
+import { formatCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 function signedAmount(row: FinancialAdjustmentLedgerRow) {

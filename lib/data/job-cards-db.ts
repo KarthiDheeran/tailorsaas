@@ -29,6 +29,8 @@ export interface JobCardActivitySnapshot {
   orderId: string;
   currentStage: JobCardStage;
   assignedStaffId?: string;
+  orderStatus: OrderStatus;
+  cancelled: boolean;
 }
 
 const JOB_CARD_COLUMNS = `
@@ -63,6 +65,7 @@ interface JobCardRow {
   completed_date: string | null;
   cancelled: boolean;
   notes: string | null;
+  created_at: string | null;
 }
 
 export function isMissingJobCardsSchemaError(error: unknown): boolean {
@@ -88,8 +91,10 @@ export async function getJobCards(
   let query = supabase
     .from("job_cards")
     .select(JOB_CARD_COLUMNS)
-    .order("due_date", { ascending: true })
-    .order("job_card_number", { ascending: true });
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .order("order_number", { ascending: false })
+    .order("order_item_serial_no", { ascending: true })
+    .order("unit_no", { ascending: true });
 
   if (options.assignedStaffId) {
     query = query.eq("assigned_staff_id", options.assignedStaffId);
@@ -184,11 +189,54 @@ async function updateJobCardsForOrder(
   if (error) throw error;
 }
 
+function isClosedJobCard(row: {
+  order_status: OrderStatus;
+  current_stage: JobCardStage;
+  cancelled: boolean;
+}) {
+  return (
+    row.cancelled ||
+    row.order_status === "Delivered" ||
+    row.order_status === "Cancelled" ||
+    row.current_stage === "Delivered" ||
+    row.current_stage === "Cancelled"
+  );
+}
+
+function assertJobCardEditable(row: {
+  order_status: OrderStatus;
+  current_stage: JobCardStage;
+  cancelled: boolean;
+}) {
+  if (isClosedJobCard(row)) {
+    throw new Error("This job card is closed and cannot be changed.");
+  }
+}
+
+function stageRequiresWorker(stage: JobCardStage) {
+  return stage !== "Unassigned" && stage !== "Cancelled";
+}
+
 export async function assignJobCard(
   supabase: SupabaseClient,
   id: string,
   data: JobCardAssignmentInput
 ): Promise<void> {
+  const { data: currentRow, error: fetchError } = await supabase
+    .from("job_cards")
+    .select("order_status, current_stage, cancelled")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!currentRow) throw new Error("Job card not found.");
+  assertJobCardEditable(
+    currentRow as {
+      order_status: OrderStatus;
+      current_stage: JobCardStage;
+      cancelled: boolean;
+    }
+  );
+
   const { error } = await supabase
     .from("job_cards")
     .update({
@@ -228,7 +276,7 @@ export async function getJobCardActivitySnapshot(
 ): Promise<JobCardActivitySnapshot | undefined> {
   const { data, error } = await supabase
     .from("job_cards")
-    .select("id, order_id, current_stage, assigned_staff_id")
+    .select("id, order_id, order_status, current_stage, assigned_staff_id, cancelled")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -236,14 +284,18 @@ export async function getJobCardActivitySnapshot(
   const row = data as {
     id: string;
     order_id: string;
+    order_status: OrderStatus;
     current_stage: JobCardStage;
     assigned_staff_id: string | null;
+    cancelled: boolean;
   };
   return {
     id: row.id,
     orderId: row.order_id,
     currentStage: row.current_stage,
     assignedStaffId: row.assigned_staff_id ?? undefined,
+    orderStatus: row.order_status,
+    cancelled: row.cancelled,
   };
 }
 
@@ -252,6 +304,24 @@ export async function startJobCard(
   id: string,
   todayIso: string
 ): Promise<void> {
+  const { data: currentRow, error: fetchError } = await supabase
+    .from("job_cards")
+    .select("order_status, current_stage, assigned_staff_id, cancelled")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!currentRow) throw new Error("Job card not found.");
+  const current = currentRow as {
+    order_status: OrderStatus;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(current);
+  if (!current.assigned_staff_id) {
+    throw new Error("Assign a worker before starting this job card.");
+  }
+
   const { error } = await supabase
     .from("job_cards")
     .update({
@@ -270,18 +340,28 @@ export async function completeJobCard(
 ): Promise<string> {
   const { data: currentRow, error: fetchError } = await supabase
     .from("job_cards")
-    .select("current_stage, order_id")
+    .select("current_stage, order_id, order_status, assigned_staff_id, cancelled")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) throw fetchError;
   if (!currentRow) throw new Error("Job card not found.");
 
-  const current = currentRow as { current_stage: JobCardStage; order_id: string };
+  const current = currentRow as {
+    current_stage: JobCardStage;
+    order_id: string;
+    order_status: OrderStatus;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(current);
+  if (!current.assigned_staff_id) {
+    throw new Error("Assign a worker before moving this job card.");
+  }
   const currentStage = current.current_stage;
   const nextStage = getNextStageAfterCompletion(currentStage);
   const isFinalCompletion = nextStage === "Ready";
   const update: Record<string, unknown> = {
-    current_stage: nextStage,
+    current_stage: isFinalCompletion ? "Ready" : "Unassigned",
     updated_at: new Date().toISOString(),
   };
   if (isFinalCompletion) {
@@ -308,11 +388,23 @@ export async function moveJobCardStage(
 ): Promise<string> {
   const { data: currentRow, error: fetchError } = await supabase
     .from("job_cards")
-    .select("order_id")
+    .select("order_id, order_status, current_stage, assigned_staff_id, cancelled")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) throw fetchError;
   if (!currentRow) throw new Error("Job card not found.");
+
+  const current = currentRow as {
+    order_id: string;
+    order_status: OrderStatus;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(current);
+  if (stageRequiresWorker(stage) && !current.assigned_staff_id) {
+    throw new Error("Assign a worker before moving this job card into production.");
+  }
 
   const isClosedStage =
     stage === "Ready" || stage === "Delivered" || stage === "Cancelled";
@@ -322,10 +414,9 @@ export async function moveJobCardStage(
     updated_at: new Date().toISOString(),
   };
 
-  if (stage === "Ready") {
+  if (stage === "Ready" || stage === "Delivered") {
     update.completed_date = todayIso;
   } else if (!isClosedStage) {
-    update.assigned_staff_id = null;
     update.started_date = null;
     update.completed_date = null;
   }
@@ -335,7 +426,7 @@ export async function moveJobCardStage(
     .update(update)
     .eq("id", id);
   if (error) throw error;
-  return (currentRow as { order_id: string }).order_id;
+  return current.order_id;
 }
 
 export async function syncOrderStatusFromJobCards(
@@ -427,6 +518,7 @@ function mapJobCardRow(
     fabricNotes: row.fabric_notes ?? undefined,
     designNotes: row.design_notes?.trim() ? row.design_notes : undefined,
     notes: row.notes ?? undefined,
+    createdAt: row.created_at ?? undefined,
     startedDate: row.started_date ?? undefined,
     completedDate: row.completed_date ?? undefined,
     isDelayed:

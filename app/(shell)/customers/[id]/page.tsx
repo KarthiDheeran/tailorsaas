@@ -22,6 +22,7 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import { formatCurrency } from "@/lib/currency";
 
 function CustomerProfilePageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -93,8 +94,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             </h1>
             {canViewPayments && detail.outstandingBalance > 0 && (
               <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
-                ₹{detail.outstandingBalance.toLocaleString("en-IN")}{" "}
-                {t("customers.due")}
+                {formatCurrency(detail.outstandingBalance)} {t("customers.due")}
               </span>
             )}
           </div>

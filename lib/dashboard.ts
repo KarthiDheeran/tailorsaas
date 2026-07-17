@@ -14,6 +14,7 @@ import {
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
+import { formatCurrency } from "@/lib/currency";
 import { isActiveOrder, isReceivableOrder } from "@/lib/order-finance";
 
 // Phase 6E: real, Supabase-backed selector over Order data — the customer
@@ -148,13 +149,13 @@ export async function getDashboardData(
     },
     {
       label: "Outstanding Balance",
-      value: `₹${outstandingBalanceTotal.toLocaleString("en-IN")}`,
+      value: formatCurrency(outstandingBalanceTotal),
       sublabel: `From ${paymentPending.length} orders`,
       tone: "default",
     },
     {
       label: "Revenue Today",
-      value: `₹${revenueToday.toLocaleString("en-IN")}`,
+      value: formatCurrency(revenueToday),
       sublabel: "Advance + balance collected",
       tone: "default",
     },
@@ -203,7 +204,7 @@ export async function getDashboardData(
   if (expenseStats) {
     stats.push({
       label: "Expenses Today",
-      value: `₹${expenseStats.todayTotal.toLocaleString("en-IN")}`,
+      value: formatCurrency(expenseStats.todayTotal),
       sublabel: "Shop spending",
       tone: "default",
     });

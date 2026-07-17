@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { voidPaymentAction } from "@/app/(shell)/orders/actions";
 import { formatDate } from "@/components/orders/orders-table";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 import type { Payment } from "@/lib/types";
 
 // Phase 7F: the Payments page's Void action — a centered modal (same
@@ -72,7 +73,7 @@ export function VoidPaymentModal({
           </button>
         </div>
         <p className="mb-4 text-sm text-ink-muted">
-          {orderNumber} · ₹{payment.amount.toLocaleString("en-IN")} ·{" "}
+          {orderNumber} · {formatCurrency(payment.amount)} ·{" "}
           {payment.paymentMode} · {formatDate(payment.paymentDate)}
         </p>
 

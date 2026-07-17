@@ -33,6 +33,7 @@ const ORDER_ITEM_COLUMNS =
   "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 interface OrderItemRow {
+  id: string;
   serial_no: number;
   particular: string;
   garment_type_id: string | null;
@@ -55,6 +56,7 @@ interface OrderItemRow {
 
 function mapOrderItem(row: OrderItemRow): OrderItem {
   return {
+    id: row.id,
     serialNo: row.serial_no,
     particular: row.particular,
     garmentTypeId: row.garment_type_id ?? undefined,
@@ -268,6 +270,7 @@ export async function updateOrder(
   id: string,
   data: {
     orderDate: string;
+    trialDate: string;
     deliveryDate: string;
     deliveryPromiseNote?: string;
     items: OrderItem[];
@@ -277,6 +280,7 @@ export async function updateOrder(
   const { error } = await supabase.rpc("update_order_with_items", {
     p_order_id: id,
     p_order_date: data.orderDate,
+    p_trial_date: data.trialDate || null,
     p_delivery_date: data.deliveryDate,
     p_delivery_promise_note: data.deliveryPromiseNote?.trim() || null,
     p_status: data.status,

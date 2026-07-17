@@ -6,6 +6,7 @@ import { notFound, useRouter } from "next/navigation";
 import {
   ChevronLeft,
   FileText,
+  Loader2,
   Pencil,
   Printer,
   SlidersHorizontal,
@@ -17,14 +18,19 @@ import {
   getOrderByIdAction,
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
-import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
-import { EditOrderDrawer } from "@/components/orders/edit-order-drawer";
+import { getJobCardsAction } from "@/app/(shell)/job-cards/actions";
+import { getGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import {
+  getCustomerByIdAction,
+  getGarmentMeasurementDraftSeedAction,
+} from "@/app/(shell)/customers/actions";
 import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
 import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
 import { OrderAttachmentsCard } from "@/components/orders/order-attachments-card";
 import {
   BalanceBadge,
   formatDate,
+  formatOptionalDate,
   OrderStatusEditor,
   PaymentStatusBadge,
 } from "@/components/orders/orders-table";
@@ -34,7 +40,9 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
-import { measurementFieldLabel } from "@/lib/catalog";
+import { measurementFieldLabel, type CatalogGarmentType } from "@/lib/catalog";
+import { formatCurrency } from "@/lib/currency";
+import type { JobCard } from "@/lib/job-cards";
 import { isReceivableOrder } from "@/lib/order-finance";
 import type {
   Customer,
@@ -46,9 +54,29 @@ import type {
 } from "@/lib/types";
 
 const MEASUREMENT_NOTES_KEY = "__measurementNotes";
+const LONG_MEASUREMENT_FIELD_COUNT = 9;
 
 function money(value: number) {
-  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
+}
+
+function jobCardPrintUrl(orderId: string, card: JobCard) {
+  const params = new URLSearchParams();
+  if (card.persisted) {
+    params.set("jobCardId", card.id);
+  } else {
+    params.set("orderItemSerialNo", String(card.item.serialNo));
+    params.set("unitNo", String(card.unitNo));
+  }
+  return `/orders/${orderId}/job-cards/print?${params.toString()}`;
+}
+
+function unitJobCardPrintUrl(orderId: string, serialNo: number, unitNo: number) {
+  const params = new URLSearchParams({
+    orderItemSerialNo: String(serialNo),
+    unitNo: String(unitNo),
+  });
+  return `/orders/${orderId}/job-cards/print?${params.toString()}`;
 }
 
 function Section({
@@ -71,15 +99,199 @@ function Section({
   );
 }
 
-function measurementEntries(item: OrderItem) {
-  const raw = item.measurements ?? {};
-  return Object.entries(raw).filter(
-    ([key, value]) => key !== MEASUREMENT_NOTES_KEY && value.trim() !== ""
+type MeasurementDisplayEntry = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+type MeasurementSnapshotDisplay = {
+  entries: MeasurementDisplayEntry[];
+  notes: string;
+  invalid: boolean;
+};
+
+type MeasurementDraftSeed = {
+  values: Record<string, string>;
+  fitNotes: string;
+  notes: string;
+};
+
+function safeMeasurementValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[object Object]" || trimmed.toLowerCase() === "nan") {
+    return "";
+  }
+  return trimmed;
+}
+
+function garmentKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function garmentForItem(
+  item: OrderItem,
+  garmentTypes: CatalogGarmentType[]
+): CatalogGarmentType | undefined {
+  return (
+    garmentTypes.find((garment) => garment.id === item.garmentTypeId) ??
+    garmentTypes.find((garment) => garmentKey(garment.name) === garmentKey(item.particular))
   );
 }
 
-function measurementNotes(item: OrderItem) {
-  return item.measurements?.[MEASUREMENT_NOTES_KEY]?.trim() ?? "";
+function measurementSnapshotDisplay(
+  item: OrderItem,
+  garmentTypes: CatalogGarmentType[],
+  fallbackSeed?: MeasurementDraftSeed
+): MeasurementSnapshotDisplay {
+  const raw = item.measurements as unknown;
+  if (!raw) {
+    return measurementDisplayFromRecord(
+      item,
+      garmentTypes,
+      fallbackSeed
+        ? {
+            ...fallbackSeed.values,
+            ...(fallbackSeed.notes.trim()
+              ? { [MEASUREMENT_NOTES_KEY]: fallbackSeed.notes.trim() }
+              : {}),
+          }
+        : undefined
+    );
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { entries: [], notes: "", invalid: true };
+  }
+
+  const display = measurementDisplayFromRecord(
+    item,
+    garmentTypes,
+    raw as Record<string, unknown>
+  );
+  if (
+    (display.entries.length > 0 || display.notes.length > 0 || display.invalid) ||
+    !fallbackSeed
+  ) {
+    return display;
+  }
+
+  return measurementDisplayFromRecord(item, garmentTypes, {
+    ...fallbackSeed.values,
+    ...(fallbackSeed.notes.trim()
+      ? { [MEASUREMENT_NOTES_KEY]: fallbackSeed.notes.trim() }
+      : {}),
+  });
+}
+
+function measurementDisplayFromRecord(
+  item: OrderItem,
+  garmentTypes: CatalogGarmentType[],
+  record?: Record<string, unknown>
+): MeasurementSnapshotDisplay {
+  if (!record) return { entries: [], notes: "", invalid: false };
+  const values = new Map<string, string>();
+  for (const [key, value] of Object.entries(record)) {
+    if (key === MEASUREMENT_NOTES_KEY) continue;
+    const displayValue = safeMeasurementValue(value);
+    if (displayValue) values.set(key, displayValue);
+  }
+
+  const garment = garmentForItem(item, garmentTypes);
+  const configuredKeys = garment?.measurementFieldIds ?? [];
+  const orderedKeys = [
+    ...configuredKeys.filter((key) => values.has(key)),
+    ...Array.from(values.keys()).filter((key) => !configuredKeys.includes(key)),
+  ];
+
+  return {
+    entries: orderedKeys.map((key) => ({
+      key,
+      label: measurementFieldLabel(key),
+      value: values.get(key) ?? "",
+    })),
+    notes: safeMeasurementValue(record[MEASUREMENT_NOTES_KEY]),
+    invalid: false,
+  };
+}
+
+function MeasurementsSnapshotSection({
+  item,
+  garmentTypes,
+  fallbackSeed,
+}: {
+  item: OrderItem;
+  garmentTypes: CatalogGarmentType[];
+  fallbackSeed?: MeasurementDraftSeed;
+}) {
+  const { entries, notes, invalid } = measurementSnapshotDisplay(
+    item,
+    garmentTypes,
+    fallbackSeed
+  );
+  const hasMeasurements = entries.length > 0;
+  const hasNotes = notes.length > 0;
+  const [expanded, setExpanded] = useState(
+    entries.length <= LONG_MEASUREMENT_FIELD_COUNT
+  );
+
+  useEffect(() => {
+    if (!invalid) return;
+    console.warn("Order item measurement snapshot could not be parsed.", {
+      orderItemId: item.id,
+      serialNo: item.serialNo,
+    });
+  }, [invalid, item.id, item.serialNo]);
+
+  if (!hasMeasurements && !hasNotes && !invalid) return null;
+
+  return (
+    <div className="border-t border-border-soft pt-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] font-medium text-ink-muted">
+          Measurements{hasMeasurements ? ` · ${entries.length} fields` : ""}
+        </p>
+        {hasMeasurements && (
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className="text-[13px] font-semibold text-primary transition-colors hover:text-primary-dark"
+          >
+            {expanded ? "Hide Measurements" : "View Measurements"}
+          </button>
+        )}
+      </div>
+
+      {invalid ? (
+        <p className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-sm text-ink-muted">
+          Measurement details could not be loaded.
+        </p>
+      ) : (
+        <>
+          {hasMeasurements && expanded && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+              {entries.map((entry) => (
+                <div key={entry.key}>
+                  <dt className="text-[13px] text-ink-muted">{entry.label}</dt>
+                  <dd className="font-semibold text-ink">{entry.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {hasNotes && (
+            <div className="mt-3 border-t border-border-soft pt-2.5">
+              <p className="text-[13px] font-medium text-ink-muted">
+                Measurement Notes
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{notes}</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function OrderDetailsPageContent({ params }: { params: { id: string } }) {
@@ -97,9 +309,15 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [jobCards, setJobCards] = useState<JobCard[]>([]);
+  const [measurementSeeds, setMeasurementSeeds] = useState<Record<string, MeasurementDraftSeed>>(
+    {}
+  );
   const [loaded, setLoaded] = useState(false);
   const [returningToOrders, setReturningToOrders] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [openingEdit, setOpeningEdit] = useState(false);
+  const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
@@ -120,20 +338,51 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
         return;
       }
       setOrder(foundOrder);
-      const [foundCustomer, foundAttachments, foundPayments, foundAdjustments] =
+      const [
+        foundCustomer,
+        foundAttachments,
+        foundPayments,
+        foundAdjustments,
+        foundGarmentTypes,
+        foundMeasurementSeeds,
+        foundJobCards,
+      ] =
         await Promise.all([
           getCustomerByIdAction(foundOrder.customerId),
-          getOrderAttachmentsAction(foundOrder.id),
+          getOrderAttachmentsAction(foundOrder.id).catch(() => []),
           canViewPayments ? getPaymentsForOrderAction(foundOrder.id) : Promise.resolve([]),
           canViewPayments
             ? getFinancialAdjustmentsForOrderAction(foundOrder.id)
             : Promise.resolve([]),
+          getGarmentTypesAction().catch(() => []),
+          Promise.all(
+            Array.from(new Set(foundOrder.items.map((item) => item.particular))).map(
+              async (garmentType) =>
+                [
+                  garmentKey(garmentType),
+                  await getGarmentMeasurementDraftSeedAction(
+                    foundOrder.customerId,
+                    garmentType
+                  ),
+                ] as const
+            )
+          )
+            .then((entries) => Object.fromEntries(entries))
+            .catch(() => ({} as Record<string, MeasurementDraftSeed>)),
+          getJobCardsAction(new Date().toISOString().slice(0, 10))
+            .then((cards) =>
+              (cards ?? []).filter((card) => card.orderId === foundOrder.id)
+            )
+            .catch(() => []),
         ]);
       if (cancelled) return;
       setCustomer(foundCustomer);
       setAttachments(foundAttachments);
       setPayments(foundPayments);
       setAdjustments(foundAdjustments);
+      setGarmentTypes(foundGarmentTypes);
+      setMeasurementSeeds(foundMeasurementSeeds);
+      setJobCards(foundJobCards);
       setLoaded(true);
     }
     load();
@@ -158,6 +407,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const customerName = customer?.name ?? order.customerSnapshot?.name ?? t("common.unknown");
   const customerPhone = customer?.phone ?? order.customerSnapshot?.phone ?? "";
   const customerArea = customer?.area ?? order.customerSnapshot?.area ?? "";
+  const formattedTrialDate = formatOptionalDate(order.trialDate);
 
   function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
     setOrder(result.order);
@@ -206,31 +456,58 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
+              <Link
+                href={`/orders/${order.id}/edit`}
+                onClick={() => setOpeningEdit(true)}
+                aria-busy={openingEdit}
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                <Pencil className="h-3.5 w-3.5" />
-                {t("orders.editOrder")}
-              </button>
+                {openingEdit ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Pencil className="h-3.5 w-3.5" />
+                )}
+                {openingEdit ? "Opening..." : t("orders.editOrder")}
+              </Link>
             )}
             {canPrintReceipt && (
               <Link
                 href={`/orders/${order.id}/print/customer`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  setOpeningPrint("receipt");
+                  window.setTimeout(() => setOpeningPrint(null), 900);
+                }}
+                aria-busy={openingPrint === "receipt"}
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                <Printer className="h-3.5 w-3.5" />
-                {t("orders.customerReceipt")}
+                {openingPrint === "receipt" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Printer className="h-3.5 w-3.5" />
+                )}
+                {openingPrint === "receipt" ? "Opening..." : t("orders.customerReceipt")}
               </Link>
             )}
             {canPrintJobCard && (
               <Link
-                href={`/orders/${order.id}/print/job-card`}
+                href={`/orders/${order.id}/job-cards/print`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  setOpeningPrint("job-card");
+                  window.setTimeout(() => setOpeningPrint(null), 900);
+                }}
+                aria-busy={openingPrint === "job-card"}
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                <FileText className="h-3.5 w-3.5" />
-                {t("orders.tailorJobCard")}
+                {openingPrint === "job-card" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5" />
+                )}
+                {openingPrint === "job-card" ? "Opening..." : "Print All Job Cards"}
               </Link>
             )}
           </div>
@@ -257,13 +534,13 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                   {formatDate(order.deliveryDate)}
                 </p>
               </div>
-              {order.trialDate && (
+              {formattedTrialDate && (
                 <div>
                   <p className="text-[13px] font-medium text-ink-muted">
                     {t("orders.trialDate")}
                   </p>
                   <p className="mt-1 font-semibold text-ink">
-                    {formatDate(order.trialDate)}
+                    {formattedTrialDate}
                   </p>
                 </div>
               )}
@@ -283,8 +560,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           <Section title={t("orders.items")}>
             <div className="space-y-4">
               {order.items.map((item) => {
-                const measurements = measurementEntries(item);
-                const notes = measurementNotes(item);
+                const itemJobCards = jobCards
+                  .filter((card) => card.item.serialNo === item.serialNo)
+                  .sort((a, b) => a.unitNo - b.unitNo);
                 return (
                   <article
                     key={item.serialNo}
@@ -304,6 +582,43 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary">
                           {item.addOns.length} add-ons
                         </span>
+                      )}
+                      {canPrintJobCard && itemJobCards.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {itemJobCards.map((card) => (
+                            <Link
+                              key={card.id}
+                              href={jobCardPrintUrl(order.id, card)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              {itemJobCards.length === 1
+                                ? "Print Job Card"
+                                : `Print Unit ${card.unitNo}`}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {canPrintJobCard && itemJobCards.length === 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {Array.from({ length: Math.max(1, item.qty) }, (_, unitIndex) => {
+                            const unitNo = unitIndex + 1;
+                            return (
+                              <Link
+                                key={unitNo}
+                                href={unitJobCardPrintUrl(order.id, item.serialNo, unitNo)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                {item.qty <= 1 ? "Print Job Card" : `Print Unit ${unitNo}`}
+                              </Link>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                     <div className="space-y-4 p-4">
@@ -356,39 +671,11 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                         </div>
                       )}
 
-                      {(measurements.length > 0 || notes) && (
-                        <div className="border-t border-border-soft pt-3">
-                          <p className="mb-2 text-[13px] font-medium text-ink-muted">
-                            Measurement Snapshot
-                          </p>
-                          {measurements.length > 0 ? (
-                            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-                              {measurements.map(([key, value]) => (
-                                <div key={key}>
-                                  <dt className="text-[13px] text-ink-muted">
-                                    {measurementFieldLabel(key)}
-                                  </dt>
-                                  <dd className="font-semibold text-ink">{value}</dd>
-                                </div>
-                              ))}
-                            </dl>
-                          ) : (
-                            <p className="text-sm text-ink-muted">
-                              No measurement fields saved.
-                            </p>
-                          )}
-                          {notes && (
-                            <div className="mt-3 border-t border-border-soft pt-2.5">
-                              <p className="text-[13px] font-medium text-ink-muted">
-                                Measurement Notes
-                              </p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
-                                {notes}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <MeasurementsSnapshotSection
+                        item={item}
+                        garmentTypes={garmentTypes}
+                        fallbackSeed={measurementSeeds[garmentKey(item.particular)]}
+                      />
 
                       {(item.alterationIssue ||
                         item.alterationRequiredChange ||
@@ -433,7 +720,6 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
             <OrderAttachmentsCard
               order={order}
               attachments={attachments}
-              onAttachmentsChange={setAttachments}
               canEdit={canEdit}
             />
           </Section>
@@ -538,18 +824,6 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           </Section>
         </div>
       </div>
-
-      {editing && (
-        <EditOrderDrawer
-          order={order}
-          customer={customer}
-          onCancel={() => setEditing(false)}
-          onSaved={(updated) => {
-            setOrder(updated);
-            setEditing(false);
-          }}
-        />
-      )}
 
       {showRecordModal && (
         <RecordPaymentModal

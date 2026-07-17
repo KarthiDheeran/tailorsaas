@@ -8,6 +8,7 @@ import { formatDate } from "@/components/orders/orders-table";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { TranslationKey } from "@/lib/i18n/translations";
+import { formatCurrency } from "@/lib/currency";
 import type { Order, Payment, PaymentType } from "@/lib/types";
 
 // Recorded-by (profiles.id) is deliberately not shown here — resolving it to
@@ -90,7 +91,7 @@ function PaymentRow({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-ink">
-              ₹{payment.amount.toLocaleString("en-IN")}
+              {formatCurrency(payment.amount)}
             </span>
             <PaymentTypeChip type={payment.paymentType} />
             {payment.voided && (

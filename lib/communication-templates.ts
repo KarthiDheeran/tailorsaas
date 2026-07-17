@@ -62,7 +62,7 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
   {
     templateType: "Payment Reminder",
     title: "Payment Reminder",
-    body: "Hi {{customer_name}}, payment of Rs {{balance}} is pending for order {{order_number}}.",
+    body: "Hi {{customer_name}}, payment of {{balance}} is pending for order {{order_number}}.",
     active: true,
     whatsappEnabled: true,
     smsEnabled: false,
@@ -72,7 +72,7 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: CommunicationTemplate[] = [
   {
     templateType: "Ready for Pickup",
     title: "Ready for Pickup",
-    body: "Hi {{customer_name}}, your order {{order_number}} is ready for pickup. Balance due: Rs {{balance}}.",
+    body: "Hi {{customer_name}}, your order {{order_number}} is ready for pickup. Balance due: {{balance}}.",
     active: true,
     whatsappEnabled: true,
     smsEnabled: false,

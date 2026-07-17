@@ -9,6 +9,7 @@ import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import type { CustomerListRow } from "@/lib/customers-db";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
   const router = useRouter();
@@ -91,9 +92,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                 </td>
                 {canViewPayments && (
                   <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                    {outstandingBalance > 0
-                      ? `₹${outstandingBalance.toLocaleString("en-IN")}`
-                      : "—"}
+                    {outstandingBalance > 0 ? formatCurrency(outstandingBalance) : "—"}
                   </td>
                 )}
                 <td className="whitespace-nowrap px-5 py-3">

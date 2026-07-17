@@ -4,6 +4,7 @@ import { useState } from "react";
 import { voidFinancialAdjustmentAction } from "@/app/(shell)/orders/actions";
 import { formatDate } from "@/components/orders/orders-table";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { formatCurrency } from "@/lib/currency";
 import type { Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
 
 type AdjustmentResult = {
@@ -13,7 +14,7 @@ type AdjustmentResult = {
 };
 
 function money(amount: number) {
-  return `₹${Number(amount).toLocaleString("en-IN")}`;
+  return formatCurrency(amount);
 }
 
 function adjustmentTone(type: OrderFinancialAdjustment["adjustmentType"]) {

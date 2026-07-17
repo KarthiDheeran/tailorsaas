@@ -55,6 +55,7 @@ export interface JobCard {
   fabricNotes?: string;
   designNotes?: string;
   notes?: string;
+  createdAt?: string;
   startedDate?: string;
   completedDate?: string;
   isDelayed: boolean;

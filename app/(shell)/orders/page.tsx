@@ -29,7 +29,6 @@ import {
   type OrdersSortKey,
 } from "@/components/orders/orders-table";
 import { OrderDetailsDrawer } from "@/components/orders/order-details-drawer";
-import { EditOrderDrawer } from "@/components/orders/edit-order-drawer";
 import { cn } from "@/lib/utils";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -71,7 +70,6 @@ function OrdersPageContent() {
   const [sortDir, setSortDir] = useState<OrdersSortDir>("desc");
   const [refreshTick, setRefreshTick] = useState(0);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [pendingOpenOrderId, setPendingOpenOrderId] = useState<string | null>(null);
   const [openingNewOrderHref, setOpeningNewOrderHref] = useState<string | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
@@ -169,22 +167,11 @@ function OrdersPageContent() {
     setRefreshTick((t) => t + 1);
   }
 
-  function handleEditOrder(order: Order) {
-    setDetailsOrder(null);
-    setEditingOrder(order);
-  }
-
-  function handleOrderSaved(updatedOrder: Order) {
-    setEditingOrder(null);
-    setDetailsOrder(updatedOrder);
-    setRefreshTick((t) => t + 1);
-  }
-
   // Phase 7C: OrderDetailsDrawer calls this after a payment is recorded or
   // voided — advance_paid/balance/payment_status all change via the ledger
   // trigger, so the drawer needs the freshly re-fetched Order, and the
   // underlying OrdersTable/BalanceBadge need the same refreshTick bump
-  // handleStatusChanged/handleOrderSaved already use for any other in-place
+  // handleStatusChanged already uses for any other in-place
   // order mutation.
   function handleOrderUpdated(updatedOrder: Order) {
     setDetailsOrder(updatedOrder);
@@ -543,17 +530,7 @@ function OrdersPageContent() {
         customer={detailsOrder ? customersById[detailsOrder.customerId] : undefined}
         onClose={() => setDetailsOrder(null)}
         onStatusChange={handleStatusChanged}
-        onEdit={handleEditOrder}
         onOrderUpdated={handleOrderUpdated}
-      />
-      <EditOrderDrawer
-        key={editingOrder?.id ?? "none"}
-        order={editingOrder}
-        customer={
-          editingOrder ? customersById[editingOrder.customerId] : undefined
-        }
-        onCancel={() => setEditingOrder(null)}
-        onSaved={handleOrderSaved}
       />
     </div>
   );

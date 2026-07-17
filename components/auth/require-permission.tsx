@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Permission } from "@/lib/permissions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { AccessDenied } from "@/components/auth/access-denied";
+import { LoadingState } from "@/components/ui/loading-state";
 
 // Page-level guard. Wrap a page's returned JSX with this rather than
 // redirecting: per the brief, missing access must show a visible Access
@@ -22,7 +23,10 @@ export function RequirePermission({
   allOf?: Permission[];
   children: ReactNode;
 }) {
-  const { hasPermission, hasAnyPermission, hasAllPermissions } = useCurrentUser();
+  const { hasPermission, hasAnyPermission, hasAllPermissions, isLoading } =
+    useCurrentUser();
+
+  if (isLoading) return <LoadingState label="Loading..." />;
 
   let allowed = true;
   if (permission) allowed = allowed && hasPermission(permission);

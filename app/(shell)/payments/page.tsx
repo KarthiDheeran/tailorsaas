@@ -50,6 +50,7 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { downloadCsv } from "@/lib/csv";
+import { formatCurrency } from "@/lib/currency";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 const ADJUSTMENT_TYPES: OrderFinancialAdjustmentType[] = [
@@ -71,7 +72,7 @@ const EMPTY_REPORT: PaymentsReport = {
 };
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 // Phase 7F/7G: a dedicated, day-to-day operational screen — separate from

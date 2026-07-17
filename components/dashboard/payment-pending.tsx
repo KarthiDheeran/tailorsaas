@@ -1,6 +1,7 @@
 import type { Order } from "@/lib/types";
 import { formatDate } from "@/components/orders/orders-table";
 import { ContactActions } from "@/components/dashboard/contact-actions";
+import { formatCurrency } from "@/lib/currency";
 
 export function PaymentPending({ orders }: { orders: Order[] }) {
   return (
@@ -35,19 +36,19 @@ export function PaymentPending({ orders }: { orders: Order[] }) {
                     </span>
                   </div>
                   <div className="text-xs text-ink-muted">
-                    Due since {formatDate(order.deliveryDate)} · Paid ₹
-                    {order.advancePaid.toLocaleString("en-IN")} of ₹
-                    {order.totalAmount.toLocaleString("en-IN")}
+                    Due since {formatDate(order.deliveryDate)} · Paid{" "}
+                    {formatCurrency(order.advancePaid)} of{" "}
+                    {formatCurrency(order.totalAmount)}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
-                    ₹{order.balance.toLocaleString("en-IN")}
+                    {formatCurrency(order.balance)}
                   </span>
                   {customer && (
                     <ContactActions
                       phone={customer.phone}
-                      message={`Hi ${customer.name}, your order ${order.orderNumber} has a pending balance of ₹${order.balance.toLocaleString("en-IN")}.`}
+                      message={`Hi ${customer.name}, your order ${order.orderNumber} has a pending balance of ${formatCurrency(order.balance)}.`}
                       contextType="Order"
                       contextId={order.id}
                     />

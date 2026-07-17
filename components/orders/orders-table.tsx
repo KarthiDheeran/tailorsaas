@@ -10,6 +10,7 @@ import { hasPermission, type Permission } from "@/lib/permissions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { TranslationKey } from "@/lib/i18n/translations";
+import { formatCurrency } from "@/lib/currency";
 
 // Status options an editor should offer, filtered by the current user's
 // permissions: full range needs orders.edit; orders.changeStatus alone
@@ -149,9 +150,22 @@ const MONTHS = [
 // Deterministic string formatting (no Date object / Intl locale APIs) so
 // server- and client-rendered HTML always match and React never re-hydrates
 // with different text.
+export function isIsoDateValue(value?: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || month < 1 || month > 12 || day < 1) return false;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day <= daysInMonth;
+}
+
 export function formatDate(iso: string) {
+  if (!isIsoDateValue(iso)) return "";
   const [year, month, day] = iso.split("-").map(Number);
   return `${String(day).padStart(2, "0")} ${MONTHS[month - 1]} ${year}`;
+}
+
+export function formatOptionalDate(iso?: string | null) {
+  return iso && isIsoDateValue(iso) ? formatDate(iso) : "";
 }
 
 export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: string }) {
@@ -164,7 +178,7 @@ export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: stri
     );
   }
   const isOverdue = order.deliveryDate < todayIso;
-  const amount = `₹${order.balance.toLocaleString("en-IN")}`;
+  const amount = formatCurrency(order.balance);
   if (isOverdue) {
     return (
       <span className="inline-block rounded-full bg-chip-red px-3 py-1 text-xs font-semibold text-chip-red-fg">
@@ -398,7 +412,7 @@ export function OrdersTable({
                 {canViewPayments && (
                   <>
                     <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                      ₹{order.totalAmount.toLocaleString("en-IN")}
+                      {formatCurrency(order.totalAmount)}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-right">
                       <BalanceBadge order={order} todayIso={todayIso} />

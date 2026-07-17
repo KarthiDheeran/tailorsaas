@@ -1,5 +1,6 @@
 import type { Order } from "@/lib/types";
 import { formatDate } from "@/components/orders/orders-table";
+import { formatCurrency } from "@/lib/currency";
 
 export function OverdueOrdersList({
   orders,
@@ -70,7 +71,7 @@ export function OverdueOrdersList({
                       {itemsSummary}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                      ₹{order.balance.toLocaleString("en-IN")}
+                      {formatCurrency(order.balance)}
                     </td>
                   </tr>
                 );

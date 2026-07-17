@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { formatDate } from "@/components/orders/orders-table";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 import type { Order } from "@/lib/types";
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 // Both dates are already YYYY-MM-DD strings — diffed via Date.UTC (never

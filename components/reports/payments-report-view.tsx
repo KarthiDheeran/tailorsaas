@@ -21,11 +21,12 @@ import { paymentModes } from "@/lib/constants";
 import type { PaymentMode, PaymentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 
 function money(n: number) {
-  return `₹${n.toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 const EMPTY_REPORT: PaymentsReport = {

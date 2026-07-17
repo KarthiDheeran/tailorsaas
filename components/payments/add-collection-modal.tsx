@@ -7,9 +7,10 @@ import { paymentModes } from "@/lib/constants";
 import type { Order, Payment, PaymentMode, PaymentType } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { formatCurrency } from "@/lib/currency";
 
 function money(n: number) {
-  return `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+  return formatCurrency(n);
 }
 
 // Accounts → Pending Dues' own "Add Collection" flow — a purpose-built modal

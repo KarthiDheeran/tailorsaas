@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import {
   getOrderByIdAction,
-  getFinancialAdjustmentsForOrderAction,
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
 import {
   formatDate,
+  formatOptionalDate,
   ORDER_STATUS_LABEL_KEYS,
 } from "@/components/orders/orders-table";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
@@ -21,7 +21,8 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
-import type { Customer, Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
+import { formatCurrency } from "@/lib/currency";
+import type { Customer, Order, Payment } from "@/lib/types";
 
 // No shop-settings module exists yet (see CLAUDE.md) — using the app's own
 // name as a stand-in until a real shop profile/name field is introduced.
@@ -63,13 +64,6 @@ function getIncludedTaxSplit(total: number, settings: ShopBillingSettings) {
   };
 }
 
-function adjustmentAmountLabel(adjustment: OrderFinancialAdjustment) {
-  const amount = adjustment.amount.toLocaleString("en-IN");
-  if (adjustment.adjustmentType === "Discount") return `-₹${amount}`;
-  if (adjustment.adjustmentType === "Extra Charge") return `+₹${amount}`;
-  return `₹${amount}`;
-}
-
 function CustomerReceiptPrintPageContent({
   params,
 }: {
@@ -80,7 +74,7 @@ function CustomerReceiptPrintPageContent({
   // Phase 5D: orders.printCustomerReceipt and orders.viewPayments are
   // siblings under orders.view, not parent/child — a custom role could
   // grant one without the other. Every other payment display in the app
-  // (OrdersTable, OrderDetailsDrawer, EditOrderDrawer, New Order) already
+  // (OrdersTable, OrderDetailsDrawer, Edit Order, New Order) already
   // hides figures behind this same check; this print page was the one
   // place that didn't, so a role without orders.viewPayments could still
   // see Total/Paid/Balance/Payment Mode here.
@@ -95,7 +89,6 @@ function CustomerReceiptPrintPageContent({
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
@@ -132,9 +125,6 @@ function CustomerReceiptPrintPageContent({
     getPaymentsForOrderAction(params.id).then((result) => {
       if (!cancelled) setPayments(result);
     });
-    getFinancialAdjustmentsForOrderAction(params.id).then((result) => {
-      if (!cancelled) setAdjustments(result);
-    });
     return () => {
       cancelled = true;
     };
@@ -144,13 +134,11 @@ function CustomerReceiptPrintPageContent({
   if (order === null) notFound();
 
   const modeSummary = summarizePaymentModes(payments);
-  const invoiceNumber =
-    order.invoiceNumber ?? `${billingSettings.receiptPrefix}-${order.orderNumber}`;
   const taxSplit = getIncludedTaxSplit(order.totalAmount, billingSettings);
-  const activeAdjustments = adjustments.filter((adjustment) => !adjustment.voided);
+  const formattedTrialDate = formatOptionalDate(order.trialDate);
 
   return (
-    <PrintPageFrame backHref="/orders">
+    <PrintPageFrame showClose>
       <div className="border-b-2 border-black pb-4">
         <div className="flex items-start justify-between gap-6">
           <div>
@@ -178,8 +166,12 @@ function CustomerReceiptPrintPageContent({
             <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
               {t("print.customerReceipt")}
             </p>
-            <p className="mt-1 text-xs text-gray-500">Invoice No</p>
-            <p className="font-semibold">{invoiceNumber}</p>
+            {order.invoiceNumber && (
+              <>
+                <p className="mt-1 text-xs text-gray-500">Invoice No</p>
+                <p className="font-semibold">{order.invoiceNumber}</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -203,6 +195,12 @@ function CustomerReceiptPrintPageContent({
           <p className="text-gray-500">{t("print.deliveryDate")}</p>
           <p className="font-semibold">{formatDate(order.deliveryDate)}</p>
         </div>
+        {formattedTrialDate && (
+          <div>
+            <p className="text-gray-500">{t("orders.trialDate")}</p>
+            <p className="font-semibold">{formattedTrialDate}</p>
+          </div>
+        )}
         <div>
           <p className="text-gray-500">{t("print.customerName")}</p>
           <p className="font-semibold">{customer?.name ?? "—"}</p>
@@ -227,46 +225,40 @@ function CustomerReceiptPrintPageContent({
             </tr>
           </thead>
           <tbody>
-            {order.items.map((item) => (
-              <tr key={item.serialNo} className="border-b border-gray-200">
-                <td className="py-1.5">{item.particular}</td>
-                <td className="py-1.5 text-right">{item.qty}</td>
-                <td className="py-1.5 text-right">
-                  ₹{(item.finalRate ?? item.rate).toLocaleString("en-IN")}
-                </td>
-                <td className="py-1.5 text-right">
-                  ₹{item.amount.toLocaleString("en-IN")}
-                </td>
-              </tr>
-            ))}
+            {order.items.map((item) => {
+              const addOns = item.addOns ?? [];
+              return (
+                <Fragment key={item.serialNo}>
+                  <tr className={addOns.length > 0 ? "" : "border-b border-gray-200"}>
+                    <td className="py-1.5">{item.particular}</td>
+                    <td className="py-1.5 text-right">{item.qty}</td>
+                    <td className="py-1.5 text-right">
+                      {formatCurrency(item.rate)}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {formatCurrency(item.amount)}
+                    </td>
+                  </tr>
+                  {addOns.length > 0 && (
+                    <tr className="border-b border-gray-200">
+                      <td colSpan={4} className="pb-1.5 pl-4 pr-2 text-xs text-gray-600">
+                        <span className="font-semibold">
+                          Includes add-on{addOns.length === 1 ? "" : "s"}:{" "}
+                        </span>
+                        <span className="break-words">
+                          {addOns
+                            .map((addOn) => `${addOn.label} ${formatCurrency(addOn.amount)}`)
+                            .join(", ")}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
-
-      {activeAdjustments.length > 0 && (
-        <div className="mt-5">
-          <p className="mb-2 border-b border-gray-300 pb-1 text-sm font-semibold uppercase tracking-wide">
-            Adjustments
-          </p>
-          <table className="w-full text-left text-sm">
-            <tbody>
-              {activeAdjustments.map((adjustment) => (
-                <tr key={adjustment.id} className="border-b border-gray-200">
-                  <td className="py-1.5">
-                    {adjustment.adjustmentType}
-                    <span className="ml-2 text-xs text-gray-500">
-                      {adjustment.reason}
-                    </span>
-                  </td>
-                  <td className="py-1.5 text-right font-semibold">
-                    {adjustmentAmountLabel(adjustment)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       {canViewPayments && (
         <div className="mt-6 flex justify-end">
@@ -274,7 +266,7 @@ function CustomerReceiptPrintPageContent({
             <div className="flex justify-between py-1">
               <span className="text-gray-500">{t("print.total")}</span>
               <span className="font-semibold">
-                ₹{order.totalAmount.toLocaleString("en-IN")}
+                {formatCurrency(order.totalAmount)}
               </span>
             </div>
             {taxSplit && (
@@ -282,9 +274,7 @@ function CustomerReceiptPrintPageContent({
                 <div className="flex justify-between py-1">
                   <span className="text-gray-500">Taxable Value</span>
                   <span className="font-semibold">
-                    ₹{taxSplit.taxableValue.toLocaleString("en-IN", {
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(taxSplit.taxableValue)}
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
@@ -292,9 +282,7 @@ function CustomerReceiptPrintPageContent({
                     {billingSettings.taxLabel} included ({billingSettings.taxRatePercent}%)
                   </span>
                   <span className="font-semibold">
-                    ₹{taxSplit.taxAmount.toLocaleString("en-IN", {
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(taxSplit.taxAmount)}
                   </span>
                 </div>
               </>
@@ -302,13 +290,13 @@ function CustomerReceiptPrintPageContent({
             <div className="flex justify-between py-1">
               <span className="text-gray-500">{t("print.paid")}</span>
               <span className="font-semibold">
-                ₹{order.advancePaid.toLocaleString("en-IN")}
+                {formatCurrency(order.advancePaid)}
               </span>
             </div>
             <div className="flex justify-between border-t border-black py-1.5 text-base">
               <span className="font-semibold">{t("print.balance")}</span>
               <span className="font-bold">
-                ₹{order.balance.toLocaleString("en-IN")}
+                {formatCurrency(order.balance)}
               </span>
             </div>
             <div className="flex justify-between py-1">
@@ -323,7 +311,7 @@ function CustomerReceiptPrintPageContent({
               <div className="flex justify-end">
                 <span className="text-right text-xs text-gray-500">
                   {modeSummary.breakdown
-                    .map((b) => `${b.mode} ₹${b.amount.toLocaleString("en-IN")}`)
+                    .map((b) => `${b.mode} ${formatCurrency(b.amount)}`)
                     .join(" · ")}
                 </span>
               </div>

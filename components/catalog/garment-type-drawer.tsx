@@ -13,6 +13,7 @@ import {
   type GarmentTypeInput,
 } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -311,7 +312,7 @@ export function GarmentTypeDrawer({
                       />
                       {addOn.name}{" "}
                       <span className="text-ink-muted">
-                        ₹{addOn.defaultPrice.toLocaleString("en-IN")}
+                        {formatCurrency(addOn.defaultPrice)}
                       </span>
                     </label>
                   ))}

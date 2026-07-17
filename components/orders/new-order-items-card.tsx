@@ -27,6 +27,7 @@ import {
 } from "@/components/orders/garment-measurement-modal";
 import { Select } from "@/components/ui/select";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 const FABRIC_SOURCES: OrderItemFabricSource[] = [
   "Not specified",
@@ -60,6 +61,8 @@ function findGarmentById(
 }
 
 export interface DraftItem {
+  draftKey: string;
+  orderItemId?: string;
   // Catalog garment type id (lib/catalog.ts is the source of truth for
   // pricing/measurement fields/add-ons).
   garmentTypeId: string;
@@ -76,13 +79,16 @@ export interface DraftItem {
   alterationRequiredChange: string;
   alterationChargeType: AlterationChargeType;
   linkedOriginalOrderId: string;
-  // null = not yet touched in this session; the Measurements modal seeds
-  // itself from customer/garment history on first open.
+  // null = no order-item snapshot in this draft yet. New Order may copy
+  // customer defaults here as the starting snapshot; Edit Order keeps null
+  // for old items that truly have no saved snapshot.
   measurement: GarmentMeasurementDraft | null;
 }
 
 export function blankDraftItem(): DraftItem {
   return {
+    draftKey: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    orderItemId: undefined,
     garmentTypeId: "",
     qty: 1,
     rate: 0,
@@ -110,9 +116,11 @@ export function orderItemToDraftItem(
   garmentTypes: CatalogGarmentType[],
   addOns: CatalogAddOn[]
 ): DraftItem {
-  const garment = garmentTypes.find(
-    (g) => g.name.toLowerCase() === item.particular.trim().toLowerCase()
-  );
+  const garment =
+    garmentTypes.find((g) => g.id === item.garmentTypeId) ??
+    garmentTypes.find(
+      (g) => g.name.toLowerCase() === item.particular.trim().toLowerCase()
+    );
   const addOnIds = garment
     ? getAddOnsForGarment(garment, addOns)
         .filter((a) =>
@@ -123,6 +131,8 @@ export function orderItemToDraftItem(
         .map((a) => a.id)
     : [];
   return {
+    draftKey: item.id ? `item-${item.id}` : `saved-${item.serialNo}`,
+    orderItemId: item.id,
     garmentTypeId: garment?.id ?? "",
     qty: item.qty,
     rate: item.rate,
@@ -177,6 +187,14 @@ function computeAmount(
   return calculateGarmentAmount(it.rate, selectedAddOns(it, garmentTypes, addOns), it.qty);
 }
 
+function hasGarmentSpecificDraftData(it: DraftItem): boolean {
+  return (
+    it.addOnIds.length > 0 ||
+    (it.measurement !== null &&
+      (countFilledFields(it.measurement) > 0 || it.measurement.notes.trim() !== ""))
+  );
+}
+
 export function computeOrderItems(
   items: DraftItem[],
   garmentTypes: CatalogGarmentType[],
@@ -200,6 +218,7 @@ export function computeOrderItems(
     const hasMeasurements =
       it.measurement && countFilledFields(it.measurement) > 0;
     return {
+      id: it.orderItemId,
       serialNo: i + 1,
       particular: garment?.name ?? "",
       // Catalog garment type id, so order_items can reference
@@ -287,7 +306,7 @@ function AddOnsPicker({
   // mismatch against Rate alone.
   const label =
     selected.length > 0
-      ? `${t("common.addOns")}: ${selected.length} · ₹${selectedTotal.toLocaleString("en-IN")}`
+      ? `${t("common.addOns")}: ${selected.length} · ${formatCurrency(selectedTotal)}`
       : t("common.addOns");
 
   // Popover is positioned `fixed` (computed from the trigger button's own
@@ -342,7 +361,7 @@ function AddOnsPicker({
                   />
                   {a.name}
                 </span>
-                <span className="text-ink-muted">+₹{a.defaultPrice}</span>
+                <span className="text-ink-muted">+{formatCurrency(a.defaultPrice)}</span>
               </label>
             ))}
           </div>
@@ -359,6 +378,7 @@ export function NewOrderItemsCard({
   garmentTypes,
   addOns,
   previousOrders = [],
+  autoSnapshotDefaultMeasurements = false,
 }: {
   // null while the customer is still unsaved (brand-new customer) — the
   // Measurements modal simply has nothing to seed from yet in that case.
@@ -371,6 +391,7 @@ export function NewOrderItemsCard({
   garmentTypes: CatalogGarmentType[];
   addOns: CatalogAddOn[];
   previousOrders?: Order[];
+  autoSnapshotDefaultMeasurements?: boolean;
 }) {
   const { t } = useLanguage();
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
@@ -428,6 +449,17 @@ export function NewOrderItemsCard({
   }
 
   function handleGarmentTypeChange(index: number, garmentTypeId: string) {
+    const current = items[index];
+    if (
+      current.garmentTypeId &&
+      current.garmentTypeId !== garmentTypeId &&
+      hasGarmentSpecificDraftData(current) &&
+      !window.confirm(
+        "Changing the garment type will clear this item's add-ons and measurements. Continue?"
+      )
+    ) {
+      return;
+    }
     const garment = findGarmentById(garmentTypes, garmentTypeId);
     onItemsChange(
       items.map((it, i) => {
@@ -488,10 +520,43 @@ export function NewOrderItemsCard({
       hasCustomerDefaultMeasurements: countFilledFields(seededDraft) > 0,
     };
   }
+
+  useEffect(() => {
+    if (!autoSnapshotDefaultMeasurements || !customerId) return;
+    let changed = false;
+    const nextItems = items.map((it) => {
+      if (it.measurement !== null || !it.garmentTypeId) return it;
+      const garmentName = findGarmentById(garmentTypes, it.garmentTypeId)?.name ?? "";
+      if (!garmentName) return it;
+      const seed = seedCache[`${customerId}::${garmentName.toLowerCase()}`];
+      if (!seed) return it;
+      const seededDraft = { garmentType: garmentName, ...seed };
+      const draft: GarmentMeasurementDraft = {
+        ...seededDraft,
+        updateCustomerMeasurements: false,
+        hasCustomerDefaultMeasurements: countFilledFields(seededDraft) > 0,
+      };
+      if (countFilledFields(draft) === 0) return it;
+      changed = true;
+      return { ...it, measurement: draft };
+    });
+    if (changed) onItemsChange(nextItems);
+  }, [
+    autoSnapshotDefaultMeasurements,
+    customerId,
+    items,
+    garmentTypes,
+    seedCache,
+    onItemsChange,
+  ]);
+
   function hasMeasurementData(index: number): boolean {
     const it = items[index];
     if (!it.garmentTypeId) return false;
-    return countFilledFields(measurementDraftFor(index)) > 0;
+    // Saved-state means this order item has its own measurement snapshot in
+    // the draft/order, not merely that customer defaults are available to seed
+    // the modal when the user opens it.
+    return it.measurement !== null && countFilledFields(it.measurement) > 0;
   }
   function handleSaveMeasurement(draft: GarmentMeasurementDraft) {
     if (activeItemIndex === null) return;
@@ -587,7 +652,7 @@ export function NewOrderItemsCard({
                     {t("common.amount")}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    ₹{amount.toLocaleString("en-IN")}
+                    {formatCurrency(amount)}
                   </div>
                 </div>
               </div>

@@ -98,6 +98,7 @@ export type OrderAttachmentType =
 export interface OrderAttachment {
   id: string;
   orderId: string;
+  orderItemId?: string;
   orderItemSerialNo?: number;
   attachmentType: OrderAttachmentType;
   fileName: string;
@@ -133,6 +134,7 @@ export type OrderItemFabricSource =
 export type AlterationChargeType = "Paid" | "Free";
 
 export interface OrderItem {
+  id?: string;
   serialNo: number;
   // Garment type label (e.g. "Shirt"). Kept as a plain string, and as the
   // same field name used before this field became a catalog-driven dropdown

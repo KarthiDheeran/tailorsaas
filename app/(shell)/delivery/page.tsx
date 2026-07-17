@@ -27,6 +27,7 @@ import {
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/currency";
 import type { Order } from "@/lib/types";
 import { isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
@@ -37,7 +38,7 @@ function todayIso() {
 }
 
 function money(value: number) {
-  return `₹${Math.round(Number(value)).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
 }
 
 function customerLabel(row: DeliveryDeskOrder) {
@@ -324,6 +325,8 @@ function DeliveryDeskContent() {
                           {canPrintReceipt && (
                             <Link
                               href={`/orders/${order.id}/print/customer`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               title="Receipt"
                               className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                             >

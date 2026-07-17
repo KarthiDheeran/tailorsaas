@@ -8,10 +8,11 @@ import { getCustomerStatementAction } from "@/app/(shell)/customers/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { formatDate } from "@/components/orders/orders-table";
+import { formatCurrency } from "@/lib/currency";
 import type { CustomerStatement, CustomerStatementRow } from "@/lib/customer-statement";
 
 function money(value: number) {
-  return `Rs ${Number(value).toLocaleString("en-IN")}`;
+  return formatCurrency(value);
 }
 
 function generatedLabel(iso: string) {

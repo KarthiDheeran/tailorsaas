@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
+import { formatCurrency } from "@/lib/currency";
 import { isReceivableOrder } from "@/lib/order-finance";
 
 export type CalendarEventType = "Delivery" | "Trial" | "Production" | "Payment" | "Pickup";
@@ -142,13 +143,14 @@ export async function getCalendarData(
       isInRange(order.deliveryDate, input.startDate, input.endDate)
     ) {
       const template = templateByType.get("Payment Reminder");
+      const formattedBalance = formatCurrency(order.balance);
       events.push({
         id: `payment:${order.id}:${order.deliveryDate}`,
         eventKey: `payment:${order.id}:${order.deliveryDate}`,
         type: "Payment",
         date: order.deliveryDate,
         title: order.orderNumber,
-        subtitle: `Payment - ${customerName} - Rs ${Number(order.balance).toLocaleString("en-IN")}`,
+        subtitle: `Payment - ${customerName} - ${formattedBalance}`,
         customerName,
         customerPhone,
         orderId: order.id,
@@ -160,12 +162,12 @@ export async function getCalendarData(
         reminderTargetId: order.id,
         reminderMessage: renderCommunicationTemplate(
           template,
-          `Hi ${customerName}, payment of Rs ${Number(order.balance).toLocaleString("en-IN")} is pending for order ${order.orderNumber}.`,
+          `Hi ${customerName}, payment of ${formattedBalance} is pending for order ${order.orderNumber}.`,
           {
             customer_name: customerName,
             order_number: order.orderNumber,
             date: order.deliveryDate,
-            balance: Number(order.balance).toLocaleString("en-IN"),
+            balance: formattedBalance,
           }
         ),
         whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
@@ -175,6 +177,7 @@ export async function getCalendarData(
 
     if (order.status === "Ready" && isInRange(order.deliveryDate, input.startDate, input.endDate)) {
       const template = templateByType.get("Ready for Pickup");
+      const formattedBalance = formatCurrency(order.balance);
       events.push({
         id: `pickup:${order.id}:${order.deliveryDate}`,
         eventKey: `pickup:${order.id}:${order.deliveryDate}`,
@@ -193,12 +196,12 @@ export async function getCalendarData(
         reminderTargetId: order.id,
         reminderMessage: renderCommunicationTemplate(
           template,
-          `Hi ${customerName}, your order ${order.orderNumber} is ready for pickup. Balance due: Rs ${Number(order.balance).toLocaleString("en-IN")}.`,
+          `Hi ${customerName}, your order ${order.orderNumber} is ready for pickup. Balance due: ${formattedBalance}.`,
           {
             customer_name: customerName,
             order_number: order.orderNumber,
             date: order.deliveryDate,
-            balance: Number(order.balance).toLocaleString("en-IN"),
+            balance: formattedBalance,
           }
         ),
         whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),

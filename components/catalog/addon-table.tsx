@@ -4,6 +4,7 @@ import { Pencil, Power, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CatalogAddOn } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { formatCurrency } from "@/lib/currency";
 
 export function AddOnTable({
   addOns,
@@ -53,7 +54,7 @@ export function AddOnTable({
                 {addOn.name}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
-                ₹{addOn.defaultPrice.toLocaleString("en-IN")}
+                {formatCurrency(addOn.defaultPrice)}
               </td>
               <td className="whitespace-nowrap px-5 py-3">
                 <span
