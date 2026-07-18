@@ -15,21 +15,28 @@ import {
   type InventoryItemInput,
   type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
+import {
+  createExpense,
+  isMissingExpensesSchemaError,
+} from "@/lib/data/expenses-db";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   customerFabricStatuses,
   inventoryItemTypes,
   inventoryMovementTypes,
   inventoryUnits,
+  paymentModes,
 } from "@/lib/constants";
 import type {
   CustomerFabric,
   CustomerFabricStatus,
+  ExpenseCategory,
   InventoryItem,
   InventoryItemType,
   InventoryMovement,
   InventoryMovementType,
   InventoryUnit,
+  PaymentMode,
 } from "@/lib/types";
 
 type ActionResult<T = undefined> =
@@ -41,6 +48,7 @@ const VALID_ITEM_TYPES = new Set<InventoryItemType>(inventoryItemTypes);
 const VALID_UNITS = new Set<InventoryUnit>(inventoryUnits);
 const VALID_MOVEMENT_TYPES = new Set<InventoryMovementType>(inventoryMovementTypes);
 const VALID_FABRIC_STATUSES = new Set<CustomerFabricStatus>(customerFabricStatuses);
+const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
 
 export interface InventoryPageData {
   items: InventoryItem[] | null;
@@ -103,6 +111,18 @@ export async function createInventoryItemAction(
 
   try {
     const item = await createInventoryItem(supabase, input);
+    if (input.purchaseCost && input.purchaseCost > 0) {
+      await createInventoryPurchaseExpenseBestEffort({
+        itemName: item.name,
+        itemType: item.itemType,
+        vendorName: input.vendorName,
+        purchaseDate: input.purchaseDate || new Date().toISOString().slice(0, 10),
+        purchaseCost: input.purchaseCost,
+        paymentMode: input.purchasePaymentMode ?? "Cash",
+        notes: input.notes,
+        recordedBy: guard.userId,
+      });
+    }
     return { success: true, data: item };
   } catch (error) {
     if (isMissingInventorySchemaError(error)) {
@@ -130,6 +150,18 @@ export async function adjustInventoryStockAction(
       ...input,
       recordedBy: guard.userId,
     });
+    if (input.movementType === "Stock In" && input.purchaseCost && input.purchaseCost > 0) {
+      await createInventoryPurchaseExpenseBestEffort({
+        itemName: item.name,
+        itemType: item.itemType,
+        vendorName: input.purchaseVendor,
+        purchaseDate: input.movementDate,
+        purchaseCost: input.purchaseCost,
+        paymentMode: input.purchasePaymentMode ?? "Cash",
+        notes: input.reason,
+        recordedBy: guard.userId,
+      });
+    }
     return { success: true, data: item };
   } catch (error) {
     if (isMissingInventorySchemaError(error)) {
@@ -139,6 +171,41 @@ export async function adjustInventoryStockAction(
       success: false,
       error: error instanceof Error ? error.message : "Failed to update stock.",
     };
+  }
+}
+
+async function createInventoryPurchaseExpenseBestEffort(input: {
+  itemName: string;
+  itemType: InventoryItemType;
+  vendorName?: string;
+  purchaseDate: string;
+  purchaseCost: number;
+  paymentMode: PaymentMode;
+  notes?: string;
+  recordedBy: string;
+}) {
+  const category: ExpenseCategory = input.itemType === "Fabric" ? "Fabric" : "Accessories";
+  try {
+    await createExpense(createAdminClient(), {
+      expenseDate: input.purchaseDate,
+      category,
+      source: "Inventory Purchase",
+      reference: input.itemName,
+      vendor: input.vendorName,
+      description: `Inventory purchase - ${input.itemName}`,
+      amount: input.purchaseCost,
+      paymentMode: input.paymentMode,
+      notes: [
+        "Source: Inventory Purchase",
+        `Stock item: ${input.itemName}`,
+        input.notes ? `Notes: ${input.notes}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      recordedBy: input.recordedBy,
+    });
+  } catch (error) {
+    if (!isMissingExpensesSchemaError(error)) throw error;
   }
 }
 
@@ -223,6 +290,9 @@ function validateInventoryItem(input: InventoryItemInput): string | null {
   if (input.purchaseCost != null && (!Number.isFinite(input.purchaseCost) || input.purchaseCost < 0)) {
     return "Purchase cost must be 0 or greater.";
   }
+  if (input.purchasePaymentMode && !VALID_PAYMENT_MODES.has(input.purchasePaymentMode)) {
+    return "Invalid purchase payment mode.";
+  }
   return null;
 }
 
@@ -235,6 +305,15 @@ function validateStockAdjustment(
     return "Quantity must be greater than zero.";
   }
   if (!ISO_DATE.test(input.movementDate)) return "A valid movement date is required.";
+  if (input.purchaseCost != null && (!Number.isFinite(input.purchaseCost) || input.purchaseCost < 0)) {
+    return "Purchase cost must be 0 or greater.";
+  }
+  if (input.purchasePaymentMode && !VALID_PAYMENT_MODES.has(input.purchasePaymentMode)) {
+    return "Invalid purchase payment mode.";
+  }
+  if (input.movementType !== "Stock In" && input.purchaseCost && input.purchaseCost > 0) {
+    return "Purchase cost can be recorded only for Stock In.";
+  }
   return null;
 }
 

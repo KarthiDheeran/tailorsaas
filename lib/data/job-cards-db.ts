@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordStaffWorkEarning } from "@/lib/data/staff-db";
 import type { JobCard, JobCardStage, ProductionBucket } from "@/lib/job-cards";
 import type {
   CustomerSnapshot,
@@ -19,6 +20,7 @@ export interface JobCardAssignmentInput {
   assignedStaffId: string;
   dueDate: string;
   priority: TaskPriority;
+  startedDate?: string;
   notes?: string;
   fabricSource?: JobCardFabricSource;
   fabricNotes?: string;
@@ -34,6 +36,15 @@ export interface JobCardActivitySnapshot {
 }
 
 const JOB_CARD_COLUMNS = `
+  id, job_card_number, order_id, order_number, customer_id, order_status,
+  order_item_serial_no, unit_no, garment_type, customer_snapshot,
+  measurements_snapshot, fabric_source, fabric_notes, design_notes,
+  current_stage, assigned_staff_id, priority, due_date, trial_date,
+  started_date, completed_date, cancelled, notes, wage_rate, wage_amount,
+  created_at, updated_at
+`;
+
+const LEGACY_JOB_CARD_COLUMNS = `
   id, job_card_number, order_id, order_number, customer_id, order_status,
   order_item_serial_no, unit_no, garment_type, customer_snapshot,
   measurements_snapshot, fabric_source, fabric_notes, design_notes,
@@ -65,6 +76,8 @@ interface JobCardRow {
   completed_date: string | null;
   cancelled: boolean;
   notes: string | null;
+  wage_rate: number | null;
+  wage_amount: number | null;
   created_at: string | null;
 }
 
@@ -79,6 +92,17 @@ export function isMissingJobCardsSchemaError(error: unknown): boolean {
     code === "PGRST205" ||
     message.includes("job_cards") ||
     message.includes("sync_job_cards_for_order")
+  );
+}
+
+function isMissingJobCardPayrollColumnError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const code = candidate.code ?? "";
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return (
+    code === "PGRST204" ||
+    message.includes("wage_rate") ||
+    message.includes("wage_amount")
   );
 }
 
@@ -100,7 +124,22 @@ export async function getJobCards(
     query = query.eq("assigned_staff_id", options.assignedStaffId);
   }
 
-  const { data, error } = await query;
+  let { data, error } = await query;
+  if (error && isMissingJobCardPayrollColumnError(error)) {
+    let fallback = supabase
+      .from("job_cards")
+      .select(LEGACY_JOB_CARD_COLUMNS)
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .order("order_number", { ascending: false })
+      .order("order_item_serial_no", { ascending: true })
+      .order("unit_no", { ascending: true });
+    if (options.assignedStaffId) {
+      fallback = fallback.eq("assigned_staff_id", options.assignedStaffId);
+    }
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
   if (error) throw error;
 
   const rows = ((data as unknown as JobCardRow[]) ?? []);
@@ -236,23 +275,34 @@ export async function assignJobCard(
       cancelled: boolean;
     }
   );
+  const wage = await getJobCardWageSnapshot(supabase, data.assignedStaffId, data.taskType);
 
-  const { error } = await supabase
+  const update = {
+    current_stage: taskTypeToStage(data.taskType),
+    assigned_staff_id: data.assignedStaffId,
+    due_date: data.dueDate,
+    priority: data.priority,
+    notes: data.notes ?? null,
+    fabric_source: data.fabricSource ?? "Not specified",
+    fabric_notes: data.fabricNotes?.trim() ? data.fabricNotes.trim() : null,
+    wage_rate: wage.rate,
+    wage_amount: wage.amount,
+    started_date: data.startedDate ?? new Date().toISOString().slice(0, 10),
+    completed_date: null,
+    cancelled: false,
+    updated_at: new Date().toISOString(),
+  };
+  let { error } = await supabase
     .from("job_cards")
-    .update({
-      current_stage: taskTypeToStage(data.taskType),
-      assigned_staff_id: data.assignedStaffId,
-      due_date: data.dueDate,
-      priority: data.priority,
-      notes: data.notes ?? null,
-      fabric_source: data.fabricSource ?? "Not specified",
-      fabric_notes: data.fabricNotes?.trim() ? data.fabricNotes.trim() : null,
-      started_date: null,
-      completed_date: null,
-      cancelled: false,
-      updated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", id);
+  if (error && isMissingJobCardPayrollColumnError(error)) {
+    const legacyUpdate: Record<string, unknown> = { ...update };
+    delete legacyUpdate.wage_rate;
+    delete legacyUpdate.wage_amount;
+    const retry = await supabase.from("job_cards").update(legacyUpdate).eq("id", id);
+    error = retry.error;
+  }
   if (error) throw error;
 }
 
@@ -268,6 +318,29 @@ export async function getJobCardAssignedStaffId(
   if (error) throw error;
   if (!data) return undefined;
   return (data as { assigned_staff_id: string | null }).assigned_staff_id;
+}
+
+async function getJobCardWageSnapshot(
+  supabase: SupabaseClient,
+  staffId: string,
+  taskType: TaskType
+): Promise<{ rate: number; amount: number }> {
+  const { data, error } = await supabase
+    .from("staff")
+    .select("payment_type, piece_rates")
+    .eq("id", staffId)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as
+    | {
+        payment_type: "Salary" | "Per Piece";
+        piece_rates: Partial<Record<TaskType, number>> | null;
+      }
+    | null;
+  if (!row || row.payment_type !== "Per Piece") return { rate: 0, amount: 0 };
+  const rate = Number(row.piece_rates?.[taskType] ?? 0);
+  const normalizedRate = Number.isFinite(rate) && rate > 0 ? rate : 0;
+  return { rate: normalizedRate, amount: normalizedRate };
 }
 
 export async function getJobCardActivitySnapshot(
@@ -340,7 +413,7 @@ export async function completeJobCard(
 ): Promise<string> {
   const { data: currentRow, error: fetchError } = await supabase
     .from("job_cards")
-    .select("current_stage, order_id, order_status, assigned_staff_id, cancelled")
+    .select("current_stage, order_id, order_status, assigned_staff_id, cancelled, job_card_number, wage_rate, wage_amount")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) throw fetchError;
@@ -352,6 +425,9 @@ export async function completeJobCard(
     order_status: OrderStatus;
     assigned_staff_id: string | null;
     cancelled: boolean;
+    job_card_number: string;
+    wage_rate: number | null;
+    wage_amount: number | null;
   };
   assertJobCardEditable(current);
   if (!current.assigned_staff_id) {
@@ -360,6 +436,20 @@ export async function completeJobCard(
   const currentStage = current.current_stage;
   const nextStage = getNextStageAfterCompletion(currentStage);
   const isFinalCompletion = nextStage === "Ready";
+  const completedTaskType = stageToTaskType(currentStage);
+  if (!completedTaskType) {
+    throw new Error("This stage cannot be completed for staff payables.");
+  }
+  await recordStaffWorkEarning(supabase, {
+    staffId: current.assigned_staff_id,
+    jobCardId: id,
+    orderId: current.order_id,
+    jobCardNumber: current.job_card_number,
+    taskType: completedTaskType,
+    completedDate: todayIso,
+    wageRate: Number(current.wage_rate ?? 0),
+    wageAmount: Number(current.wage_amount ?? 0),
+  });
   const update: Record<string, unknown> = {
     current_stage: isFinalCompletion ? "Ready" : "Unassigned",
     updated_at: new Date().toISOString(),
@@ -521,6 +611,8 @@ function mapJobCardRow(
     createdAt: row.created_at ?? undefined,
     startedDate: row.started_date ?? undefined,
     completedDate: row.completed_date ?? undefined,
+    wageRate: Number(row.wage_rate ?? 0),
+    wageAmount: Number(row.wage_amount ?? 0),
     isDelayed:
       row.due_date < todayIso &&
       row.order_status !== "Delivered" &&

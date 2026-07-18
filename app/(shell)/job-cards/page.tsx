@@ -14,8 +14,10 @@ import {
 } from "lucide-react";
 import {
   assignJobCardAction,
+  completeJobCardAction,
   getJobCardActivityLogsAction,
   getJobCardsPageDataAction,
+  moveJobCardStageAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
@@ -23,6 +25,7 @@ import {
 } from "@/app/(shell)/inventory/actions";
 import {
   createWorkAssignmentAction,
+  updateWorkAssignmentAction,
 } from "@/app/(shell)/staff/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -31,6 +34,8 @@ import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards"
 import type {
   CustomerFabric,
   CustomerFabricStatus,
+  InventoryItem,
+  InventoryMovement,
   JobCardActivityLog,
   Order,
   Staff,
@@ -48,6 +53,8 @@ import {
   JOB_CARD_FABRIC_SOURCES,
   type JobCardFabricSourceValue,
 } from "@/components/job-cards/fabric-info";
+import { CustomerFabricDrawer } from "@/components/job-cards/customer-fabric-drawer";
+import { StockConsumptionDrawer } from "@/components/job-cards/stock-consumption-drawer";
 import { measurementFieldLabel } from "@/lib/catalog";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" | "delayed" }[] = [
@@ -85,6 +92,18 @@ const STAGE_FILTERS: (JobCardStage | "all")[] = [
   "Ready",
   "Delivered",
   "Cancelled",
+];
+
+const STAGE_OPTIONS: JobCardStage[] = [
+  "Unassigned",
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Trial",
+  "Alteration",
+  "Delayed",
+  "Ready",
 ];
 
 const DUE_FILTERS = [
@@ -160,6 +179,23 @@ function displayStage(card: JobCard): JobCardStage {
   return card.stage;
 }
 
+function nextStageAfterCompletion(stage: JobCardStage): JobCardStage {
+  if (stage === "Unassigned") return "Cutting";
+  if (stage === "Cutting") return "Stitching";
+  if (stage === "Stitching" || stage === "Embroidery" || stage === "Alteration") {
+    return "Finishing";
+  }
+  if (stage === "Trial" || stage === "Finishing") return "Ready";
+  return "Ready";
+}
+
+function completeActionLabel(card: JobCard): string {
+  if (!card.persisted) return "Complete";
+  const nextStage = nextStageAfterCompletion(card.stage);
+  if (nextStage === "Ready") return "Mark Ready";
+  return `Send to ${nextStage}`;
+}
+
 function createdAtMillis(card: JobCard) {
   if (!card.createdAt) return Number.NEGATIVE_INFINITY;
   const time = Date.parse(card.createdAt);
@@ -205,6 +241,10 @@ function matchesSearch(card: JobCard, query: string) {
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+function customerFabricsForJobCard(card: JobCard, fabrics: CustomerFabric[]) {
+  return fabrics.filter((fabric) => fabric.notes?.includes(card.jobCardNumber));
 }
 
 function GarmentCell({ card }: { card: JobCard }) {
@@ -294,6 +334,8 @@ function JobCardsContent() {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [filter, setFilter] = useState<JobCardStage | "all" | "active" | "delayed">("active");
   const [query, setQuery] = useState("");
   const [assignedWorkerFilter, setAssignedWorkerFilter] = useState("all");
@@ -304,6 +346,8 @@ function JobCardsContent() {
   const [assigningCard, setAssigningCard] = useState<JobCard | null>(null);
   const [detailsCard, setDetailsCard] = useState<JobCard | null>(null);
   const [historyCard, setHistoryCard] = useState<JobCard | null>(null);
+  const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
+  const [stockCard, setStockCard] = useState<JobCard | null>(null);
   const [openMenuCardId, setOpenMenuCardId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -325,7 +369,9 @@ function JobCardsContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getJobCardsPageDataAction(todayIso, { includeInventoryItems: canViewInventory })
+    getJobCardsPageDataAction(todayIso, {
+      includeInventoryItems: canViewInventory || canManageInventory,
+    })
       .then((result) => {
         if (cancelled) return;
         setPersistedCards(result.jobCards);
@@ -333,6 +379,8 @@ function JobCardsContent() {
         setStaff(result.staff.filter((member) => member.status === "Active"));
         setAssignments(result.assignments);
         setCustomerFabrics(result.customerFabrics ?? []);
+        setInventoryItems(result.inventoryItems ?? []);
+        setInventoryMovements(result.inventoryMovements ?? []);
         setLoadError(null);
       })
       .catch((error) => {
@@ -346,7 +394,7 @@ function JobCardsContent() {
     return () => {
       cancelled = true;
     };
-  }, [canViewInventory, refreshKey, todayIso]);
+  }, [canManageInventory, canViewInventory, refreshKey, todayIso]);
 
   const jobCards = useMemo(
     () =>
@@ -355,6 +403,15 @@ function JobCardsContent() {
         .sort(defaultJobCardSort),
     [persistedCards, orders, todayIso, assignments, staff]
   );
+
+  useEffect(() => {
+    if (!detailsCard) return;
+    const updatedCard = jobCards.find((card) => card.id === detailsCard.id);
+    if (updatedCard && updatedCard !== detailsCard) {
+      setDetailsCard(updatedCard);
+    }
+  }, [detailsCard, jobCards]);
+
   const garmentOptions = useMemo(
     () => Array.from(new Set(jobCards.map((card) => card.garment))).sort(),
     [jobCards]
@@ -392,6 +449,20 @@ function JobCardsContent() {
     }
     return byOrder;
   }, [customerFabrics]);
+  const inventoryItemsById = useMemo(
+    () => new Map(inventoryItems.map((item) => [item.id, item])),
+    [inventoryItems]
+  );
+  const stockMovementsByJobCard = useMemo(() => {
+    const byJobCard = new Map<string, InventoryMovement[]>();
+    for (const movement of inventoryMovements) {
+      if (!movement.jobCardId || movement.movementType !== "Stock Out") continue;
+      const current = byJobCard.get(movement.jobCardId) ?? [];
+      current.push(movement);
+      byJobCard.set(movement.jobCardId, current);
+    }
+    return byJobCard;
+  }, [inventoryMovements]);
 
   const activeCount = jobCards.filter(isActiveCard).length;
   const unassignedCount = jobCards.filter((c) => isActiveCard(c) && !c.assignedStaffId).length;
@@ -583,10 +654,10 @@ function JobCardsContent() {
             <table className="w-full table-fixed text-left">
               <thead className="text-[13px] font-semibold text-ink-muted">
                 <tr className="border-b border-border-soft">
+                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
                   <th className="w-[14%] whitespace-nowrap px-4 py-3">Job Card</th>
                   <th className="w-[17%] whitespace-nowrap px-4 py-3">Customer</th>
                   <th className="w-[13%] whitespace-nowrap px-4 py-3">Garment</th>
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
                   <th className="w-[14%] whitespace-nowrap px-4 py-3">Assigned To</th>
                   <th className="w-[10%] whitespace-nowrap px-4 py-3">Stage</th>
                   <th className="w-[10%] whitespace-nowrap px-4 py-3">Due Date</th>
@@ -605,6 +676,18 @@ function JobCardsContent() {
                     )}
                   >
                     <td className="whitespace-nowrap px-4 py-3">
+                      {canViewOrders ? (
+                        <Link
+                          href={`/orders?view=${card.orderId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {card.orderNumber}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-ink-muted">{card.orderNumber}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
                       <button
                         type="button"
                         onClick={() => setDetailsCard(card)}
@@ -619,18 +702,6 @@ function JobCardsContent() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-ink">
                       <GarmentCell card={card} />
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {canViewOrders ? (
-                        <Link
-                          href={`/orders?view=${card.orderId}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {card.orderNumber}
-                        </Link>
-                      ) : (
-                        <span className="font-medium text-ink-muted">{card.orderNumber}</span>
-                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
                       {card.assignedStaffId ? card.assignedTo : "Unassigned"}
@@ -649,7 +720,7 @@ function JobCardsContent() {
                       )}
                     </td>
                     <td className="w-[190px] whitespace-nowrap bg-white px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="relative flex items-center justify-end gap-2">
                         {canManageStaff && !card.assignedStaffId ? (
                           <button
                             type="button"
@@ -687,7 +758,7 @@ function JobCardsContent() {
                               className="fixed inset-0 z-10 cursor-default"
                               onClick={() => setOpenMenuCardId(null)}
                             />
-                            <div className="fixed right-8 z-20 mt-36 w-44 overflow-hidden rounded-lg border border-border-soft bg-white text-left shadow-soft">
+                            <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-lg border border-border-soft bg-white text-left shadow-soft">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -765,18 +836,69 @@ function JobCardsContent() {
       {detailsCard && (
         <JobCardDetailsDrawer
           card={detailsCard}
-          linkedFabrics={customerFabricsByOrder.get(detailsCard.orderId) ?? []}
+          linkedFabrics={customerFabricsForJobCard(
+            detailsCard,
+            customerFabricsByOrder.get(detailsCard.orderId) ?? []
+          )}
+          jobCardFabrics={customerFabricsForJobCard(
+            detailsCard,
+            customerFabricsByOrder.get(detailsCard.orderId) ?? []
+          )}
+          stockMovements={stockMovementsByJobCard.get(detailsCard.id) ?? []}
+          inventoryItemsById={inventoryItemsById}
           canManageStatus={canManageInventory}
+          canManageInventory={canManageInventory}
+          canManageStage={canManageStaff}
+          todayIso={todayIso}
           onFabricStatusChange={updateFabricStatus}
           onAssign={() => {
             setAssigningCard(detailsCard);
             setDetailsCard(null);
           }}
+          onUpdated={() => setRefreshKey((key) => key + 1)}
           onHistory={() => {
             setHistoryCard(detailsCard);
             setDetailsCard(null);
           }}
+          onRecordFabric={() => {
+            setFabricCard(detailsCard);
+            setDetailsCard(null);
+          }}
+          onUseStock={() => {
+            setStockCard(detailsCard);
+            setDetailsCard(null);
+          }}
           onClose={() => setDetailsCard(null)}
+        />
+      )}
+
+      {fabricCard && (
+        <CustomerFabricDrawer
+          card={fabricCard}
+          existingFabrics={customerFabricsForJobCard(
+            fabricCard,
+            customerFabricsByOrder.get(fabricCard.orderId) ?? []
+          )}
+          todayIso={todayIso}
+          onClose={() => setFabricCard(null)}
+          onSaved={() => {
+            setFabricCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {stockCard && (
+        <StockConsumptionDrawer
+          card={stockCard}
+          items={inventoryItems}
+          existingMovements={stockMovementsByJobCard.get(stockCard.id) ?? []}
+          todayIso={todayIso}
+          onClose={() => setStockCard(null)}
+          onSaved={() => {
+            setStockCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
         />
       )}
 
@@ -900,21 +1022,170 @@ function JobCardHistoryDrawer({
   );
 }
 
+function JobCardStageControls({
+  card,
+  todayIso,
+  onAssign,
+  onUpdated,
+}: {
+  card: JobCard;
+  todayIso: string;
+  onAssign: () => void;
+  onUpdated: () => void;
+}) {
+  const [saving, setSaving] = useState<"complete" | "move" | null>(null);
+  const [targetStage, setTargetStage] = useState<JobCardStage>(card.stage);
+  const [stageReason, setStageReason] = useState("");
+
+  useEffect(() => {
+    setTargetStage(card.stage);
+    setStageReason("");
+  }, [card.stage]);
+
+  const isClosed = card.stage === "Delivered" || card.stage === "Cancelled";
+  const canComplete = card.persisted
+    ? Boolean(card.assignedStaffId && !card.completedDate && !isClosed)
+    : Boolean(card.assignment && !card.assignment.completedDate);
+
+  async function handleComplete() {
+    if (!card.persisted && !card.assignment) return;
+    setSaving("complete");
+    const result = card.persisted
+      ? await completeJobCardAction(card.id, todayIso)
+      : await updateWorkAssignmentAction(card.assignment!.id, {
+          completedDate: todayIso,
+        });
+    setSaving(null);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onUpdated();
+  }
+
+  async function handleMoveStage() {
+    if (!card.persisted || targetStage === card.stage) return;
+    if (!card.assignedStaffId && targetStage !== "Unassigned") {
+      window.alert("Assign a worker before moving this job card into production.");
+      return;
+    }
+    if ((targetStage === "Delayed" || targetStage === "Alteration") && !stageReason.trim()) {
+      window.alert(targetStage === "Delayed" ? "Delay reason is required." : "Rework reason is required.");
+      return;
+    }
+    setSaving("move");
+    const result = await moveJobCardStageAction(card.id, targetStage, todayIso, stageReason);
+    setSaving(null);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    onUpdated();
+  }
+
+  if (isClosed) {
+    return (
+      <div className="mt-3 rounded-lg border border-border-soft bg-surface px-3 py-2 text-xs text-ink-muted">
+        This job card is read-only because it is {card.stage.toLowerCase()}.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border-soft bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {!card.assignedStaffId && (
+          <button
+            type="button"
+            onClick={onAssign}
+            className="rounded-lg border border-primary bg-primary-tint px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint/80"
+          >
+            Assign Work
+          </button>
+        )}
+        {canComplete && (
+          <button
+            type="button"
+            onClick={handleComplete}
+            disabled={saving !== null}
+            className="rounded-lg border border-primary bg-primary-tint px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint/80 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving === "complete" ? "Completing..." : completeActionLabel(card)}
+          </button>
+        )}
+      </div>
+
+      {card.persisted && card.assignedStaffId && (
+        <div className="mt-3 border-t border-border-soft pt-3">
+          <div className="flex items-center gap-2">
+            <Select
+              value={targetStage}
+              onChange={(event) => setTargetStage(event.target.value as JobCardStage)}
+              className="h-9 min-w-0 flex-1 text-xs"
+            >
+              {STAGE_OPTIONS.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              onClick={handleMoveStage}
+              disabled={saving !== null || targetStage === card.stage}
+              className="h-9 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving === "move" ? "Moving..." : "Move"}
+            </button>
+          </div>
+          {(targetStage === "Delayed" || targetStage === "Alteration") && targetStage !== card.stage && (
+            <textarea
+              value={stageReason}
+              onChange={(event) => setStageReason(event.target.value)}
+              rows={2}
+              placeholder={targetStage === "Delayed" ? "Delay reason" : "Rework / alteration reason"}
+              className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function JobCardDetailsDrawer({
   card,
   linkedFabrics,
+  jobCardFabrics,
+  stockMovements,
+  inventoryItemsById,
   canManageStatus,
+  canManageInventory,
+  canManageStage,
+  todayIso,
   onFabricStatusChange,
   onAssign,
+  onUpdated,
   onHistory,
+  onRecordFabric,
+  onUseStock,
   onClose,
 }: {
   card: JobCard;
   linkedFabrics: CustomerFabric[];
+  jobCardFabrics: CustomerFabric[];
+  stockMovements: InventoryMovement[];
+  inventoryItemsById: Map<string, InventoryItem>;
   canManageStatus: boolean;
+  canManageInventory: boolean;
+  canManageStage: boolean;
+  todayIso: string;
   onFabricStatusChange: (fabric: CustomerFabric, status: CustomerFabricStatus) => void;
   onAssign: () => void;
+  onUpdated: () => void;
   onHistory: () => void;
+  onRecordFabric: () => void;
+  onUseStock: () => void;
   onClose: () => void;
 }) {
   const measurements = measurementEntries(card);
@@ -981,6 +1252,14 @@ function JobCardDetailsDrawer({
                 {card.taskStatus ? ` - ${card.taskStatus}` : ""}
               </p>
             )}
+            {canManageStage && (
+              <JobCardStageControls
+                card={card}
+                todayIso={todayIso}
+                onAssign={onAssign}
+                onUpdated={onUpdated}
+              />
+            )}
           </div>
 
           <div>
@@ -1000,6 +1279,45 @@ function JobCardDetailsDrawer({
               )}
             </div>
           </div>
+
+          {(stockMovements.length > 0 || jobCardFabrics.length > 0) && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-ink-muted">Fabric Usage</p>
+              <div className="space-y-3 rounded-lg border border-border-soft p-3">
+                {stockMovements.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-ink">Shop Stock Used</p>
+                    <div className="space-y-1 text-xs text-ink-muted">
+                      {stockMovements.map((movement) => {
+                        const item = inventoryItemsById.get(movement.itemId);
+                        return (
+                          <div key={movement.id}>
+                            {item?.name ?? "Stock item"}
+                            {item?.color ? `, ${item.color}` : ""} · {movement.quantity}{" "}
+                            {item?.unit ?? ""} · {formatDate(movement.movementDate)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {jobCardFabrics.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-ink">Customer Fabric Recorded</p>
+                    <div className="space-y-1 text-xs text-ink-muted">
+                      {jobCardFabrics.map((fabric) => (
+                        <div key={fabric.id}>
+                          {fabric.fabricDescription}
+                          {fabric.color ? `, ${fabric.color}` : ""} · {fabric.quantity}{" "}
+                          {fabric.unit} · {formatDate(fabric.receivedDate)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {(measurements.entries.length > 0 || measurements.notes) && (
             <div>
@@ -1027,6 +1345,24 @@ function JobCardDetailsDrawer({
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-border-soft px-6 py-4">
+          {canManageInventory && (
+            <>
+              <button
+                type="button"
+                onClick={onRecordFabric}
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              >
+                {jobCardFabrics.length > 0 ? "Add Customer Fabric" : "Record Customer Fabric"}
+              </button>
+              <button
+                type="button"
+                onClick={onUseStock}
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              >
+                {stockMovements.length > 0 ? "Add More Shop Stock" : "Use Shop Stock"}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={onAssign}
@@ -1108,6 +1444,7 @@ function AssignWorkDrawer({
           assignedStaffId: staffId,
           dueDate,
           priority,
+          startedDate: todayIso,
           notes: workNotes,
           fabricSource,
           fabricNotes,
@@ -1118,6 +1455,7 @@ function AssignWorkDrawer({
           taskType,
           assignedStaffId: staffId,
           assignedDate: todayIso,
+          startedDate: todayIso,
           dueDate,
           priority,
           workNotes,

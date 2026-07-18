@@ -7,6 +7,7 @@ import type {
   InventoryMovement,
   InventoryMovementType,
   InventoryUnit,
+  PaymentMode,
 } from "@/lib/types";
 
 const INVENTORY_ITEM_COLUMNS =
@@ -100,6 +101,7 @@ export interface InventoryItemInput {
   vendorName?: string;
   purchaseDate?: string;
   purchaseCost?: number;
+  purchasePaymentMode?: PaymentMode;
   notes?: string;
 }
 
@@ -111,6 +113,9 @@ export interface StockAdjustmentInput {
   reason?: string;
   orderId?: string;
   jobCardId?: string;
+  purchaseCost?: number;
+  purchasePaymentMode?: PaymentMode;
+  purchaseVendor?: string;
   recordedBy: string;
 }
 

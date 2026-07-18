@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/app/(shell)/job-cards/actions";
 import {
   getStaffPageDataAction,
+  recordStaffPaymentAction,
   updateStaffAction,
   updateWorkAssignmentAction,
 } from "@/app/(shell)/staff/actions";
@@ -24,9 +25,13 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatDate } from "@/components/orders/orders-table";
 import type { JobCard } from "@/lib/job-cards";
+import type { PaymentMode, Staff, StaffPayment, StaffWorkEarning } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { formatCurrency } from "@/lib/currency";
+import { paymentModes } from "@/lib/constants";
+import { Select } from "@/components/ui/select";
 
 const EMPTY_FILTERS: StaffFilterState = {
   nameQuery: "",
@@ -45,6 +50,11 @@ function StaffPageContent() {
   const [allRows, setAllRows] = useState<StaffListRow[]>([]);
   const [workQueueRows, setWorkQueueRows] = useState<WorkQueueRow[]>([]);
   const [jobCardQueueRows, setJobCardQueueRows] = useState<JobCard[] | null>(null);
+  const [staffPayments, setStaffPayments] = useState<StaffPayment[]>([]);
+  const [staffWorkEarnings, setStaffWorkEarnings] = useState<StaffWorkEarning[]>([]);
+  const [payingStaff, setPayingStaff] = useState<Staff | null>(null);
+  const [viewingPayableStaff, setViewingPayableStaff] = useState<Staff | null>(null);
+  const [payablePeriod, setPayablePeriod] = useState<PayablePeriod>("This Week");
   const [loadError, setLoadError] = useState<string | null>(null);
   // Named isDataLoading, not isLoading, since useCurrentUser() above already
   // owns that name for the auth/session load.
@@ -69,6 +79,8 @@ function StaffPageContent() {
         setAllRows(result.staffRows);
         setWorkQueueRows(result.workQueueRows);
         setJobCardQueueRows(result.jobCardQueueRows);
+        setStaffPayments(result.staffPayments);
+        setStaffWorkEarnings(result.staffWorkEarnings);
         setLoadError(null);
       })
       .catch((error) => {
@@ -177,6 +189,46 @@ function StaffPageContent() {
                 onChanged={() => setRefreshKey((k) => k + 1)}
               />
             )
+          )}
+
+          {tab === "payables" && canManage && (
+            <StaffPayablesTable
+              staffRows={allRows}
+              earnings={staffWorkEarnings}
+              payments={staffPayments}
+              todayIso={todayIso}
+              period={payablePeriod}
+              onPeriodChange={setPayablePeriod}
+              onRecordPayment={setPayingStaff}
+              onViewDetails={setViewingPayableStaff}
+            />
+          )}
+
+          {viewingPayableStaff && (
+            <StaffPayableDetailsDrawer
+              staff={viewingPayableStaff}
+              earnings={staffWorkEarnings}
+              payments={staffPayments}
+              todayIso={todayIso}
+              initialPeriod={payablePeriod}
+              onRecordPayment={() => {
+                setPayingStaff(viewingPayableStaff);
+                setViewingPayableStaff(null);
+              }}
+              onClose={() => setViewingPayableStaff(null)}
+            />
+          )}
+
+          {payingStaff && (
+            <StaffPaymentDrawer
+              staff={payingStaff}
+              todayIso={todayIso}
+              onClose={() => setPayingStaff(null)}
+              onSaved={() => {
+                setPayingStaff(null);
+                setRefreshKey((key) => key + 1);
+              }}
+            />
           )}
         </>
       )}
@@ -318,6 +370,619 @@ function JobCardWorkQueueTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+type PayablePeriod = "This Week" | "This Month" | "All";
+const PAYABLE_DETAIL_PREVIEW_LIMIT = 10;
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function payablePeriodRange(period: PayablePeriod, todayIso: string) {
+  if (period === "All") return { start: undefined, end: undefined };
+  if (period === "This Month") {
+    const [year, month] = todayIso.split("-").map(Number);
+    const monthEnd = new Date(year, month, 0);
+    return { start: `${todayIso.slice(0, 7)}-01`, end: toIsoDate(monthEnd) };
+  }
+  const today = new Date(`${todayIso}T00:00:00`);
+  const day = today.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  return {
+    start: toIsoDate(addDays(today, mondayOffset)),
+    end: toIsoDate(addDays(today, mondayOffset + 6)),
+  };
+}
+
+function payablePeriodLabel(period: PayablePeriod, todayIso: string, allLabel: string) {
+  if (period === "All") return allLabel;
+  const { start, end } = payablePeriodRange(period, todayIso);
+  return `${period} - ${formatDate(start ?? todayIso)} to ${formatDate(end ?? todayIso)}`;
+}
+
+function isWithinPayablePeriod(dateIso: string | undefined, period: PayablePeriod, todayIso: string) {
+  if (!dateIso) return false;
+  const { start, end } = payablePeriodRange(period, todayIso);
+  if (start && dateIso < start) return false;
+  if (end && dateIso > end) return false;
+  if (period === "This Month" && dateIso.slice(0, 7) !== todayIso.slice(0, 7)) return false;
+  return true;
+}
+
+function StaffPayablesTable({
+  staffRows,
+  earnings,
+  payments,
+  todayIso,
+  period,
+  onPeriodChange,
+  onRecordPayment,
+  onViewDetails,
+}: {
+  staffRows: StaffListRow[];
+  earnings: StaffWorkEarning[];
+  payments: StaffPayment[];
+  todayIso: string;
+  period: PayablePeriod;
+  onPeriodChange: (period: PayablePeriod) => void;
+  onRecordPayment: (staff: Staff) => void;
+  onViewDetails: (staff: Staff) => void;
+}) {
+  const rows = useMemo(
+    () =>
+      staffRows.map(({ staff }) => {
+        const staffEarnings = earnings.filter(
+          (earning) =>
+            earning.staffId === staff.id &&
+            isWithinPayablePeriod(earning.completedDate, period, todayIso)
+        );
+        const earned =
+          staff.paymentType === "Salary" && period === "This Month"
+            ? staff.baseSalary ?? 0
+            : staffEarnings.reduce((sum, earning) => sum + Number(earning.wageAmount ?? 0), 0);
+        const paid = payments
+          .filter(
+            (payment) =>
+              payment.staffId === staff.id &&
+              isWithinPayablePeriod(payment.date, period, todayIso)
+          )
+          .reduce((sum, payment) => sum + Number(payment.amount), 0);
+        return {
+          staff,
+          completedUnits: staffEarnings.length,
+          earned,
+          paid,
+          balance: earned - paid,
+          isSalaryOutsideMonth: staff.paymentType === "Salary" && period !== "This Month",
+        };
+      }),
+    [earnings, payments, period, staffRows, todayIso]
+  );
+  return (
+    <div className="rounded-xl border border-border-soft bg-white shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Payables Summary</h2>
+          <p className="text-xs text-ink-muted">
+            {payablePeriodLabel(period, todayIso, "All recorded work and payments")}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-border bg-white p-1">
+          {(["This Week", "This Month", "All"] as PayablePeriod[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onPeriodChange(option)}
+              className={cn(
+                "h-8 rounded-md px-3 text-xs font-semibold transition-colors",
+                period === option
+                  ? "bg-primary-tint text-primary"
+                  : "text-ink-muted hover:bg-surface hover:text-ink"
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+      <table className="w-full text-left">
+        <thead className="text-[13px] font-semibold text-ink-muted">
+          <tr className="border-b border-border-soft">
+            <th className="whitespace-nowrap px-5 py-3">Staff</th>
+            <th className="whitespace-nowrap px-5 py-3">Payment Type</th>
+            <th className="whitespace-nowrap px-5 py-3 text-right">Completed Units</th>
+            <th className="whitespace-nowrap px-5 py-3 text-right">Earned</th>
+            <th className="whitespace-nowrap px-5 py-3 text-right">Paid / Advance</th>
+            <th className="whitespace-nowrap px-5 py-3 text-right">Balance</th>
+            <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="text-[13px]">
+          {rows.map((row) => (
+            <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface">
+              <td className="whitespace-nowrap px-5 py-3">
+                <div className="font-semibold text-ink">{row.staff.name}</div>
+                <div className="text-xs text-ink-muted">{row.staff.staffNumber}</div>
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {row.staff.paymentType}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                {row.staff.paymentType === "Salary" ? "-" : row.completedUnits}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
+                {row.isSalaryOutsideMonth ? (
+                  <span className="text-xs font-semibold text-ink-muted">Monthly salary</span>
+                ) : (
+                  formatCurrency(row.earned)
+                )}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                {formatCurrency(row.paid)}
+              </td>
+              <td
+                className={cn(
+                  "whitespace-nowrap px-5 py-3 text-right font-semibold",
+                  !row.isSalaryOutsideMonth && row.balance > 0 ? "text-chip-red-fg" : "text-ink"
+                )}
+              >
+                {row.isSalaryOutsideMonth ? (
+                  <span className="text-xs font-semibold text-ink-muted">-</span>
+                ) : (
+                  formatCurrency(row.balance)
+                )}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-right">
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onViewDetails(row.staff)}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+                  >
+                    View Details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment(row.staff)}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary-tint"
+                  >
+                    Record Payment
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  );
+}
+
+function StaffPayableDetailsDrawer({
+  staff,
+  earnings,
+  payments,
+  todayIso,
+  initialPeriod,
+  onRecordPayment,
+  onClose,
+}: {
+  staff: Staff;
+  earnings: StaffWorkEarning[];
+  payments: StaffPayment[];
+  todayIso: string;
+  initialPeriod: PayablePeriod;
+  onRecordPayment: () => void;
+  onClose: () => void;
+}) {
+  const [period, setPeriod] = useState<PayablePeriod>(initialPeriod);
+  const [showAllEarnings, setShowAllEarnings] = useState(false);
+  const [showAllPayments, setShowAllPayments] = useState(false);
+  const periodEarnings = useMemo(
+    () =>
+      earnings
+        .filter(
+          (earning) =>
+            earning.staffId === staff.id &&
+            isWithinPayablePeriod(earning.completedDate, period, todayIso)
+        )
+        .sort((a, b) => b.completedDate.localeCompare(a.completedDate)),
+    [earnings, period, staff.id, todayIso]
+  );
+  const periodPayments = useMemo(
+    () =>
+      payments
+        .filter(
+          (payment) =>
+            payment.staffId === staff.id &&
+            isWithinPayablePeriod(payment.date, period, todayIso)
+        )
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [payments, period, staff.id, todayIso]
+  );
+
+  const taskSummary = useMemo(() => {
+    const byTask = new Map<string, { taskType: string; count: number; amount: number; rates: Set<number> }>();
+    for (const earning of periodEarnings) {
+      const current =
+        byTask.get(earning.taskType) ??
+        { taskType: earning.taskType, count: 0, amount: 0, rates: new Set<number>() };
+      current.count += 1;
+      current.amount += Number(earning.wageAmount);
+      current.rates.add(Number(earning.wageRate));
+      byTask.set(earning.taskType, current);
+    }
+    return Array.from(byTask.values()).sort((a, b) => a.taskType.localeCompare(b.taskType));
+  }, [periodEarnings]);
+
+  const earned =
+    staff.paymentType === "Salary" && period === "This Month"
+      ? staff.baseSalary ?? 0
+      : periodEarnings.reduce((sum, earning) => sum + Number(earning.wageAmount), 0);
+  const paid = periodPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const balance = earned - paid;
+  const isSalaryOutsideMonth = staff.paymentType === "Salary" && period !== "This Month";
+  const visibleEarnings = showAllEarnings
+    ? periodEarnings
+    : periodEarnings.slice(0, PAYABLE_DETAIL_PREVIEW_LIMIT);
+  const visiblePayments = showAllPayments
+    ? periodPayments
+    : periodPayments.slice(0, PAYABLE_DETAIL_PREVIEW_LIMIT);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
+      <button type="button" className="flex-1" aria-label="Close" onClick={onClose} />
+      <div className="flex h-full w-full max-w-2xl flex-col bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Payable Details</h2>
+            <p className="text-sm text-ink-muted">
+              {staff.name} - {staff.staffNumber}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            aria-label="Close"
+          >
+            x
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex rounded-lg border border-border bg-white p-1">
+              {(["This Week", "This Month", "All"] as PayablePeriod[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setPeriod(option);
+                    setShowAllEarnings(false);
+                    setShowAllPayments(false);
+                  }}
+                  className={cn(
+                    "h-8 rounded-md px-3 text-xs font-semibold transition-colors",
+                    period === option
+                      ? "bg-primary-tint text-primary"
+                      : "text-ink-muted hover:bg-surface hover:text-ink"
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-ink-muted">
+              {payablePeriodLabel(period, todayIso, "All recorded work")}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border-soft bg-surface p-3">
+              <p className="text-xs font-medium text-ink-muted">Earned</p>
+              <p className="mt-1 text-lg font-semibold text-ink">
+                {isSalaryOutsideMonth ? "Monthly salary" : formatCurrency(earned)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border-soft bg-surface p-3">
+              <p className="text-xs font-medium text-ink-muted">Paid / Advance</p>
+              <p className="mt-1 text-lg font-semibold text-ink">{formatCurrency(paid)}</p>
+            </div>
+            <div className="rounded-lg border border-border-soft bg-surface p-3">
+              <p className="text-xs font-medium text-ink-muted">Balance</p>
+              <p className={cn("mt-1 text-lg font-semibold", balance > 0 ? "text-chip-red-fg" : "text-ink")}>
+                {isSalaryOutsideMonth ? "-" : formatCurrency(balance)}
+              </p>
+            </div>
+          </div>
+
+          <section>
+            <h3 className="text-sm font-semibold text-ink">Task Summary</h3>
+            {staff.paymentType === "Salary" ? (
+              <div className="mt-3 rounded-lg border border-border-soft p-3 text-sm text-ink-muted">
+                Salary staff are tracked as a monthly payable. Switch to This Month to see salary due. Base salary:{" "}
+                <span className="font-semibold text-ink">{formatCurrency(staff.baseSalary ?? 0)}</span>
+              </div>
+            ) : taskSummary.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-border-soft px-3 py-6 text-center text-sm text-ink-muted">
+                No completed work in this period.
+              </div>
+            ) : (
+              <div className="mt-3 overflow-hidden rounded-lg border border-border-soft">
+                {taskSummary.map((summary) => {
+                  const rateLabel =
+                    summary.rates.size === 1
+                      ? `${summary.count} x ${formatCurrency(Array.from(summary.rates)[0])}`
+                      : `${summary.count} units`;
+                  return (
+                    <div
+                      key={summary.taskType}
+                      className="flex items-center justify-between gap-4 border-t border-border-soft px-3 py-2 first:border-t-0"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-ink">{summary.taskType}</p>
+                        <p className="text-xs text-ink-muted">{rateLabel}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-ink">{formatCurrency(summary.amount)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-ink">Completed Work</h3>
+              {periodEarnings.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+                <p className="text-xs text-ink-muted">
+                  Showing {visibleEarnings.length} of {periodEarnings.length}
+                </p>
+              )}
+            </div>
+            {periodEarnings.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-border-soft px-3 py-6 text-center text-sm text-ink-muted">
+                No completed job-card work in this period.
+              </div>
+            ) : (
+              <>
+                <div className="mt-3 overflow-hidden rounded-lg border border-border-soft">
+                  {visibleEarnings.map((earning) => (
+                    <div
+                      key={earning.id}
+                      className="grid gap-2 border-t border-border-soft px-3 py-2 text-sm first:border-t-0 sm:grid-cols-[1fr_auto]"
+                    >
+                      <div>
+                        <p className="font-semibold text-ink">
+                          {earning.jobCardNumber} - {earning.taskType}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          {formatDate(earning.completedDate)} - Rate {formatCurrency(earning.wageRate)}
+                        </p>
+                      </div>
+                      <p className="font-semibold text-ink sm:text-right">{formatCurrency(earning.wageAmount)}</p>
+                    </div>
+                  ))}
+                </div>
+                {periodEarnings.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllEarnings((current) => !current)}
+                    className="mt-2 text-xs font-semibold text-primary hover:underline"
+                  >
+                    {showAllEarnings
+                      ? "Show fewer"
+                      : `Show all ${periodEarnings.length} completed entries`}
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-ink">Payments / Advances</h3>
+              {periodPayments.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+                <p className="text-xs text-ink-muted">
+                  Showing {visiblePayments.length} of {periodPayments.length}
+                </p>
+              )}
+            </div>
+            {periodPayments.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-border-soft px-3 py-6 text-center text-sm text-ink-muted">
+                No payments recorded in this period.
+              </div>
+            ) : (
+              <>
+                <div className="mt-3 overflow-hidden rounded-lg border border-border-soft">
+                  {visiblePayments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="grid gap-2 border-t border-border-soft px-3 py-2 text-sm first:border-t-0 sm:grid-cols-[1fr_auto]"
+                    >
+                      <div>
+                        <p className="font-semibold text-ink">{payment.description}</p>
+                        <p className="text-xs text-ink-muted">
+                          {formatDate(payment.date)} - {payment.paymentMode}
+                        </p>
+                        {payment.notes && (
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-ink-muted">{payment.notes}</p>
+                        )}
+                      </div>
+                      <p className="font-semibold text-ink sm:text-right">{formatCurrency(payment.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+                {periodPayments.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllPayments((current) => !current)}
+                    className="mt-2 text-xs font-semibold text-primary hover:underline"
+                  >
+                    {showAllPayments
+                      ? "Show fewer"
+                      : `Show all ${periodPayments.length} payment entries`}
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border-soft px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onRecordPayment}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark"
+          >
+            Record Payment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaffPaymentDrawer({
+  staff,
+  todayIso,
+  onClose,
+  onSaved,
+}: {
+  staff: Staff;
+  todayIso: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [date, setDate] = useState(todayIso);
+  const [amount, setAmount] = useState("");
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
+  const [description, setDescription] = useState("Staff advance / payment");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    const result = await recordStaffPaymentAction({
+      staffId: staff.id,
+      date,
+      description,
+      amount: Number(amount),
+      paymentMode,
+      notes,
+    });
+    setSaving(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
+      <button type="button" className="flex-1" aria-label="Close" onClick={onClose} />
+      <form onSubmit={handleSubmit} className="flex h-full w-full max-w-md flex-col bg-white shadow-xl">
+        <div className="border-b border-border-soft px-6 py-5">
+          <h2 className="text-lg font-semibold text-ink">Record Staff Payment</h2>
+          <p className="text-sm text-ink-muted">{staff.name}</p>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Date</span>
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Amount</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Payment Mode</span>
+            <Select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}>
+              {paymentModes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Description</span>
+            <input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Notes</span>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+              className="rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+            />
+          </label>
+          {error && (
+            <div className="rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border-soft px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Payment"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

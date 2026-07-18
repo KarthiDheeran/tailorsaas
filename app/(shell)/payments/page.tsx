@@ -40,6 +40,7 @@ import { expenseCategories, paymentModes } from "@/lib/constants";
 import type {
   Expense,
   ExpenseCategory,
+  ExpenseSource,
   Order,
   OrderFinancialAdjustmentType,
   PaymentMode,
@@ -57,6 +58,11 @@ const ADJUSTMENT_TYPES: OrderFinancialAdjustmentType[] = [
   "Discount",
   "Extra Charge",
   "Refund",
+];
+const EXPENSE_SOURCES: ExpenseSource[] = [
+  "Manual Expense",
+  "Staff Payment",
+  "Inventory Purchase",
 ];
 // Phase 7G: a deliberately simpler date-filter set than Reports' full
 // six-preset range — this page is a daily operational ledger, not an
@@ -121,6 +127,7 @@ function PaymentsPageContent() {
   const [adjustmentsMigrationMissing, setAdjustmentsMigrationMissing] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [todayExpenses, setTodayExpenses] = useState(0);
+  const [expenseSource, setExpenseSource] = useState<ExpenseSource | "">("");
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory | "">("");
   const [expenseMode, setExpenseMode] = useState<PaymentMode | "">("");
   const [expenseQuery, setExpenseQuery] = useState("");
@@ -156,6 +163,7 @@ function PaymentsPageContent() {
         adjustmentType: adjustmentType || undefined,
         adjustmentPaymentMode: adjustmentMode || undefined,
         adjustmentQuery,
+        expenseSource: expenseSource || undefined,
         expenseCategory: expenseCategory || undefined,
         expensePaymentMode: expenseMode || undefined,
         expenseQuery,
@@ -197,6 +205,7 @@ function PaymentsPageContent() {
     adjustmentType,
     adjustmentMode,
     adjustmentQuery,
+    expenseSource,
     expenseCategory,
     expenseMode,
     expenseQuery,
@@ -304,6 +313,8 @@ function PaymentsPageContent() {
       `expenses-${range.from}-to-${range.to}.csv`,
       [
         "Date",
+        "Source",
+        "Reference",
         "Category",
         "Vendor",
         "Description",
@@ -315,6 +326,8 @@ function PaymentsPageContent() {
       ],
       expenses.map((expense) => [
         expense.expenseDate,
+        expense.source ?? "Manual Expense",
+        expense.reference ?? "",
         expense.category,
         expense.vendor ?? "",
         expense.description,
@@ -563,9 +576,21 @@ function PaymentsPageContent() {
                   presets={PAYMENT_PAGE_PRESETS}
                 />
                 <select
+                  value={expenseSource}
+                  onChange={(e) => setExpenseSource(e.target.value as ExpenseSource | "")}
+                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                >
+                  <option value="">All Sources</option>
+                  {EXPENSE_SOURCES.map((source) => (
+                    <option key={source} value={source}>
+                      {source}
+                    </option>
+                  ))}
+                </select>
+                <select
                   value={expenseCategory}
                   onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 >
                   <option value="">{t("payments.allExpenseCategories")}</option>
                   {expenseCategories.map((category) => (
@@ -577,7 +602,7 @@ function PaymentsPageContent() {
                 <select
                   value={expenseMode}
                   onChange={(e) => setExpenseMode(e.target.value as PaymentMode | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 >
                   <option value="">{t("payments.allExpenseModes")}</option>
                   {paymentModes.map((mode) => (
@@ -808,6 +833,8 @@ function ExpenseLedgerTable({
         <thead className="text-[13px] font-semibold text-ink-muted">
           <tr className="border-b border-border-soft">
             <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
+            <th className="whitespace-nowrap px-5 py-3">Source</th>
+            <th className="whitespace-nowrap px-5 py-3">Reference</th>
             <th className="whitespace-nowrap px-5 py-3">{t("payments.expenseCategory")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("payments.vendor")}</th>
             <th className="px-5 py-3">{t("payments.description")}</th>
@@ -827,6 +854,12 @@ function ExpenseLedgerTable({
             >
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                 {formatDate(expense.expenseDate)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink">
+                {expense.source ?? "Manual Expense"}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {expense.reference || "-"}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-ink">{expense.category}</td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
@@ -911,6 +944,7 @@ function ExpenseDrawer({
     setSaving(true);
     const result = await createExpenseAction({
       expenseDate,
+      source: "Manual Expense",
       category,
       vendor,
       description,

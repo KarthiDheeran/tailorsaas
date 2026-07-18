@@ -25,6 +25,7 @@ import type {
   CustomerSnapshot,
   Expense,
   ExpenseCategory,
+  ExpenseSource,
   Order,
   OrderFinancialAdjustment,
   OrderFinancialAdjustmentType,
@@ -46,6 +47,11 @@ type ActionResult<T = undefined> =
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const VALID_EXPENSE_CATEGORIES = new Set<ExpenseCategory>(expenseCategories);
+const VALID_EXPENSE_SOURCES = new Set<ExpenseSource>([
+  "Manual Expense",
+  "Staff Payment",
+  "Inventory Purchase",
+]);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
 
 export interface DailyClosingModeRow {
@@ -90,6 +96,7 @@ export interface PaymentsPageInitialFilters {
   adjustmentType?: OrderFinancialAdjustmentType;
   adjustmentPaymentMode?: PaymentMode;
   adjustmentQuery?: string;
+  expenseSource?: ExpenseSource;
   expenseCategory?: ExpenseCategory;
   expensePaymentMode?: PaymentMode;
   expenseQuery?: string;
@@ -208,6 +215,7 @@ export async function getPaymentsPageInitialDataAction(
       expenses = await getExpenses(admin, {
         from: filters.range.from,
         to: filters.range.to,
+        source: filters.expenseSource,
         category: filters.expenseCategory,
         paymentMode: filters.expensePaymentMode,
         query: filters.expenseQuery,
@@ -216,6 +224,7 @@ export async function getPaymentsPageInitialDataAction(
       todaysExpenseRows =
         filters.range.from === todayIso &&
         filters.range.to === todayIso &&
+        !filters.expenseSource &&
         !filters.expenseCategory &&
         !filters.expensePaymentMode &&
         !filters.expenseQuery
@@ -527,6 +536,8 @@ export async function getExpenseTotalAction(filters: ExpenseFilters): Promise<nu
 
 export async function createExpenseAction(data: {
   expenseDate: string;
+  source?: ExpenseSource;
+  reference?: string;
   category: ExpenseCategory;
   vendor?: string;
   description: string;
@@ -583,6 +594,7 @@ export async function voidExpenseAction(
 
 function validateExpenseInput(data: {
   expenseDate: string;
+  source?: ExpenseSource;
   category: ExpenseCategory;
   description: string;
   amount: number;
@@ -591,6 +603,7 @@ function validateExpenseInput(data: {
   const todayIso = new Date().toISOString().slice(0, 10);
   if (!ISO_DATE.test(data.expenseDate)) return "A valid expense date is required.";
   if (data.expenseDate > todayIso) return "Expense date cannot be in the future.";
+  if (data.source && !VALID_EXPENSE_SOURCES.has(data.source)) return "Invalid expense source.";
   if (!VALID_EXPENSE_CATEGORIES.has(data.category)) return "Invalid expense category.";
   if (!data.description.trim()) return "Description is required.";
   if (!Number.isFinite(data.amount) || data.amount <= 0) {

@@ -193,6 +193,11 @@ export type ExpenseCategory =
   | "Marketing"
   | "Other";
 
+export type ExpenseSource =
+  | "Manual Expense"
+  | "Staff Payment"
+  | "Inventory Purchase";
+
 export type InventoryItemType =
   | "Fabric"
   | "Button"
@@ -265,6 +270,8 @@ export interface Expense {
   id: string;
   expenseDate: string;
   category: ExpenseCategory;
+  source?: ExpenseSource;
+  reference?: string;
   vendor?: string;
   description: string;
   amount: number;
@@ -469,6 +476,19 @@ export interface StaffPayment {
   amount: number;
   paymentMode: PaymentMode;
   notes?: string;
+}
+
+export interface StaffWorkEarning {
+  id: string;
+  staffId: string;
+  jobCardId: string;
+  orderId: string;
+  jobCardNumber: string;
+  taskType: TaskType;
+  completedDate: string;
+  wageRate: number;
+  wageAmount: number;
+  createdAt: string;
 }
 
 export type OrderStatus =

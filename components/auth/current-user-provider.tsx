@@ -91,10 +91,18 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   // current session, then again on every sign-in/sign-out/token refresh.
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setAuthUserId(data.user?.id ?? null);
-      setAuthResolved(true);
-    });
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        setAuthUserId(data.user?.id ?? null);
+      })
+      .catch((error) => {
+        console.error("Failed to load authenticated user.", error);
+        setAuthUserId(null);
+      })
+      .finally(() => {
+        setAuthResolved(true);
+      });
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -119,19 +127,31 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       }
       setProfileResolved(false);
       const supabase = createClient();
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone, role_id, active, must_change_password, staff_id")
-        .eq("id", authUserId)
-        .maybeSingle();
-      if (cancelled) return;
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name, phone, role_id, active, must_change_password, staff_id")
+          .eq("id", authUserId)
+          .maybeSingle();
+        if (error) throw error;
+        if (cancelled) return;
 
-      setProfile((data as AppUser) ?? undefined);
-      const roleId = data?.role_id;
-      const resolvedRole = roleId ? await getRoleById(supabase, roleId) : undefined;
-      if (!cancelled) {
-        setRole(resolvedRole);
-        setProfileResolved(true);
+        setProfile((data as AppUser) ?? undefined);
+        const roleId = data?.role_id;
+        const resolvedRole = roleId ? await getRoleById(supabase, roleId) : undefined;
+        if (!cancelled) {
+          setRole(resolvedRole);
+        }
+      } catch (error) {
+        console.error("Failed to load workspace profile.", error);
+        if (!cancelled) {
+          setProfile(undefined);
+          setRole(undefined);
+        }
+      } finally {
+        if (!cancelled) {
+          setProfileResolved(true);
+        }
       }
     }
 

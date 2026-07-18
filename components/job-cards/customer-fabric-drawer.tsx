@@ -2,18 +2,20 @@
 
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import { createCustomerFabricAction } from "@/app/(shell)/inventory/actions";
+import { recordJobCardCustomerFabricAction } from "@/app/(shell)/job-cards/actions";
 import type { JobCard } from "@/lib/job-cards";
 import { inventoryUnits } from "@/lib/constants";
-import type { InventoryUnit } from "@/lib/types";
+import type { CustomerFabric, InventoryUnit } from "@/lib/types";
 
 export function CustomerFabricDrawer({
   card,
+  existingFabrics = [],
   todayIso,
   onClose,
   onSaved,
 }: {
   card: JobCard;
+  existingFabrics?: CustomerFabric[];
   todayIso: string;
   onClose: () => void;
   onSaved: () => void;
@@ -34,6 +36,10 @@ export function CustomerFabricDrawer({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!card.persisted) {
+      setError("Save the job card before recording customer fabric.");
+      return;
+    }
     if (!customerName.trim()) {
       setError("Customer name is required.");
       return;
@@ -42,9 +48,17 @@ export function CustomerFabricDrawer({
       setError("Fabric description is required.");
       return;
     }
+    if (
+      card.fabricSource === "Shop provided" &&
+      !window.confirm(
+        "This item is marked as Shop provided. Recording customer fabric will change Fabric Source to Customer provided. Continue?"
+      )
+    ) {
+      return;
+    }
 
     setSaving(true);
-    const result = await createCustomerFabricAction({
+    const result = await recordJobCardCustomerFabricAction(card.id, {
       customerId: card.customerId,
       orderId: card.orderId,
       customerName,
@@ -87,6 +101,29 @@ export function CustomerFabricDrawer({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {card.fabricSource === "Shop provided" && (
+            <div className="rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
+              This item is marked as Shop provided. Saving customer fabric will change Fabric Source to Customer provided.
+            </div>
+          )}
+          {(!card.fabricSource || card.fabricSource === "Not specified") && (
+            <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+              Fabric Source will be set to Customer provided after customer fabric is recorded.
+            </div>
+          )}
+          {existingFabrics.length > 0 && (
+            <div className="rounded-lg border border-border-soft bg-white px-3 py-2 text-sm">
+              <p className="mb-1 font-semibold text-ink">Already recorded</p>
+              <div className="space-y-1 text-ink-muted">
+                {existingFabrics.map((fabric) => (
+                  <div key={fabric.id}>
+                    {fabric.fabricDescription}
+                    {fabric.color ? `, ${fabric.color}` : ""} · {fabric.quantity} {fabric.unit}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
             Linked to <span className="font-semibold text-ink">{card.orderNumber}</span>
           </div>
@@ -161,7 +198,7 @@ export function CustomerFabricDrawer({
             disabled={saving}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Save Fabric"}
+            {saving ? "Saving..." : existingFabrics.length > 0 ? "Save More Fabric" : "Save Fabric"}
           </button>
         </div>
       </form>

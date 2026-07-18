@@ -11,7 +11,9 @@ import {
   createWorkAssignment,
   getStaff,
   getStaffById,
+  getStaffPayments,
   getStaffPaymentsForStaff,
+  getStaffWorkEarnings,
   getWorkAssignmentAssignedStaffId,
   getWorkAssignments,
   getWorkAssignmentsForStaff,
@@ -23,6 +25,10 @@ import {
   getJobCards,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
+import {
+  createExpense,
+  isMissingExpensesSchemaError,
+} from "@/lib/data/expenses-db";
 import { getAllOrders, getOrderById } from "@/lib/data/orders-db";
 import { paymentModes } from "@/lib/constants";
 import {
@@ -43,6 +49,7 @@ import type {
   StaffPaymentType,
   StaffRole,
   StaffStatus,
+  StaffWorkEarning,
   TaskPriority,
   TaskType,
   WorkAssignment,
@@ -110,6 +117,8 @@ export interface StaffPageData {
   staffRows: StaffListRow[];
   workQueueRows: WorkQueueRow[];
   jobCardQueueRows: JobCard[] | null;
+  staffPayments: StaffPayment[];
+  staffWorkEarnings: StaffWorkEarning[];
 }
 
 function validateStaffInput(data: StaffFormInput): string | null {
@@ -159,15 +168,23 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
   const supabase = createServerClient();
   const context = await getServerCallerContext(supabase);
   if (!context || !hasPermission(context.permissions, "staff.view")) {
-    return { staffRows: [], workQueueRows: [], jobCardQueueRows: [] };
+    return {
+      staffRows: [],
+      workQueueRows: [],
+      jobCardQueueRows: null,
+      staffPayments: [],
+      staffWorkEarnings: [],
+    };
   }
 
   const canManage = hasPermission(context.permissions, "staff.manage");
   const dataClient = createAdminClient();
-  const [staffList, assignments, orders] = await Promise.all([
+  const [staffList, assignments, orders, staffPayments, staffWorkEarnings] = await Promise.all([
     getStaff(dataClient),
     getWorkAssignments(dataClient),
     getAllOrders(dataClient),
+    getStaffPayments(dataClient),
+    getStaffWorkEarnings(dataClient),
   ]);
 
   let jobCardQueueRows: JobCard[] | null = null;
@@ -185,6 +202,8 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
       : [],
     workQueueRows: buildWorkQueueRows(staffList, assignments, orders, todayIso),
     jobCardQueueRows,
+    staffPayments,
+    staffWorkEarnings,
   };
 }
 
@@ -238,6 +257,7 @@ export interface WorkAssignmentInput {
   taskType: TaskType;
   assignedStaffId: string;
   assignedDate: string;
+  startedDate?: string;
   dueDate: string;
   priority: TaskPriority;
   workNotes?: string;
@@ -264,7 +284,11 @@ export async function createWorkAssignmentAction(
   }
   if (!VALID_TASK_TYPES.has(data.taskType)) return { success: false, error: "Invalid task type." };
   if (!VALID_PRIORITIES.has(data.priority)) return { success: false, error: "Invalid priority." };
-  if (!ISO_DATE.test(data.assignedDate) || !ISO_DATE.test(data.dueDate)) {
+  if (
+    !ISO_DATE.test(data.assignedDate) ||
+    !ISO_DATE.test(data.dueDate) ||
+    (data.startedDate != null && !ISO_DATE.test(data.startedDate))
+  ) {
     return { success: false, error: "Valid assigned/due dates are required." };
   }
 
@@ -353,18 +377,49 @@ export async function recordStaffPaymentAction(
   if (!guard.ok) return { success: false, error: guard.error };
 
   if (!data.staffId.trim()) return { success: false, error: "Staff member is required." };
-  if (!(await getStaffById(supabase, data.staffId))) {
+  const staffMember = await getStaffById(supabase, data.staffId);
+  if (!staffMember) {
     return { success: false, error: "Staff member not found." };
   }
   if (!ISO_DATE.test(data.date)) return { success: false, error: "A valid date is required." };
-  if (!Number.isFinite(data.amount) || data.amount < 0) {
-    return { success: false, error: "Amount must be 0 or greater." };
+  if (!Number.isFinite(data.amount) || data.amount <= 0) {
+    return { success: false, error: "Amount must be greater than zero." };
   }
   if (!VALID_PAYMENT_MODES.has(data.paymentMode)) {
     return { success: false, error: "Invalid payment mode." };
   }
 
   const payment = await recordStaffPayment(supabase, data);
+  try {
+    await createExpense(createAdminClient(), {
+      expenseDate: data.date,
+      category: "Salary",
+      source: "Staff Payment",
+      reference: payment.id,
+      vendor: staffMember.name,
+      description: `Staff payment - ${staffMember.name}`,
+      amount: data.amount,
+      paymentMode: data.paymentMode,
+      notes: [
+        "Source: Staff Payment",
+        `Staff: ${staffMember.name} (${staffMember.staffNumber})`,
+        `Staff payment ID: ${payment.id}`,
+        data.description ? `Description: ${data.description}` : "",
+        data.notes ? `Notes: ${data.notes}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      recordedBy: guard.userId,
+    });
+  } catch (error) {
+    if (!isMissingExpensesSchemaError(error)) {
+      return {
+        success: false,
+        error:
+          "Staff payment was recorded, but the Finance expense could not be created. Please add the expense manually.",
+      };
+    }
+  }
   return { success: true, data: payment };
 }
 

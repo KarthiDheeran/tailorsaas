@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import {
@@ -24,6 +24,11 @@ import {
   getCustomerByIdAction,
   getGarmentMeasurementDraftSeedAction,
 } from "@/app/(shell)/customers/actions";
+import {
+  getCustomerFabricsAction,
+  getInventoryItemsAction,
+  getInventoryMovementsAction,
+} from "@/app/(shell)/inventory/actions";
 import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
 import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
 import { OrderAttachmentsCard } from "@/components/orders/order-attachments-card";
@@ -46,6 +51,9 @@ import type { JobCard } from "@/lib/job-cards";
 import { isReceivableOrder } from "@/lib/order-finance";
 import type {
   Customer,
+  CustomerFabric,
+  InventoryItem,
+  InventoryMovement,
   Order,
   OrderAttachment,
   OrderFinancialAdjustment,
@@ -69,6 +77,13 @@ function jobCardPrintUrl(orderId: string, card: JobCard) {
     params.set("unitNo", String(card.unitNo));
   }
   return `/orders/${orderId}/job-cards/print?${params.toString()}`;
+}
+
+function customerFabricsForJobCards(cards: JobCard[], fabrics: CustomerFabric[]) {
+  const jobCardNumbers = new Set(cards.map((card) => card.jobCardNumber));
+  return fabrics.filter((fabric) =>
+    Array.from(jobCardNumbers).some((jobCardNumber) => fabric.notes?.includes(jobCardNumber))
+  );
 }
 
 function unitJobCardPrintUrl(orderId: string, serialNo: number, unitNo: number) {
@@ -311,6 +326,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [jobCards, setJobCards] = useState<JobCard[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
+  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
   const [measurementSeeds, setMeasurementSeeds] = useState<Record<string, MeasurementDraftSeed>>(
     {}
   );
@@ -346,6 +364,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
         foundGarmentTypes,
         foundMeasurementSeeds,
         foundJobCards,
+        foundInventoryItems,
+        foundInventoryMovements,
+        foundCustomerFabrics,
       ] =
         await Promise.all([
           getCustomerByIdAction(foundOrder.customerId),
@@ -374,6 +395,17 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
               (cards ?? []).filter((card) => card.orderId === foundOrder.id)
             )
             .catch(() => []),
+          getInventoryItemsAction().catch(() => []),
+          getInventoryMovementsAction()
+            .then((movements) =>
+              (movements ?? []).filter((movement) => movement.orderId === foundOrder.id)
+            )
+            .catch(() => []),
+          getCustomerFabricsAction()
+            .then((fabrics) =>
+              (fabrics ?? []).filter((fabric) => fabric.orderId === foundOrder.id)
+            )
+            .catch(() => []),
         ]);
       if (cancelled) return;
       setCustomer(foundCustomer);
@@ -383,6 +415,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
       setGarmentTypes(foundGarmentTypes);
       setMeasurementSeeds(foundMeasurementSeeds);
       setJobCards(foundJobCards);
+      setInventoryItems(foundInventoryItems ?? []);
+      setInventoryMovements(foundInventoryMovements ?? []);
+      setCustomerFabrics(foundCustomerFabrics ?? []);
       setLoaded(true);
     }
     load();
@@ -390,6 +425,11 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
       cancelled = true;
     };
   }, [params.id, canViewPayments]);
+
+  const inventoryItemsById = useMemo(
+    () => new Map(inventoryItems.map((item) => [item.id, item])),
+    [inventoryItems]
+  );
 
   if (loaded && !order) {
     notFound();
@@ -563,6 +603,17 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 const itemJobCards = jobCards
                   .filter((card) => card.item.serialNo === item.serialNo)
                   .sort((a, b) => a.unitNo - b.unitNo);
+                const itemJobCardIds = new Set(itemJobCards.map((card) => card.id));
+                const itemStockMovements = inventoryMovements.filter(
+                  (movement) =>
+                    movement.jobCardId &&
+                    itemJobCardIds.has(movement.jobCardId) &&
+                    movement.movementType === "Stock Out"
+                );
+                const itemCustomerFabrics = customerFabricsForJobCards(
+                  itemJobCards,
+                  customerFabrics
+                );
                 return (
                   <article
                     key={item.serialNo}
@@ -652,6 +703,38 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                           </div>
                         )}
                       </div>
+
+                      {(itemStockMovements.length > 0 || itemCustomerFabrics.length > 0) && (
+                        <div className="border-t border-border-soft pt-3">
+                          <p className="mb-2 text-[13px] font-medium text-ink-muted">
+                            Fabric Usage
+                          </p>
+                          <div className="space-y-2 text-sm text-ink-muted">
+                            {itemStockMovements.map((movement) => {
+                              const stockItem = inventoryItemsById.get(movement.itemId);
+                              return (
+                                <div key={movement.id}>
+                                  <span className="font-semibold text-ink">Shop Stock Used: </span>
+                                  {stockItem?.name ?? "Stock item"}
+                                  {stockItem?.color ? `, ${stockItem.color}` : ""} ·{" "}
+                                  {movement.quantity} {stockItem?.unit ?? ""} ·{" "}
+                                  {formatDate(movement.movementDate)}
+                                </div>
+                              );
+                            })}
+                            {itemCustomerFabrics.map((fabric) => (
+                              <div key={fabric.id}>
+                                <span className="font-semibold text-ink">
+                                  Customer Fabric Recorded:{" "}
+                                </span>
+                                {fabric.fabricDescription}
+                                {fabric.color ? `, ${fabric.color}` : ""} · {fabric.quantity}{" "}
+                                {fabric.unit} · {formatDate(fabric.receivedDate)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {item.addOns && item.addOns.length > 0 && (
                         <div className="border-t border-border-soft pt-3">

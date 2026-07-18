@@ -17,6 +17,7 @@ import {
   inventoryItemTypes,
   inventoryMovementTypes,
   inventoryUnits,
+  paymentModes,
 } from "@/lib/constants";
 import type {
   CustomerFabric,
@@ -25,11 +26,13 @@ import type {
   InventoryItemType,
   InventoryMovementType,
   InventoryUnit,
+  PaymentMode,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { Select } from "@/components/ui/select";
 import { downloadCsv } from "@/lib/csv";
 import { formatCurrency } from "@/lib/currency";
 
@@ -534,17 +537,17 @@ function CustomerFabricTable({
               </td>
               {canManage && (
                 <td className="whitespace-nowrap px-5 py-3 text-right">
-                  <select
+                  <Select
                     value={row.status}
                     onChange={(e) => updateStatus(row, e.target.value as CustomerFabricStatus)}
-                    className="h-8 rounded-lg border border-border bg-white px-2 text-xs font-semibold text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    className="h-8 w-32 text-xs font-semibold"
                   >
                     {customerFabricStatuses.map((status) => (
                       <option key={status} value={status}>
                         {status}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </td>
               )}
             </tr>
@@ -595,6 +598,7 @@ function StockItemDrawer({
   const [vendorName, setVendorName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
+  const [purchasePaymentMode, setPurchasePaymentMode] = useState<PaymentMode>("Cash");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -619,6 +623,7 @@ function StockItemDrawer({
       vendorName,
       purchaseDate,
       purchaseCost: purchaseCost ? Number(purchaseCost) : undefined,
+      purchasePaymentMode,
       notes,
     });
     setSaving(false);
@@ -650,6 +655,14 @@ function StockItemDrawer({
         <TextField label="Purchase Date" type="date" value={purchaseDate} onChange={setPurchaseDate} />
         <TextField label="Purchase Cost" type="number" value={purchaseCost} onChange={setPurchaseCost} />
       </div>
+      {Number(purchaseCost) > 0 && (
+        <SelectField
+          label="Payment Mode"
+          value={purchasePaymentMode}
+          onChange={(value) => setPurchasePaymentMode(value as PaymentMode)}
+          options={paymentModes}
+        />
+      )}
       <TextareaField label="Notes" value={notes} onChange={setNotes} />
       {error && <FormError error={error} />}
     </InventoryDrawerShell>
@@ -671,6 +684,9 @@ function StockAdjustDrawer({
   const [quantity, setQuantity] = useState("");
   const [movementDate, setMovementDate] = useState(todayIso);
   const [reason, setReason] = useState("");
+  const [purchaseCost, setPurchaseCost] = useState("");
+  const [purchasePaymentMode, setPurchasePaymentMode] = useState<PaymentMode>("Cash");
+  const [purchaseVendor, setPurchaseVendor] = useState(item.vendorName ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -684,6 +700,10 @@ function StockAdjustDrawer({
       quantity: Number(quantity),
       movementDate,
       reason,
+      purchaseCost:
+        movementType === "Stock In" && purchaseCost ? Number(purchaseCost) : undefined,
+      purchasePaymentMode,
+      purchaseVendor,
     });
     setSaving(false);
     if (!result.success) {
@@ -704,6 +724,31 @@ function StockAdjustDrawer({
         <TextField label="Date" type="date" value={movementDate} onChange={setMovementDate} />
       </div>
       <TextareaField label="Reason" value={reason} onChange={setReason} placeholder="Purchase, used for order, wastage..." />
+      {movementType === "Stock In" && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <TextField
+              label="Purchase Cost"
+              type="number"
+              value={purchaseCost}
+              onChange={setPurchaseCost}
+              placeholder="optional"
+            />
+            <SelectField
+              label="Payment Mode"
+              value={purchasePaymentMode}
+              onChange={(value) => setPurchasePaymentMode(value as PaymentMode)}
+              options={paymentModes}
+            />
+          </div>
+          <TextField
+            label="Vendor"
+            value={purchaseVendor}
+            onChange={setPurchaseVendor}
+            placeholder="Supplier or market name"
+          />
+        </>
+      )}
       {error && <FormError error={error} />}
     </InventoryDrawerShell>
   );
@@ -871,17 +916,16 @@ function SelectField({
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-ink-muted">{label}</span>
-      <select
+      <Select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
       >
         {options.map((option) => (
           <option key={option} value={option}>
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

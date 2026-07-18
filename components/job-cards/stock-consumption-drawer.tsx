@@ -2,9 +2,9 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import { adjustInventoryStockAction } from "@/app/(shell)/inventory/actions";
+import { recordJobCardStockUsageAction } from "@/app/(shell)/job-cards/actions";
 import type { JobCard } from "@/lib/job-cards";
-import type { InventoryItem } from "@/lib/types";
+import type { InventoryItem, InventoryMovement } from "@/lib/types";
 
 function numberValue(value: number) {
   return Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -13,12 +13,14 @@ function numberValue(value: number) {
 export function StockConsumptionDrawer({
   card,
   items,
+  existingMovements = [],
   todayIso,
   onClose,
   onSaved,
 }: {
   card: JobCard;
   items: InventoryItem[];
+  existingMovements?: InventoryMovement[];
   todayIso: string;
   onClose: () => void;
   onSaved: () => void;
@@ -41,6 +43,10 @@ export function StockConsumptionDrawer({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!card.persisted) {
+      setError("Save the job card before recording stock usage.");
+      return;
+    }
     if (!itemId) {
       setError("Select a stock item.");
       return;
@@ -49,16 +55,21 @@ export function StockConsumptionDrawer({
       setError("Quantity must be greater than zero.");
       return;
     }
+    if (
+      card.fabricSource === "Customer provided" &&
+      !window.confirm(
+        "This item is marked as Customer provided. Using shop stock will change Fabric Source to Shop provided. Continue?"
+      )
+    ) {
+      return;
+    }
 
     setSaving(true);
-    const result = await adjustInventoryStockAction({
+    const result = await recordJobCardStockUsageAction(card.id, {
       itemId,
-      movementType: "Stock Out",
       quantity: Number(quantity),
       movementDate,
       reason,
-      orderId: card.orderId,
-      jobCardId: card.persisted ? card.id : undefined,
     });
     setSaving(false);
 
@@ -91,6 +102,32 @@ export function StockConsumptionDrawer({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {card.fabricSource === "Customer provided" && (
+            <div className="rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
+              This item is marked as Customer provided. Saving shop stock usage will change Fabric Source to Shop provided.
+            </div>
+          )}
+          {(!card.fabricSource || card.fabricSource === "Not specified") && (
+            <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+              Fabric Source will be set to Shop provided after stock is used.
+            </div>
+          )}
+          {existingMovements.length > 0 && (
+            <div className="rounded-lg border border-border-soft bg-white px-3 py-2 text-sm">
+              <p className="mb-1 font-semibold text-ink">Already used</p>
+              <div className="space-y-1 text-ink-muted">
+                {existingMovements.map((movement) => {
+                  const item = items.find((candidate) => candidate.id === movement.itemId);
+                  return (
+                    <div key={movement.id}>
+                      {item?.name ?? "Stock item"} · {numberValue(movement.quantity)}{" "}
+                      {item?.unit ?? ""}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {stockOptions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border-soft bg-surface px-3 py-4 text-sm text-ink-muted">
               No active stock with available quantity.
@@ -159,7 +196,11 @@ export function StockConsumptionDrawer({
             disabled={saving || stockOptions.length === 0}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Record Stock Out"}
+            {saving
+              ? "Saving..."
+              : existingMovements.length > 0
+                ? "Record More Stock Out"
+                : "Record Stock Out"}
           </button>
         </div>
       </form>

@@ -7,6 +7,7 @@ import type { TranslationKey } from "@/lib/i18n/translations";
 const TABS = [
   { key: "list", labelKey: "staff.staffList" },
   { key: "work-queue", labelKey: "staff.workQueue" },
+  { key: "payables", labelKey: "staff.payables" },
 ] as const satisfies { key: string; labelKey: TranslationKey }[];
 
 export type StaffTab = (typeof TABS)[number]["key"];

@@ -67,8 +67,8 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "orders.printCustomerReceipt", label: "Print customer receipt", group: "Orders" },
   { key: "orders.printJobCard", label: "Print tailor job card", group: "Orders" },
 
-  { key: "expenses.view", label: "View expenses", group: "Accounts" },
-  { key: "expenses.manage", label: "Manage expenses", group: "Accounts" },
+  { key: "expenses.view", label: "View expenses", group: "Finance" },
+  { key: "expenses.manage", label: "Manage expenses", group: "Finance" },
 
   { key: "inventory.view", label: "View inventory", group: "Inventory" },
   { key: "inventory.manage", label: "Manage inventory", group: "Inventory" },

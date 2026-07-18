@@ -7,6 +7,7 @@ import type {
   StaffPaymentType,
   StaffRole,
   StaffStatus,
+  StaffWorkEarning,
   TaskPriority,
   TaskType,
   WorkAssignment,
@@ -257,6 +258,7 @@ export interface WorkAssignmentInput {
   taskType: TaskType;
   assignedStaffId: string;
   assignedDate: string;
+  startedDate?: string;
   dueDate: string;
   priority: TaskPriority;
   workNotes?: string;
@@ -284,6 +286,7 @@ export async function createWorkAssignment(
       task_type: data.taskType,
       assigned_staff_id: data.assignedStaffId,
       assigned_date: data.assignedDate,
+      started_date: data.startedDate ?? null,
       due_date: data.dueDate,
       priority: data.priority,
       work_notes: data.workNotes ?? null,
@@ -330,6 +333,8 @@ export async function updateWorkAssignment(
 }
 
 const STAFF_PAYMENT_COLUMNS = "id, staff_id, date, description, amount, payment_mode, notes";
+const STAFF_WORK_EARNING_COLUMNS =
+  "id, staff_id, job_card_id, order_id, job_card_number, task_type, completed_date, wage_rate, wage_amount, created_at";
 
 interface StaffPaymentRow {
   id: string;
@@ -339,6 +344,19 @@ interface StaffPaymentRow {
   amount: number;
   payment_mode: PaymentMode;
   notes: string | null;
+}
+
+interface StaffWorkEarningRow {
+  id: string;
+  staff_id: string;
+  job_card_id: string;
+  order_id: string;
+  job_card_number: string;
+  task_type: TaskType;
+  completed_date: string;
+  wage_rate: number;
+  wage_amount: number;
+  created_at: string;
 }
 
 function mapStaffPayment(row: StaffPaymentRow): StaffPayment {
@@ -351,6 +369,28 @@ function mapStaffPayment(row: StaffPaymentRow): StaffPayment {
     paymentMode: row.payment_mode,
     notes: row.notes ?? undefined,
   };
+}
+
+function mapStaffWorkEarning(row: StaffWorkEarningRow): StaffWorkEarning {
+  return {
+    id: row.id,
+    staffId: row.staff_id,
+    jobCardId: row.job_card_id,
+    orderId: row.order_id,
+    jobCardNumber: row.job_card_number,
+    taskType: row.task_type,
+    completedDate: row.completed_date,
+    wageRate: Number(row.wage_rate),
+    wageAmount: Number(row.wage_amount),
+    createdAt: row.created_at,
+  };
+}
+
+export function isMissingStaffWorkEarningsSchemaError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const code = candidate.code ?? "";
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return code === "42P01" || code === "PGRST205" || message.includes("staff_work_earnings");
 }
 
 export async function getStaffPayments(supabase: SupabaseClient): Promise<StaffPayment[]> {
@@ -369,6 +409,56 @@ export async function getStaffPaymentsForStaff(
     .eq("staff_id", staffId);
   if (error) throw error;
   return ((data as unknown as StaffPaymentRow[]) ?? []).map(mapStaffPayment);
+}
+
+export async function getStaffWorkEarnings(
+  supabase: SupabaseClient
+): Promise<StaffWorkEarning[]> {
+  const { data, error } = await supabase
+    .from("staff_work_earnings")
+    .select(STAFF_WORK_EARNING_COLUMNS)
+    .order("completed_date", { ascending: false });
+  if (error) {
+    if (isMissingStaffWorkEarningsSchemaError(error)) return [];
+    throw error;
+  }
+  return ((data as unknown as StaffWorkEarningRow[]) ?? []).map(mapStaffWorkEarning);
+}
+
+export interface StaffWorkEarningInput {
+  staffId: string;
+  jobCardId: string;
+  orderId: string;
+  jobCardNumber: string;
+  taskType: TaskType;
+  completedDate: string;
+  wageRate: number;
+  wageAmount: number;
+}
+
+export async function recordStaffWorkEarning(
+  supabase: SupabaseClient,
+  input: StaffWorkEarningInput
+): Promise<void> {
+  const { error } = await supabase
+    .from("staff_work_earnings")
+    .upsert(
+      {
+        staff_id: input.staffId,
+        job_card_id: input.jobCardId,
+        order_id: input.orderId,
+        job_card_number: input.jobCardNumber,
+        task_type: input.taskType,
+        completed_date: input.completedDate,
+        wage_rate: input.wageRate,
+        wage_amount: input.wageAmount,
+      },
+      { onConflict: "job_card_id,staff_id,task_type,completed_date", ignoreDuplicates: true }
+    );
+  if (error) {
+    if (isMissingStaffWorkEarningsSchemaError(error)) return;
+    throw error;
+  }
 }
 
 export interface StaffPaymentInput {

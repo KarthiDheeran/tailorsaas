@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, Scissors } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Search, Scissors, X } from "lucide-react";
 import {
   completeJobCardAction,
   getJobCardsPageDataAction,
   moveJobCardStageAction,
-  startJobCardAction,
   syncMissingJobCardsAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
@@ -36,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { FabricInfo } from "@/components/job-cards/fabric-info";
+import { Select } from "@/components/ui/select";
+import { measurementFieldLabel } from "@/lib/catalog";
 
 const BUCKETS: ProductionBucket[] = [
   "Unassigned",
@@ -67,6 +68,64 @@ const STAGE_OPTIONS: JobCardStage[] = [
   "Ready",
 ];
 
+const DUE_FILTERS = [
+  "All",
+  "Due Today",
+  "Due Tomorrow",
+  "Overdue",
+  "This Week",
+] as const;
+
+type DueFilter = (typeof DUE_FILTERS)[number];
+
+function addDays(iso: string, days: number) {
+  const date = new Date(`${iso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function displayStage(card: JobCard): JobCardStage {
+  if (!card.assignedStaffId && card.stage !== "Delivered" && card.stage !== "Cancelled") {
+    return "Unassigned";
+  }
+  return card.stage;
+}
+
+function isDelayedCard(card: JobCard) {
+  const stage = displayStage(card);
+  return (
+    card.isDelayed &&
+    stage !== "Ready" &&
+    stage !== "Delivered" &&
+    stage !== "Cancelled"
+  );
+}
+
+function matchesDueFilter(card: JobCard, dueFilter: DueFilter, todayIso: string) {
+  const tomorrowIso = addDays(todayIso, 1);
+  const weekEndIso = addDays(todayIso, 6);
+  if (dueFilter === "All") return true;
+  if (dueFilter === "Due Today") return card.deliveryDate === todayIso;
+  if (dueFilter === "Due Tomorrow") return card.deliveryDate === tomorrowIso;
+  if (dueFilter === "Overdue") return isDelayedCard(card);
+  return card.deliveryDate >= todayIso && card.deliveryDate <= weekEndIso;
+}
+
+function matchesSearch(card: JobCard, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    card.jobCardNumber,
+    card.orderNumber,
+    card.customer?.name,
+    card.customer?.phone,
+    card.garment,
+    card.assignedTo,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(normalized));
+}
+
 function nextStageAfterCompletion(stage: JobCardStage): JobCardStage {
   if (stage === "Unassigned") return "Cutting";
   if (stage === "Cutting") return "Stitching";
@@ -84,20 +143,75 @@ function completeActionLabel(card: JobCard): string {
   return `Send to ${nextStage}`;
 }
 
-function startActionLabel(card: JobCard): string {
-  if (card.stage !== "Unassigned" && card.stage !== "Delayed") return `Start ${card.stage}`;
-  if (card.taskType) return `Start ${card.taskType}`;
-  return "Start";
+function ProductionCard({
+  card,
+  linkedFabrics,
+  onViewDetails,
+}: {
+  card: JobCard;
+  linkedFabrics: CustomerFabric[];
+  onViewDetails: () => void;
+}) {
+  const isDelayed = isDelayedCard(card);
+  const hasMeasurements = Object.entries(card.item.measurements ?? {}).some(
+    ([key, value]) => key !== "__measurementNotes" && value !== ""
+  );
+  const indicators = [
+    card.fabricNotes ? "Fabric notes" : null,
+    card.designNotes ? "Design notes" : null,
+    hasMeasurements ? "Measurements" : null,
+    linkedFabrics.length > 0 ? "Customer fabric" : null,
+  ].filter(Boolean);
+
+  return (
+    <button
+      type="button"
+      onClick={onViewDetails}
+      className="block w-full bg-white p-3 text-left transition-colors hover:bg-surface"
+    >
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-primary">{card.jobCardNumber}</div>
+          <div className="text-xs text-ink-muted">{card.orderNumber}</div>
+        </div>
+        {isDelayed && (
+          <span className="rounded-full bg-chip-red px-2 py-0.5 text-[11px] font-semibold text-chip-red-fg">
+            Delayed
+          </span>
+        )}
+      </div>
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold text-ink">{card.garment}</div>
+        <div className="text-ink-muted">{card.customer?.name ?? "Unknown customer"}</div>
+        <div className={isDelayed ? "font-medium text-chip-red-fg" : "text-ink-muted"}>
+          Due {formatDate(card.deliveryDate)}
+        </div>
+        <div className="text-ink-muted">
+          Assigned: {card.assignedStaffId ? card.assignedTo : "Unassigned"}
+        </div>
+        {indicators.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {indicators.map((indicator) => (
+              <span
+                key={indicator}
+                className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted"
+              >
+                {indicator}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-xs font-semibold text-primary">View Details</div>
+    </button>
+  );
 }
 
-function ProductionCard({
+function ProductionCardActions({
   card,
   canUpdate,
   canMoveStages,
   canViewOrders,
-  linkedFabrics,
-  canManageFabricStatus,
-  onFabricStatusChange,
   todayIso,
   onUpdated,
 }: {
@@ -105,42 +219,20 @@ function ProductionCard({
   canUpdate: boolean;
   canMoveStages: boolean;
   canViewOrders: boolean;
-  linkedFabrics: CustomerFabric[];
-  canManageFabricStatus: boolean;
-  onFabricStatusChange: (fabric: CustomerFabric, status: CustomerFabricStatus) => void;
   todayIso: string;
   onUpdated: () => void;
 }) {
-  const [saving, setSaving] = useState<"start" | "complete" | "move" | null>(null);
+  const [saving, setSaving] = useState<"complete" | "move" | null>(null);
   const [targetStage, setTargetStage] = useState<JobCardStage>(card.stage);
   const [stageReason, setStageReason] = useState("");
   useEffect(() => {
     setTargetStage(card.stage);
     setStageReason("");
   }, [card.stage]);
-  const canStart = card.persisted
-    ? Boolean(card.assignedStaffId && !card.startedDate && !card.completedDate)
-    : Boolean(card.assignment && !card.assignment.startedDate && !card.assignment.completedDate);
   const canComplete = card.persisted
-    ? Boolean(card.assignedStaffId && card.startedDate && !card.completedDate)
-    : Boolean(card.assignment && card.assignment.startedDate && !card.assignment.completedDate);
+    ? Boolean(card.assignedStaffId && !card.completedDate)
+    : Boolean(card.assignment && !card.assignment.completedDate);
   const completeLabel = completeActionLabel(card);
-
-  async function handleStart() {
-    if (!card.persisted && !card.assignment) return;
-    setSaving("start");
-    const result = card.persisted
-      ? await startJobCardAction(card.id, todayIso)
-      : await updateWorkAssignmentAction(card.assignment!.id, {
-          startedDate: todayIso,
-        });
-    setSaving(null);
-    if (!result.success) {
-      window.alert(result.error);
-      return;
-    }
-    onUpdated();
-  }
 
   async function handleComplete() {
     if (!card.persisted && !card.assignment) return;
@@ -160,6 +252,10 @@ function ProductionCard({
 
   async function handleMoveStage() {
     if (!card.persisted || targetStage === card.stage) return;
+    if (!card.assignedStaffId && targetStage !== "Unassigned") {
+      window.alert("Assign a worker before moving this job card into production.");
+      return;
+    }
     if ((targetStage === "Delayed" || targetStage === "Alteration") && !stageReason.trim()) {
       window.alert(targetStage === "Delayed" ? "Delay reason is required." : "Rework reason is required.");
       return;
@@ -175,40 +271,16 @@ function ProductionCard({
   }
 
   return (
-    <div className="rounded-lg border border-border-soft bg-white p-3 shadow-soft">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold text-primary">{card.jobCardNumber}</div>
-          <div className="text-xs text-ink-muted">{card.orderNumber}</div>
-        </div>
-        {card.isDelayed && (
-          <span className="rounded-full bg-chip-red px-2 py-0.5 text-[11px] font-semibold text-chip-red-fg">
-            Delayed
-          </span>
+    <div className="border-t border-border-soft bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {canMoveStages && !card.assignedStaffId && (
+          <Link
+            href={`/job-cards?view=${card.id}`}
+            className="rounded border border-primary bg-primary-tint px-2 py-1 text-xs font-semibold text-primary hover:bg-primary-tint/80"
+          >
+            Assign Work
+          </Link>
         )}
-      </div>
-      <div className="space-y-1 text-xs">
-        <div className="font-semibold text-ink">{card.garment}</div>
-        <div className="text-ink-muted">{card.customer?.name ?? "Unknown customer"}</div>
-        <div className={card.isDelayed ? "font-medium text-chip-red-fg" : "text-ink-muted"}>
-          Due {formatDate(card.deliveryDate)}
-        </div>
-        <div className="text-ink-muted">Assigned: {card.assignedTo}</div>
-        {card.taskType && (
-          <div className="text-ink-muted">
-            Task: {card.taskType}
-            {card.taskStatus ? ` - ${card.taskStatus}` : ""}
-          </div>
-        )}
-        <FabricInfo
-          card={card}
-          linkedFabrics={linkedFabrics}
-          compact
-          canManageStatus={canManageFabricStatus}
-          onStatusChange={onFabricStatusChange}
-        />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
         {canViewOrders && (
           <Link
             href={`/orders?view=${card.orderId}`}
@@ -216,16 +288,6 @@ function ProductionCard({
           >
             View Order
           </Link>
-        )}
-        {canUpdate && canStart && (
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={saving !== null}
-            className="rounded border border-border px-2 py-1 text-xs font-semibold text-ink-muted hover:bg-surface"
-          >
-            {saving === "start" ? "Starting..." : startActionLabel(card)}
-          </button>
         )}
         {canUpdate && canComplete && (
           <button
@@ -238,20 +300,24 @@ function ProductionCard({
           </button>
         )}
       </div>
-      {canMoveStages && card.persisted && card.stage !== "Delivered" && card.stage !== "Cancelled" && (
+      {canMoveStages &&
+        card.persisted &&
+        card.assignedStaffId &&
+        card.stage !== "Delivered" &&
+        card.stage !== "Cancelled" && (
         <div className="mt-3 border-t border-border-soft pt-3">
           <div className="flex items-center gap-2">
-            <select
+            <Select
               value={targetStage}
               onChange={(event) => setTargetStage(event.target.value as JobCardStage)}
-              className="h-8 min-w-0 flex-1 rounded border border-border bg-white px-2 text-xs text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+              className="h-8 min-w-0 flex-1 text-xs"
             >
               {STAGE_OPTIONS.map((stage) => (
                 <option key={stage} value={stage}>
                   {stage}
                 </option>
               ))}
-            </select>
+            </Select>
             <button
               type="button"
               onClick={handleMoveStage}
@@ -307,6 +373,133 @@ function Stat({
   );
 }
 
+function measurementEntries(card: JobCard) {
+  return Object.entries(card.item.measurements ?? {})
+    .filter(([key, value]) => key !== "__measurementNotes" && value !== "")
+    .map(([key, value]) => ({ key, label: measurementFieldLabel(key), value }));
+}
+
+function ProductionDetailsDrawer({
+  card,
+  linkedFabrics,
+  canManageFabricStatus,
+  canViewOrders,
+  onFabricStatusChange,
+  onClose,
+}: {
+  card: JobCard;
+  linkedFabrics: CustomerFabric[];
+  canManageFabricStatus: boolean;
+  canViewOrders: boolean;
+  onFabricStatusChange: (fabric: CustomerFabric, status: CustomerFabricStatus) => void;
+  onClose: () => void;
+}) {
+  const measurements = measurementEntries(card);
+  const measurementNotes = card.item.measurements?.__measurementNotes;
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
+      <button type="button" className="flex-1" aria-label="Close" onClick={onClose} />
+      <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">{card.jobCardNumber}</h2>
+            <p className="text-sm text-ink-muted">
+              {card.garment}
+              {card.totalUnits > 1 ? ` · Unit ${card.unitNo} of ${card.totalUnits}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5 text-sm">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Order</p>
+              {canViewOrders ? (
+                <Link href={`/orders?view=${card.orderId}`} className="font-semibold text-primary hover:underline">
+                  {card.orderNumber}
+                </Link>
+              ) : (
+                <p className="font-semibold text-ink">{card.orderNumber}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Customer</p>
+              <p className="font-semibold text-ink">{card.customer?.name ?? "Unknown"}</p>
+              {card.customer?.phone && <p className="text-xs text-ink-muted">{card.customer.phone}</p>}
+            </div>
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Stage</p>
+              <p className="font-semibold text-ink">{displayStage(card)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Due Date</p>
+              <p className={isDelayedCard(card) ? "font-semibold text-chip-red-fg" : "font-semibold text-ink"}>
+                {formatDate(card.deliveryDate)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Assigned Worker</p>
+              <p className="font-semibold text-ink">
+                {card.assignedStaffId ? card.assignedTo : "Unassigned"}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-ink-muted">Fabric / Notes</p>
+            <div className="rounded-lg border border-border-soft p-3">
+              <FabricInfo
+                card={card}
+                linkedFabrics={linkedFabrics}
+                canManageStatus={canManageFabricStatus}
+                onStatusChange={onFabricStatusChange}
+              />
+              {card.notes && (
+                <p className="mt-3 whitespace-pre-wrap text-ink-muted">
+                  <span className="font-semibold text-ink">Work Notes: </span>
+                  {card.notes}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {(measurements.length > 0 || measurementNotes) && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-ink-muted">Measurements</p>
+              <div className="rounded-lg border border-border-soft p-3">
+                {measurements.length > 0 && (
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {measurements.map((entry) => (
+                      <div key={entry.key}>
+                        <dt className="text-xs text-ink-muted">{entry.label}</dt>
+                        <dd className="font-semibold text-ink">{entry.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {measurementNotes && (
+                  <p className="mt-3 whitespace-pre-wrap text-ink-muted">
+                    <span className="font-semibold text-ink">Measurement Notes: </span>
+                    {measurementNotes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProductionContent() {
   const { currentUser, hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
@@ -319,6 +512,11 @@ function ProductionContent() {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
+  const [query, setQuery] = useState("");
+  const [workerFilter, setWorkerFilter] = useState("all");
+  const [garmentFilter, setGarmentFilter] = useState("all");
+  const [dueFilter, setDueFilter] = useState<DueFilter>("All");
+  const [detailsCard, setDetailsCard] = useState<JobCard | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -354,6 +552,19 @@ function ProductionContent() {
     [persistedCards, orders, todayIso, assignments, staff]
   );
   const activeCards = jobCards.filter((card) => card.productionBucket !== "Closed");
+  const garmentOptions = useMemo(
+    () => Array.from(new Set(activeCards.map((card) => card.garment))).sort(),
+    [activeCards]
+  );
+  const filteredCards = activeCards.filter((card) => {
+    if (!matchesSearch(card, query)) return false;
+    if (workerFilter !== "all" && (card.assignedStaffId ?? "unassigned") !== workerFilter) {
+      return false;
+    }
+    if (garmentFilter !== "all" && card.garment !== garmentFilter) return false;
+    if (!matchesDueFilter(card, dueFilter, todayIso)) return false;
+    return true;
+  });
   const customerFabricsByOrder = useMemo(() => {
     const byOrder = new Map<string, CustomerFabric[]>();
     for (const fabric of customerFabrics) {
@@ -367,13 +578,13 @@ function ProductionContent() {
   const cardsByBucket = new Map<ProductionBucket, JobCard[]>(
     BUCKETS.map((bucket) => [
       bucket,
-      activeCards.filter((card) => card.productionBucket === bucket),
+      filteredCards.filter((card) => card.productionBucket === bucket),
     ])
   );
 
-  const unassigned = cardsByBucket.get("Unassigned")?.length ?? 0;
-  const delayed = activeCards.filter((card) => card.isDelayed).length;
-  const ready = cardsByBucket.get("Ready")?.length ?? 0;
+  const unassigned = activeCards.filter((card) => !card.assignedStaffId).length;
+  const delayed = activeCards.filter(isDelayedCard).length;
+  const ready = activeCards.filter((card) => card.productionBucket === "Ready").length;
   const activeOrderCount = orders.filter(
     (order) => order.status !== "Delivered" && order.status !== "Cancelled"
   ).length;
@@ -478,6 +689,55 @@ function ProductionContent() {
             <Stat label="Delayed" value={delayed} icon={AlertTriangle} tone="warning" />
           </div>
 
+          <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 shadow-soft">
+            <div className="flex flex-col gap-3 lg:flex-row">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search job card, order, customer, phone, garment, worker..."
+                  className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 lg:w-[600px]">
+                <Select
+                  value={workerFilter}
+                  onChange={(event) => setWorkerFilter(event.target.value)}
+                >
+                  <option value="all">Worker: All</option>
+                  <option value="unassigned">Worker: Unassigned</option>
+                  {staff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={dueFilter}
+                  onChange={(event) => setDueFilter(event.target.value as DueFilter)}
+                >
+                  {DUE_FILTERS.map((option) => (
+                    <option key={option} value={option}>
+                      Due: {option}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={garmentFilter}
+                  onChange={(event) => setGarmentFilter(event.target.value)}
+                >
+                  <option value="all">Garment: All</option>
+                  {garmentOptions.map((garment) => (
+                    <option key={garment} value={garment}>
+                      {garment}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
             {BUCKETS.map((bucket) => {
               const cards = cardsByBucket.get(bucket) ?? [];
@@ -497,18 +757,24 @@ function ProductionContent() {
                   </div>
                   <div className="space-y-3 p-3">
                     {cards.map((card) => (
-                      <ProductionCard
+                      <div
                         key={card.id}
-                        card={card}
-                        canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
-                        canMoveStages={canManageStaff}
-                        canViewOrders={canViewOrders}
-                        linkedFabrics={customerFabricsByOrder.get(card.orderId) ?? []}
-                        canManageFabricStatus={canManageInventory}
-                        onFabricStatusChange={updateFabricStatus}
-                        todayIso={todayIso}
-                        onUpdated={() => setRefreshKey((key) => key + 1)}
-                      />
+                        className="overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft"
+                      >
+                        <ProductionCard
+                          card={card}
+                          linkedFabrics={customerFabricsByOrder.get(card.orderId) ?? []}
+                          onViewDetails={() => setDetailsCard(card)}
+                        />
+                        <ProductionCardActions
+                          card={card}
+                          canUpdate={canManageStaff || card.assignedStaffId === currentStaffId}
+                          canMoveStages={canManageStaff}
+                          canViewOrders={canViewOrders}
+                          todayIso={todayIso}
+                          onUpdated={() => setRefreshKey((key) => key + 1)}
+                        />
+                      </div>
                     ))}
                     {cards.length === 0 && (
                       <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-border-soft text-center text-xs text-ink-faint">
@@ -526,6 +792,17 @@ function ProductionContent() {
               <CheckCircle2 className="h-4 w-4 text-primary" />
               {ready} job card{ready === 1 ? " is" : "s are"} ready for pickup or delivery.
             </div>
+          )}
+
+          {detailsCard && (
+            <ProductionDetailsDrawer
+              card={detailsCard}
+              linkedFabrics={customerFabricsByOrder.get(detailsCard.orderId) ?? []}
+              canManageFabricStatus={canManageInventory}
+              canViewOrders={canViewOrders}
+              onFabricStatusChange={updateFabricStatus}
+              onClose={() => setDetailsCard(null)}
+            />
           )}
         </>
       )}

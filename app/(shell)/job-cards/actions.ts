@@ -31,15 +31,22 @@ import {
   getWorkAssignmentsForStaff,
 } from "@/lib/data/staff-db";
 import {
+  adjustInventoryStock,
+  createCustomerFabric,
   getCustomerFabrics,
   getInventoryItems,
+  getInventoryMovements,
   isMissingInventorySchemaError,
+  type CustomerFabricInput,
+  type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type {
   CustomerFabric,
+  InventoryMovement,
   InventoryItem,
+  InventoryUnit,
   JobCardActivityLog,
   Order,
   Staff,
@@ -47,6 +54,7 @@ import type {
   TaskType,
   WorkAssignment,
 } from "@/lib/types";
+import { inventoryUnits } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
@@ -70,6 +78,7 @@ const VALID_FABRIC_SOURCES = new Set<JobCardFabricSource>([
   "Customer provided",
   "Shop provided",
 ]);
+const VALID_INVENTORY_UNITS = new Set<InventoryUnit>(inventoryUnits);
 const VALID_STAGES = new Set<JobCardStage>([
   "Unassigned",
   "Cutting",
@@ -90,6 +99,7 @@ export interface JobCardsPageData {
   assignments: WorkAssignment[];
   customerFabrics: CustomerFabric[] | null;
   inventoryItems: InventoryItem[] | null;
+  inventoryMovements: InventoryMovement[] | null;
 }
 
 export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | null> {
@@ -125,6 +135,7 @@ export async function getJobCardsPageDataAction(
     assignments: [],
     customerFabrics: [],
     inventoryItems: [],
+    inventoryMovements: [],
   };
   if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
 
@@ -136,7 +147,7 @@ export async function getJobCardsPageDataAction(
 
   const canViewOrders = hasPermission(permissions, "orders.view");
   const canViewStaff = hasPermission(permissions, "staff.view");
-  const canViewInventory = hasPermission(permissions, "inventory.view");
+  const canViewInventory = hasAnyPermission(permissions, ["inventory.view", "inventory.manage"]);
   const ownWorkOnly =
     Boolean(context?.staffId) &&
     !hasAnyPermission(permissions, ["orders.view", "orders.edit", "staff.manage"]);
@@ -161,7 +172,7 @@ export async function getJobCardsPageDataAction(
       : Promise.resolve([]),
     canViewInventory
       ? getJobCardsInventoryData(supabase, Boolean(options.includeInventoryItems))
-      : Promise.resolve({ customerFabrics: [], inventoryItems: [] }),
+      : Promise.resolve({ customerFabrics: [], inventoryItems: [], inventoryMovements: [] }),
   ]);
 
   return {
@@ -171,6 +182,7 @@ export async function getJobCardsPageDataAction(
     assignments,
     customerFabrics: inventory.customerFabrics,
     inventoryItems: inventory.inventoryItems,
+    inventoryMovements: inventory.inventoryMovements,
   };
 }
 
@@ -355,6 +367,209 @@ export async function moveJobCardStageAction(
   }
 }
 
+export async function recordJobCardStockUsageAction(
+  id: string,
+  input: Pick<StockAdjustmentInput, "itemId" | "quantity" | "movementDate" | "reason">
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!input.itemId) return { success: false, error: "Select a stock item." };
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    return { success: false, error: "Quantity must be greater than zero." };
+  }
+  if (!ISO_DATE.test(input.movementDate)) {
+    return { success: false, error: "A valid movement date is required." };
+  }
+
+  try {
+    const admin = createAdminClient();
+    const context = await getJobCardFabricContext(admin, id);
+    ensureFabricActionAllowed(context);
+    const item = await adjustInventoryStock(admin, {
+      itemId: input.itemId,
+      movementType: "Stock Out",
+      quantity: input.quantity,
+      movementDate: input.movementDate,
+      reason: input.reason,
+      orderId: context.orderId,
+      jobCardId: id,
+      recordedBy: guard.userId,
+    });
+    await updateFabricSourceForJobCardItem(admin, context, "Shop provided");
+    await logJobCardActivityBestEffort({
+      jobCardId: id,
+      orderId: context.orderId,
+      actionType: "Stage Moved",
+      fromStage: context.currentStage,
+      toStage: context.currentStage,
+      assignedStaffId: context.assignedStaffId,
+      notes: [
+        `Stock used: ${item.name}${item.color ? `, ${item.color}` : ""} - ${input.quantity} ${item.unit}`,
+        context.fabricSource !== "Shop provided"
+          ? `Fabric Source changed: ${context.fabricSource} -> Shop provided`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      performedBy: guard.userId,
+    });
+    return { success: true, data: undefined };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { success: false, error: "Inventory is not enabled in this database yet." };
+    }
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to record stock usage.",
+    };
+  }
+}
+
+export async function recordJobCardCustomerFabricAction(
+  id: string,
+  input: CustomerFabricInput
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const validationError = validateJobCardCustomerFabric(input);
+  if (validationError) return { success: false, error: validationError };
+
+  try {
+    const admin = createAdminClient();
+    const context = await getJobCardFabricContext(admin, id);
+    ensureFabricActionAllowed(context);
+    const fabric = await createCustomerFabric(admin, {
+      ...input,
+      customerId: input.customerId || context.customerId,
+      orderId: context.orderId,
+    });
+    await updateFabricSourceForJobCardItem(admin, context, "Customer provided");
+    await logJobCardActivityBestEffort({
+      jobCardId: id,
+      orderId: context.orderId,
+      actionType: "Stage Moved",
+      fromStage: context.currentStage,
+      toStage: context.currentStage,
+      assignedStaffId: context.assignedStaffId,
+      notes: [
+        `Customer fabric recorded: ${fabric.fabricDescription}${fabric.color ? `, ${fabric.color}` : ""} - ${fabric.quantity} ${fabric.unit}`,
+        context.fabricSource !== "Customer provided"
+          ? `Fabric Source changed: ${context.fabricSource} -> Customer provided`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      performedBy: guard.userId,
+    });
+    return { success: true, data: undefined };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { success: false, error: "Inventory is not enabled in this database yet." };
+    }
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to record customer fabric.",
+    };
+  }
+}
+
+interface JobCardFabricContext {
+  id: string;
+  orderId: string;
+  customerId: string;
+  orderItemSerialNo: number;
+  currentStage: JobCardStage;
+  assignedStaffId?: string;
+  orderStatus: Order["status"];
+  cancelled: boolean;
+  fabricSource: JobCardFabricSource;
+}
+
+async function getJobCardFabricContext(
+  supabase: ReturnType<typeof createAdminClient>,
+  id: string
+): Promise<JobCardFabricContext> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select(
+      "id, order_id, customer_id, order_item_serial_no, current_stage, assigned_staff_id, order_status, cancelled, fabric_source"
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job card not found.");
+  const row = data as {
+    id: string;
+    order_id: string;
+    customer_id: string;
+    order_item_serial_no: number;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    order_status: Order["status"];
+    cancelled: boolean;
+    fabric_source: JobCardFabricSource;
+  };
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    customerId: row.customer_id,
+    orderItemSerialNo: row.order_item_serial_no,
+    currentStage: row.current_stage,
+    assignedStaffId: row.assigned_staff_id ?? undefined,
+    orderStatus: row.order_status,
+    cancelled: row.cancelled,
+    fabricSource: row.fabric_source,
+  };
+}
+
+function ensureFabricActionAllowed(context: JobCardFabricContext) {
+  if (context.orderStatus === "Delivered" || context.orderStatus === "Cancelled" || context.cancelled) {
+    throw new Error("Delivered or cancelled job cards cannot be changed.");
+  }
+}
+
+async function updateFabricSourceForJobCardItem(
+  supabase: ReturnType<typeof createAdminClient>,
+  context: JobCardFabricContext,
+  fabricSource: JobCardFabricSource
+) {
+  if (context.fabricSource === fabricSource) return;
+  const now = new Date().toISOString();
+  const { error: itemError } = await supabase
+    .from("order_items")
+    .update({ fabric_source: fabricSource })
+    .eq("order_id", context.orderId)
+    .eq("serial_no", context.orderItemSerialNo);
+  if (itemError) throw itemError;
+
+  const { error: cardError } = await supabase
+    .from("job_cards")
+    .update({ fabric_source: fabricSource, updated_at: now })
+    .eq("order_id", context.orderId)
+    .eq("order_item_serial_no", context.orderItemSerialNo);
+  if (cardError) throw cardError;
+}
+
+function validateJobCardCustomerFabric(input: CustomerFabricInput) {
+  if (!input.customerName.trim()) return "Customer name is required.";
+  if (!input.fabricDescription.trim()) return "Fabric description is required.";
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    return "Quantity must be greater than zero.";
+  }
+  if (!VALID_INVENTORY_UNITS.has(input.unit)) return "Invalid unit.";
+  if (!ISO_DATE.test(input.receivedDate)) return "A valid received date is required.";
+  return null;
+}
+
 async function logJobCardActivityBestEffort(input: Parameters<typeof logJobCardActivity>[1]) {
   try {
     await logJobCardActivity(createAdminClient(), input);
@@ -367,16 +582,21 @@ async function logJobCardActivityBestEffort(input: Parameters<typeof logJobCardA
 async function getJobCardsInventoryData(
   supabase: ReturnType<typeof createServerClient>,
   includeInventoryItems: boolean
-): Promise<{ customerFabrics: CustomerFabric[] | null; inventoryItems: InventoryItem[] | null }> {
+): Promise<{
+  customerFabrics: CustomerFabric[] | null;
+  inventoryItems: InventoryItem[] | null;
+  inventoryMovements: InventoryMovement[] | null;
+}> {
   try {
-    const [customerFabrics, inventoryItems] = await Promise.all([
+    const [customerFabrics, inventoryItems, inventoryMovements] = await Promise.all([
       getCustomerFabrics(supabase),
       includeInventoryItems ? getInventoryItems(supabase) : Promise.resolve([]),
+      includeInventoryItems ? getInventoryMovements(supabase) : Promise.resolve([]),
     ]);
-    return { customerFabrics, inventoryItems };
+    return { customerFabrics, inventoryItems, inventoryMovements };
   } catch (error) {
     if (isMissingInventorySchemaError(error)) {
-      return { customerFabrics: null, inventoryItems: null };
+      return { customerFabrics: null, inventoryItems: null, inventoryMovements: null };
     }
     throw error;
   }
@@ -437,6 +657,7 @@ function validateAssignment(data: JobCardAssignmentInput): string | null {
   if (!VALID_TASK_TYPES.has(data.taskType)) return "Invalid task type.";
   if (!data.assignedStaffId.trim()) return "Assigned staff member is required.";
   if (!ISO_DATE.test(data.dueDate)) return "A valid due date is required.";
+  if (data.startedDate && !ISO_DATE.test(data.startedDate)) return "A valid start date is required.";
   if (!VALID_PRIORITIES.has(data.priority)) return "Invalid priority.";
   if (data.fabricSource && !VALID_FABRIC_SOURCES.has(data.fabricSource)) {
     return "Invalid fabric source.";

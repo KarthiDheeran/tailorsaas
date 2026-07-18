@@ -58,6 +58,8 @@ export interface JobCard {
   createdAt?: string;
   startedDate?: string;
   completedDate?: string;
+  wageRate?: number;
+  wageAmount?: number;
   isDelayed: boolean;
 }
 
@@ -114,6 +116,8 @@ export function buildJobCards(
           notes: assignment?.workNotes,
           startedDate: assignment?.startedDate,
           completedDate: assignment?.completedDate,
+          wageRate: assignment && assignment.wageAmount > 0 ? assignment.wageAmount / qty : 0,
+          wageAmount: assignment?.wageAmount ?? 0,
           isDelayed:
             order.deliveryDate < todayIso &&
             order.status !== "Delivered" &&
