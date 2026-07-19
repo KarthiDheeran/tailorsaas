@@ -10,6 +10,7 @@ import type {
 import { TASK_TYPES } from "@/lib/staff";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { Select } from "@/components/ui/select";
 
 export interface StaffFormValues {
   name: string;
@@ -125,17 +126,16 @@ export function StaffForm({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">{t("staff.role")}</span>
-          <select
+          <Select
             value={role}
             onChange={(e) => setRole(e.target.value as StaffRole)}
-            className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">{t("staff.joiningDate")}</span>

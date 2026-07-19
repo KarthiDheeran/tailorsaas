@@ -15,6 +15,7 @@ import {
   updateOrder,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
+import { recomputeOrderTotals } from "@/lib/data/order-totals-db";
 import {
   createCustomer,
   deleteCustomer,
@@ -259,8 +260,9 @@ export async function createOrderAction(data: {
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
   const order = await createOrder(supabase, { ...data, status: "In Progress" });
+  await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);
-  return { success: true, data: order };
+  return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
 }
 
 export async function createOrderForNewCustomerAction(data: {
@@ -336,7 +338,8 @@ export async function createOrderForNewCustomerAction(data: {
     throw error;
   }
   await trySyncJobCardsForOrder(supabase, order.id);
-  return { success: true, data: order };
+  await recomputeOrderTotals(createAdminClient(), order.id);
+  return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
 }
 
 export async function updateOrderAction(
@@ -360,8 +363,9 @@ export async function updateOrderAction(
   if (dateError) return { success: false, error: dateError };
   const order = await updateOrder(supabase, id, data);
   if (!order) return { success: false, error: "Order not found." };
+  await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);
-  return { success: true, data: order };
+  return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
 }
 
 export async function updateOrderStatusAction(
@@ -581,6 +585,7 @@ export async function recordPaymentAction(data: {
 
   try {
     await recordPayment(supabase, data);
+    await recomputeOrderTotals(createAdminClient(), data.orderId);
   } catch (err) {
     return {
       success: false,
@@ -607,6 +612,7 @@ export async function voidPaymentAction(
 
   try {
     await voidPayment(supabase, paymentId, reason);
+    await recomputeOrderTotals(createAdminClient(), orderId);
   } catch (err) {
     return {
       success: false,
@@ -646,6 +652,7 @@ export async function recordFinancialAdjustmentAction(data: {
 
   try {
     await recordOrderFinancialAdjustment(supabase, data);
+    await recomputeOrderTotals(createAdminClient(), data.orderId);
   } catch (err) {
     if (isMissingOrderFinancialAdjustmentsSchemaError(err)) {
       return {
@@ -686,6 +693,7 @@ export async function voidFinancialAdjustmentAction(
 
   try {
     await voidOrderFinancialAdjustment(supabase, adjustmentId, reason.trim());
+    await recomputeOrderTotals(createAdminClient(), orderId);
   } catch (err) {
     if (isMissingOrderFinancialAdjustmentsSchemaError(err)) {
       return {

@@ -52,7 +52,7 @@ export const DEFAULT_SHOP_BILLING_SETTINGS: ShopBillingSettings = {
   taxEnabled: false,
   taxLabel: "GST",
   taxRatePercent: 0,
-  pricesIncludeTax: true,
+  pricesIncludeTax: false,
   footerNote: "Please bring this receipt during pickup.",
 };
 

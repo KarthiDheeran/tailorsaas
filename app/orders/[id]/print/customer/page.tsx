@@ -22,6 +22,7 @@ import {
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
 import { formatCurrency } from "@/lib/currency";
+import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import type { Customer, Order, Payment } from "@/lib/types";
 
 // No shop-settings module exists yet (see CLAUDE.md) — using the app's own
@@ -51,16 +52,6 @@ function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   return {
     kind: "multiple",
     breakdown: Array.from(byMode.entries()).map(([mode, amount]) => ({ mode, amount })),
-  };
-}
-
-function getIncludedTaxSplit(total: number, settings: ShopBillingSettings) {
-  const rate = Number(settings.taxRatePercent);
-  if (!settings.taxEnabled || rate <= 0) return null;
-  const taxableValue = total / (1 + rate / 100);
-  return {
-    taxableValue,
-    taxAmount: total - taxableValue,
   };
 }
 
@@ -134,7 +125,8 @@ function CustomerReceiptPrintPageContent({
   if (order === null) notFound();
 
   const modeSummary = summarizePaymentModes(payments);
-  const taxSplit = getIncludedTaxSplit(order.totalAmount, billingSettings);
+  const itemSubtotal = order.items.reduce((sum, item) => sum + item.amount, 0);
+  const taxSplit = getOrderTaxBreakdown(itemSubtotal, billingSettings);
   const formattedTrialDate = formatOptionalDate(order.trialDate);
 
   return (
@@ -264,25 +256,33 @@ function CustomerReceiptPrintPageContent({
         <div className="mt-6 flex justify-end">
           <div className="w-64 text-sm">
             <div className="flex justify-between py-1">
-              <span className="text-gray-500">{t("print.total")}</span>
+              <span className="text-gray-500">
+                {taxSplit ? "Taxable Value" : t("print.total")}
+              </span>
               <span className="font-semibold">
-                {formatCurrency(order.totalAmount)}
+                {formatCurrency(taxSplit ? taxSplit.taxableValue : order.totalAmount)}
               </span>
             </div>
             {taxSplit && (
               <>
                 <div className="flex justify-between py-1">
-                  <span className="text-gray-500">Taxable Value</span>
+                  <span className="text-gray-500">
+                    CGST ({taxSplit.cgstRate}%)
+                  </span>
                   <span className="font-semibold">
-                    {formatCurrency(taxSplit.taxableValue)}
+                    {formatCurrency(taxSplit.cgstAmount)}
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-gray-500">
-                    {billingSettings.taxLabel} included ({billingSettings.taxRatePercent}%)
-                  </span>
+                  <span className="text-gray-500">SGST ({taxSplit.sgstRate}%)</span>
                   <span className="font-semibold">
-                    {formatCurrency(taxSplit.taxAmount)}
+                    {formatCurrency(taxSplit.sgstAmount)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-500">{t("print.total")}</span>
+                  <span className="font-semibold">
+                    {formatCurrency(taxSplit.totalWithTax)}
                   </span>
                 </div>
               </>

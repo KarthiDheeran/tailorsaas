@@ -24,6 +24,7 @@ import {
   getCustomerByIdAction,
   getGarmentMeasurementDraftSeedAction,
 } from "@/app/(shell)/customers/actions";
+import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import {
   getCustomerFabricsAction,
   getInventoryItemsAction,
@@ -47,8 +48,13 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { measurementFieldLabel, type CatalogGarmentType } from "@/lib/catalog";
 import { formatCurrency } from "@/lib/currency";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
 import type { JobCard } from "@/lib/job-cards";
 import { isReceivableOrder } from "@/lib/order-finance";
+import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import type {
   Customer,
   CustomerFabric,
@@ -84,6 +90,39 @@ function customerFabricsForJobCards(cards: JobCard[], fabrics: CustomerFabric[])
   return fabrics.filter((fabric) =>
     Array.from(jobCardNumbers).some((jobCardNumber) => fabric.notes?.includes(jobCardNumber))
   );
+}
+
+function taxableAdjustmentTotal(adjustments: OrderFinancialAdjustment[]) {
+  return adjustments.reduce((sum, adjustment) => {
+    if (adjustment.voided) return sum;
+    if (adjustment.adjustmentType === "Discount") return sum - adjustment.amount;
+    if (adjustment.adjustmentType === "Extra Charge") return sum + adjustment.amount;
+    return sum;
+  }, 0);
+}
+
+function orderDetailsTaxSplit(
+  order: Order,
+  taxableTotal: number,
+  settings: ShopBillingSettings
+) {
+  const configured = getOrderTaxBreakdown(taxableTotal, settings);
+  if (configured && !configured.pricesIncludeTax) return configured;
+
+  const taxAmount = order.totalAmount - taxableTotal;
+  if (taxAmount <= 0) return null;
+  const halfTax = taxAmount / 2;
+  const halfRate = taxableTotal > 0 ? (halfTax / taxableTotal) * 100 : 0;
+  return {
+    taxableValue: taxableTotal,
+    taxAmount,
+    totalWithTax: order.totalAmount,
+    cgstAmount: halfTax,
+    sgstAmount: halfTax,
+    cgstRate: halfRate,
+    sgstRate: halfRate,
+    pricesIncludeTax: false,
+  };
 }
 
 function unitJobCardPrintUrl(orderId: string, serialNo: number, unitNo: number) {
@@ -324,6 +363,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
   const [attachments, setAttachments] = useState<OrderAttachment[]>([]);
+  const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
+    DEFAULT_SHOP_BILLING_SETTINGS
+  );
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [jobCards, setJobCards] = useState<JobCard[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
@@ -361,6 +403,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
         foundAttachments,
         foundPayments,
         foundAdjustments,
+        foundBillingSettings,
         foundGarmentTypes,
         foundMeasurementSeeds,
         foundJobCards,
@@ -375,6 +418,11 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           canViewPayments
             ? getFinancialAdjustmentsForOrderAction(foundOrder.id)
             : Promise.resolve([]),
+          canViewPayments
+            ? getOrderPricingBillingSettingsAction().catch(
+                () => DEFAULT_SHOP_BILLING_SETTINGS
+              )
+            : Promise.resolve(DEFAULT_SHOP_BILLING_SETTINGS),
           getGarmentTypesAction().catch(() => []),
           Promise.all(
             Array.from(new Set(foundOrder.items.map((item) => item.particular))).map(
@@ -412,6 +460,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
       setAttachments(foundAttachments);
       setPayments(foundPayments);
       setAdjustments(foundAdjustments);
+      setBillingSettings(foundBillingSettings);
       setGarmentTypes(foundGarmentTypes);
       setMeasurementSeeds(foundMeasurementSeeds);
       setJobCards(foundJobCards);
@@ -448,6 +497,12 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const customerPhone = customer?.phone ?? order.customerSnapshot?.phone ?? "";
   const customerArea = customer?.area ?? order.customerSnapshot?.area ?? "";
   const formattedTrialDate = formatOptionalDate(order.trialDate);
+  const taxableTotal = Math.max(
+    order.items.reduce((sum, item) => sum + item.amount, 0) +
+      taxableAdjustmentTotal(adjustments),
+    0
+  );
+  const taxBreakdown = orderDetailsTaxSplit(order, taxableTotal, billingSettings);
 
   function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
     setOrder(result.order);
@@ -812,6 +867,32 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           {canViewPayments && (
             <Section title={t("orders.paymentSummary")}>
               <div className="space-y-2 text-sm">
+                {taxBreakdown && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">Taxable Value</span>
+                      <span className="font-semibold text-ink">
+                        {money(taxBreakdown.taxableValue)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">
+                        CGST ({taxBreakdown.cgstRate}%)
+                      </span>
+                      <span className="font-semibold text-ink">
+                        {money(taxBreakdown.cgstAmount)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">
+                        SGST ({taxBreakdown.sgstRate}%)
+                      </span>
+                      <span className="font-semibold text-ink">
+                        {money(taxBreakdown.sgstAmount)}
+                      </span>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-ink-muted">{t("common.total")}</span>
                   <span className="font-semibold text-ink">

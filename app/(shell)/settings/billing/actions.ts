@@ -11,7 +11,9 @@ import {
   upsertShopBillingSettings,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
+import { recomputeAllOrderTotals } from "@/lib/data/order-totals-db";
 import { hasAnyPermission } from "@/lib/permissions";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 type ActionResult<T = undefined> =
@@ -62,6 +64,30 @@ export async function getPrintableBillingSettingsAction(): Promise<ShopBillingSe
   }
 }
 
+export async function getOrderPricingBillingSettingsAction(): Promise<ShopBillingSettings> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (
+    !hasAnyPermission(permissions, [
+      "orders.create",
+      "orders.edit",
+      "orders.viewPayments",
+      "orders.recordPayment",
+    ])
+  ) {
+    return DEFAULT_SHOP_BILLING_SETTINGS;
+  }
+
+  try {
+    return await getShopBillingSettings(supabase);
+  } catch (error) {
+    if (isMissingShopBillingSettingsSchemaError(error)) {
+      return DEFAULT_SHOP_BILLING_SETTINGS;
+    }
+    throw error;
+  }
+}
+
 export async function saveBillingSettingsAction(
   input: ShopBillingSettings
 ): Promise<ActionResult<ShopBillingSettings>> {
@@ -74,6 +100,7 @@ export async function saveBillingSettingsAction(
 
   try {
     const settings = await upsertShopBillingSettings(supabase, input);
+    await recomputeAllOrderTotals(createAdminClient());
     return { success: true, data: settings };
   } catch (error) {
     if (isMissingShopBillingSettingsSchemaError(error)) {

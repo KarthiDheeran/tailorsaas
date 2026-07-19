@@ -282,8 +282,18 @@ function BillingSettingsContent() {
               className={inputClass}
             />
           </label>
+          <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3.5 text-sm font-medium text-ink-muted">
+            <input
+              type="checkbox"
+              checked={!settings.pricesIncludeTax}
+              onChange={(e) => patch("pricesIncludeTax", !e.target.checked)}
+              disabled={!enabled || !canManage || !settings.taxEnabled}
+              className="h-4 w-4 accent-primary"
+            />
+            Add tax on top of prices
+          </label>
           <p className="rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-ink-muted md:col-span-3">
-            Tax is shown as an included split of the order total, so payment balances stay consistent.
+            When enabled, catalog rates and edited order rates are treated as taxable prices before GST.
           </p>
         </div>
 

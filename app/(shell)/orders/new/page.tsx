@@ -18,6 +18,7 @@ import {
   createOrderAction,
   createOrderForNewCustomerAction,
 } from "@/app/(shell)/orders/actions";
+import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import {
   getActiveGarmentTypesAction,
   getAddOnsAction,
@@ -61,6 +62,11 @@ import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { formatCurrency } from "@/lib/currency";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
+import { getOrderTaxBreakdown } from "@/lib/order-tax";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -130,6 +136,9 @@ function NewOrderPageContent() {
 
   const [advancePaid, setAdvancePaid] = useState(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
+  const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
+    DEFAULT_SHOP_BILLING_SETTINGS
+  );
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
@@ -138,6 +147,16 @@ function NewOrderPageContent() {
   const [attachmentUploadFailures, setAttachmentUploadFailures] = useState<
     AttachmentUploadFailure[]
   >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrderPricingBillingSettingsAction().then((settings) => {
+      if (!cancelled) setBillingSettings(settings);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [attachmentUploadCount, setAttachmentUploadCount] = useState(0);
   const [repeatCopyMessage, setRepeatCopyMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -323,7 +342,13 @@ function NewOrderPageContent() {
     };
   }, [matchedCustomer]);
 
-  const { computedItems, totalAmount } = computeOrderItems(items, garmentTypes, addOns);
+  const { computedItems, totalAmount: taxableSubtotal } = computeOrderItems(
+    items,
+    garmentTypes,
+    addOns
+  );
+  const taxBreakdown = getOrderTaxBreakdown(taxableSubtotal, billingSettings);
+  const totalAmount = taxBreakdown?.totalWithTax ?? taxableSubtotal;
   const balance = totalAmount - advancePaid;
 
   const trimmedNewPhone = newCustomer.phone.trim();
@@ -1161,12 +1186,36 @@ function NewOrderPageContent() {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.total")}
+                    {taxBreakdown?.pricesIncludeTax ? "Total" : "Subtotal"}
                   </span>
                   <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    {formatCurrency(totalAmount)}
+                    {formatCurrency(
+                      taxBreakdown && !taxBreakdown.pricesIncludeTax
+                        ? taxBreakdown.taxableValue
+                        : totalAmount
+                    )}
                   </div>
                 </div>
+                {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      {billingSettings.taxLabel} {billingSettings.taxRatePercent}%
+                    </span>
+                    <div className="flex h-11 items-center text-sm font-semibold text-ink">
+                      {formatCurrency(taxBreakdown.taxAmount)}
+                    </div>
+                  </div>
+                )}
+                {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-ink-muted">
+                      {t("common.total")}
+                    </span>
+                    <div className="flex h-11 items-center text-sm font-semibold text-ink">
+                      {formatCurrency(totalAmount)}
+                    </div>
+                  </div>
+                )}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("orders.paidAdvance")}

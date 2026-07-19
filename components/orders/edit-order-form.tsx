@@ -6,6 +6,7 @@ import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
 import { getAddOnsAction, getGarmentTypesAction } from "@/app/(shell)/catalog/actions";
 import { saveGarmentMeasurementAction } from "@/app/(shell)/customers/actions";
 import { updateOrderAction } from "@/app/(shell)/orders/actions";
+import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import {
   BalanceBadge,
   getAvailableOrderStatuses,
@@ -37,6 +38,11 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
+import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -98,6 +104,9 @@ export function EditOrderForm({
   const [queuedAttachments, setQueuedAttachments] = useState<QueuedOrderAttachment[]>([]);
   const attachmentsSectionRef = useRef<HTMLDivElement | null>(null);
   const [highlightAttachments, setHighlightAttachments] = useState(false);
+  const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
+    DEFAULT_SHOP_BILLING_SETTINGS
+  );
 
   const initialEditableAttachments = initialAttachments.map((attachment) => {
     const editable = makeEditableOrderAttachment(attachment);
@@ -112,11 +121,16 @@ export function EditOrderForm({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getGarmentTypesAction(), getAddOnsAction()]).then(
-      ([garments, allAddOns]) => {
+    Promise.all([
+      getGarmentTypesAction(),
+      getAddOnsAction(),
+      getOrderPricingBillingSettingsAction(),
+    ]).then(
+      ([garments, allAddOns, settings]) => {
         if (cancelled) return;
         setGarmentTypes(garments);
         setAddOns(allAddOns);
+        setBillingSettings(settings);
         setCatalogLoaded(true);
       }
     );
@@ -156,7 +170,13 @@ export function EditOrderForm({
     return () => window.clearTimeout(timeout);
   }, [catalogLoaded]);
 
-  const { computedItems, totalAmount } = computeOrderItems(items, garmentTypes, addOns);
+  const { computedItems, totalAmount: taxableSubtotal } = computeOrderItems(
+    items,
+    garmentTypes,
+    addOns
+  );
+  const taxBreakdown = getOrderTaxBreakdown(taxableSubtotal, billingSettings);
+  const totalAmount = taxBreakdown?.totalWithTax ?? taxableSubtotal;
   const balance = totalAmount - order.advancePaid;
   const validItems = computedItems.filter(
     (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
@@ -532,11 +552,35 @@ export function EditOrderForm({
           </h3>
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-ink-muted">{t("common.total")}</span>
+              <span className="text-ink-muted">
+                {taxBreakdown?.pricesIncludeTax ? t("common.total") : "Subtotal"}
+              </span>
               <span className="font-semibold text-ink">
-                {formatCurrency(totalAmount)}
+                {formatCurrency(
+                  taxBreakdown && !taxBreakdown.pricesIncludeTax
+                    ? taxBreakdown.taxableValue
+                    : totalAmount
+                )}
               </span>
             </div>
+            {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
+              <div className="flex items-center justify-between">
+                <span className="text-ink-muted">
+                  {billingSettings.taxLabel} {billingSettings.taxRatePercent}%
+                </span>
+                <span className="font-semibold text-ink">
+                  {formatCurrency(taxBreakdown.taxAmount)}
+                </span>
+              </div>
+            )}
+            {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
+              <div className="flex items-center justify-between">
+                <span className="text-ink-muted">{t("common.total")}</span>
+                <span className="font-semibold text-ink">
+                  {formatCurrency(totalAmount)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-ink-muted">{t("common.paid")}</span>
               <span className="font-semibold text-ink">

@@ -3,6 +3,7 @@
 import { Search } from "lucide-react";
 import type { StaffRole, StaffStatus } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { Select } from "@/components/ui/select";
 
 export interface StaffFilterState {
   nameQuery: string;
@@ -47,30 +48,32 @@ export function StaffFilters({
           className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
         />
       </div>
-      <select
-        value={filters.role}
-        onChange={(e) => set("role", e.target.value as StaffRole | "")}
-        className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-      >
-        <option value="">{t("staff.allRoles")}</option>
-        {ROLES.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
-      <select
-        value={filters.status}
-        onChange={(e) => set("status", e.target.value as StaffStatus | "")}
-        className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-      >
-        <option value="">{t("staff.allStatuses")}</option>
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <div className="w-full sm:w-52">
+        <Select
+          value={filters.role}
+          onChange={(e) => set("role", e.target.value as StaffRole | "")}
+        >
+          <option value="">{t("staff.allRoles")}</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="w-full sm:w-44">
+        <Select
+          value={filters.status}
+          onChange={(e) => set("status", e.target.value as StaffStatus | "")}
+        >
+          <option value="">{t("staff.allStatuses")}</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </Select>
+      </div>
     </div>
   );
 }
