@@ -71,7 +71,7 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
       <Shirt className="h-6 w-6 shrink-0 text-primary" />
       <div className={cn(compact && "hidden")}>
         <div className="text-[18px] font-bold leading-tight tracking-tight text-ink">
-          TailorSaaS
+          NewLook
         </div>
         <div className="text-[11px] leading-tight text-ink-faint">
           Tailoring. Simplified.
