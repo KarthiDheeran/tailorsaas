@@ -105,7 +105,12 @@ export async function getCalendarData(
       });
     }
 
-    if (order.trialDate && isInRange(order.trialDate, input.startDate, input.endDate)) {
+    if (
+      order.trialDate &&
+      order.status !== "Delivered" &&
+      order.status !== "Cancelled" &&
+      isInRange(order.trialDate, input.startDate, input.endDate)
+    ) {
       const template = templateByType.get("Trial Reminder");
       events.push({
         id: `trial:${order.id}:${order.trialDate}`,
@@ -118,8 +123,8 @@ export async function getCalendarData(
         customerPhone,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        status: order.status,
-        tone: order.trialDate < input.todayIso && order.status !== "Delivered" ? "amber" : "blue",
+        status: order.trialDate < input.todayIso ? "Trial overdue" : "Trial scheduled",
+        tone: order.trialDate < input.todayIso ? "amber" : "blue",
         reminderType: "Trial",
         reminderTargetType: "Order",
         reminderTargetId: order.id,
@@ -133,7 +138,7 @@ export async function getCalendarData(
           }
         ),
         whatsappEnabled: isTemplateChannelEnabled(template, "whatsapp"),
-        isPastDue: order.trialDate < input.todayIso && order.status !== "Delivered",
+        isPastDue: order.trialDate < input.todayIso,
       });
     }
 

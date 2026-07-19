@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { DashboardStat } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -5,14 +6,20 @@ import { cn } from "@/lib/utils";
 export function StatCard({
   stat,
   icon: Icon,
+  href,
+  compact = false,
+  emphasized = false,
 }: {
   stat: DashboardStat;
   icon: LucideIcon;
+  href?: string;
+  compact?: boolean;
+  emphasized?: boolean;
 }) {
   const isWarning = stat.tone === "warning";
-  return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <div className="mb-3 flex items-center justify-between">
+  const content = (
+    <>
+      <div className={cn("flex items-center justify-between", compact ? "mb-2" : "mb-3")}>
         <span className="text-[13px] font-medium text-ink-muted">
           {stat.label}
         </span>
@@ -32,13 +39,33 @@ export function StatCard({
       </div>
       <p
         className={cn(
-          "text-[26px] font-semibold",
+          "font-semibold",
+          compact ? "text-[22px]" : "text-[26px]",
           isWarning ? "text-chip-red-fg" : "text-ink"
         )}
       >
         {stat.value}
       </p>
       <p className="mt-1 text-[13px] text-ink-faint">{stat.sublabel}</p>
-    </div>
+    </>
+  );
+
+  const className = cn(
+    "block rounded-xl border bg-white shadow-soft transition-colors",
+    compact ? "p-4" : "p-5",
+    emphasized ? "border-chip-red/50" : "border-border-soft",
+    href && "hover:border-primary/35 hover:bg-surface"
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={className}>{content}</div>
   );
 }

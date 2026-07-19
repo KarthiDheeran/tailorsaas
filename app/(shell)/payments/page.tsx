@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
   Banknote,
   Calculator,
+  ChevronDown,
   CreditCard,
   IndianRupee,
   Plus,
@@ -142,6 +143,20 @@ function PaymentsPageContent() {
   const range = getDateRangeForPreset(preset, todayIso, customRange);
   const rangeFrom = range.from;
   const rangeTo = range.to;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (
+      tabParam === "collections" ||
+      tabParam === "pending-dues" ||
+      tabParam === "adjustments" ||
+      tabParam === "expenses"
+    ) {
+      setTab(tabParam);
+      window.history.replaceState({}, "", "/payments");
+    }
+  }, []);
 
   useEffect(() => {
     if (!canViewPayments && canViewExpenses && tab !== "expenses") {
@@ -438,32 +453,36 @@ function PaymentsPageContent() {
                   onCustomChange={setCustomRange}
                   presets={PAYMENT_PAGE_PRESETS}
                 />
-                <select
-                  value={adjustmentType}
-                  onChange={(e) =>
-                    setAdjustmentType(e.target.value as OrderFinancialAdjustmentType | "")
-                  }
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">All Adjustment Types</option>
-                  {ADJUSTMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={adjustmentMode}
-                  onChange={(e) => setAdjustmentMode(e.target.value as PaymentMode | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">All Refund Modes</option>
-                  {paymentModes.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
+                <SelectShell className="w-56" size="sm">
+                  <select
+                    value={adjustmentType}
+                    onChange={(e) =>
+                      setAdjustmentType(e.target.value as OrderFinancialAdjustmentType | "")
+                    }
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">All Adjustment Types</option>
+                    {ADJUSTMENT_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
+                <SelectShell className="w-52" size="sm">
+                  <select
+                    value={adjustmentMode}
+                    onChange={(e) => setAdjustmentMode(e.target.value as PaymentMode | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">All Refund Modes</option>
+                    {paymentModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
                 <input
                   value={adjustmentQuery}
                   onChange={(e) => setAdjustmentQuery(e.target.value)}
@@ -492,30 +511,34 @@ function PaymentsPageContent() {
                   onCustomChange={setCustomRange}
                   presets={PAYMENT_PAGE_PRESETS}
                 />
-                <select
-                  value={paymentMode}
-                  onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">{t("payments.allCollectionModes")}</option>
-                  {paymentModes.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={paymentType}
-                  onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">{t("payments.allCollectionTypes")}</option>
-                  {PAYMENT_TYPES.map((pt) => (
-                    <option key={pt} value={pt}>
-                      {pt}
-                    </option>
-                  ))}
-                </select>
+                <SelectShell className="w-56" size="sm">
+                  <select
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">{t("payments.allCollectionModes")}</option>
+                    {paymentModes.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
+                <SelectShell className="w-56" size="sm">
+                  <select
+                    value={paymentType}
+                    onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">{t("payments.allCollectionTypes")}</option>
+                    {PAYMENT_TYPES.map((pt) => (
+                      <option key={pt} value={pt}>
+                        {pt}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -575,42 +598,48 @@ function PaymentsPageContent() {
                   onCustomChange={setCustomRange}
                   presets={PAYMENT_PAGE_PRESETS}
                 />
-                <select
-                  value={expenseSource}
-                  onChange={(e) => setExpenseSource(e.target.value as ExpenseSource | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">All Sources</option>
-                  {EXPENSE_SOURCES.map((source) => (
-                    <option key={source} value={source}>
-                      {source}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={expenseCategory}
-                  onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">{t("payments.allExpenseCategories")}</option>
-                  {expenseCategories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={expenseMode}
-                  onChange={(e) => setExpenseMode(e.target.value as PaymentMode | "")}
-                  className="h-9 rounded-lg border border-border bg-white px-3 pr-9 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                >
-                  <option value="">{t("payments.allExpenseModes")}</option>
-                  {paymentModes.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
+                <SelectShell className="w-44" size="sm">
+                  <select
+                    value={expenseSource}
+                    onChange={(e) => setExpenseSource(e.target.value as ExpenseSource | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">All Sources</option>
+                    {EXPENSE_SOURCES.map((source) => (
+                      <option key={source} value={source}>
+                        {source}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
+                <SelectShell className="w-60" size="sm">
+                  <select
+                    value={expenseCategory}
+                    onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">{t("payments.allExpenseCategories")}</option>
+                    {expenseCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
+                <SelectShell className="w-52" size="sm">
+                  <select
+                    value={expenseMode}
+                    onChange={(e) => setExpenseMode(e.target.value as PaymentMode | "")}
+                    className={selectClassName("h-9 text-sm leading-9")}
+                  >
+                    <option value="">{t("payments.allExpenseModes")}</option>
+                    {paymentModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode}
+                      </option>
+                    ))}
+                  </select>
+                </SelectShell>
                 <input
                   value={expenseQuery}
                   onChange={(e) => setExpenseQuery(e.target.value)}
@@ -996,17 +1025,19 @@ function ExpenseDrawer({
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-ink-muted">{t("payments.expenseCategory")}</span>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                {expenseCategories.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <SelectShell>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+                  className={selectClassName("h-11 text-sm leading-[44px]")}
+                >
+                  {expenseCategories.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </SelectShell>
             </label>
           </div>
 
@@ -1044,17 +1075,19 @@ function ExpenseDrawer({
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-ink-muted">{t("orders.paymentMode")}</span>
-              <select
-                value={paymentMode}
-                onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                className="h-11 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                {paymentModes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode}
-                  </option>
-                ))}
-              </select>
+              <SelectShell>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
+                  className={selectClassName("h-11 text-sm leading-[44px]")}
+                >
+                  {paymentModes.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+              </SelectShell>
             </label>
           </div>
 
@@ -1093,6 +1126,35 @@ function ExpenseDrawer({
         </div>
       </form>
     </div>
+  );
+}
+
+function SelectShell({
+  children,
+  className,
+  size = "md",
+}: {
+  children: ReactNode;
+  className?: string;
+  size?: "sm" | "md";
+}) {
+  return (
+    <div className={cn("relative min-w-0", className)}>
+      {children}
+      <ChevronDown
+        className={cn(
+          "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted",
+          size === "sm" && "h-3.5 w-3.5"
+        )}
+      />
+    </div>
+  );
+}
+
+function selectClassName(extra?: string): string {
+  return cn(
+    "w-full appearance-none rounded-lg border border-border bg-white py-0 pl-3 pr-10 text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+    extra
   );
 }
 

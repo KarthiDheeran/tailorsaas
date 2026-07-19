@@ -55,12 +55,29 @@ function InventoryContent() {
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[] | null>([]);
   const [query, setQuery] = useState("");
   const [fabricQuery, setFabricQuery] = useState("");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [showCustomerFabricDrawer, setShowCustomerFabricDrawer] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stockParam = params.get("stock");
+    const tabParam = params.get("tab");
+    if (stockParam === "low") {
+      setTab("stock");
+      setLowStockOnly(true);
+      window.history.replaceState({}, "", "/inventory");
+      return;
+    }
+    if (tabParam === "customer-fabric") {
+      setTab("customer-fabric");
+      window.history.replaceState({}, "", "/inventory");
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,13 +104,14 @@ function InventoryContent() {
   const filteredItems = useMemo(() => {
     const rows = items ?? [];
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((item) =>
-      [item.name, item.sku, item.color, item.itemType, item.notes]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(q))
-    );
-  }, [items, query]);
+    return rows.filter((item) => {
+      if (lowStockOnly && item.quantityOnHand > item.reorderLevel) return false;
+      if (!q) return true;
+      return [item.name, item.sku, item.color, item.itemType, item.notes]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(q));
+    });
+  }, [items, lowStockOnly, query]);
 
   const filteredCustomerFabrics = useMemo(() => {
     const rows = customerFabrics ?? [];
@@ -246,6 +264,18 @@ function InventoryContent() {
                   placeholder="Search stock by name, SKU, color, or type"
                   className="h-9 w-72 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
                 />
+                <button
+                  type="button"
+                  onClick={() => setLowStockOnly((current) => !current)}
+                  className={cn(
+                    "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
+                    lowStockOnly
+                      ? "border-primary bg-primary-tint text-primary"
+                      : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
+                  )}
+                >
+                  Low stock only
+                </button>
                 <ExportCsvButton
                   onClick={handleExportStock}
                   disabled={filteredItems.length === 0}
@@ -598,10 +628,20 @@ function StockItemDrawer({
   const [vendorName, setVendorName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
+  const [purchaseCostTouched, setPurchaseCostTouched] = useState(false);
   const [purchasePaymentMode, setPurchasePaymentMode] = useState<PaymentMode>("Cash");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const estimatedStockValue =
+    Number.isFinite(Number(quantity)) && Number.isFinite(Number(costPerUnit))
+      ? Number(quantity) * Number(costPerUnit)
+      : 0;
+
+  useEffect(() => {
+    if (purchaseCostTouched || estimatedStockValue <= 0) return;
+    setPurchaseCost(String(estimatedStockValue));
+  }, [estimatedStockValue, purchaseCostTouched]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -653,7 +693,43 @@ function StockItemDrawer({
       <TextField label="Vendor" value={vendorName} onChange={setVendorName} placeholder="Supplier or market name" />
       <div className="grid grid-cols-2 gap-3">
         <TextField label="Purchase Date" type="date" value={purchaseDate} onChange={setPurchaseDate} />
-        <TextField label="Purchase Cost" type="number" value={purchaseCost} onChange={setPurchaseCost} />
+        <TextField
+          label="Purchase Cost (Finance)"
+          type="number"
+          value={purchaseCost}
+          onChange={(value) => {
+            setPurchaseCostTouched(true);
+            setPurchaseCost(value);
+          }}
+        />
+      </div>
+      <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-xs text-ink-muted">
+        {Number(purchaseCost) > 0 ? (
+          <span>
+            A Finance expense transaction will be recorded for{" "}
+            <span className="font-semibold text-ink">{money(Number(purchaseCost))}</span>.
+            Clear Purchase Cost for opening stock or stock added without a new payment.
+          </span>
+        ) : estimatedStockValue > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Stock value is {money(estimatedStockValue)}. No Finance expense is created unless
+              Purchase Cost is entered.
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setPurchaseCostTouched(true);
+                setPurchaseCost(String(estimatedStockValue));
+              }}
+              className="rounded-lg border border-border bg-white px-2.5 py-1 font-semibold text-primary hover:bg-primary-tint"
+            >
+              Use as Purchase Cost
+            </button>
+          </div>
+        ) : (
+          <span>Enter Purchase Cost only when money was paid for this stock.</span>
+        )}
       </div>
       {Number(purchaseCost) > 0 && (
         <SelectField
@@ -740,6 +816,16 @@ function StockAdjustDrawer({
               onChange={(value) => setPurchasePaymentMode(value as PaymentMode)}
               options={paymentModes}
             />
+          </div>
+          <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-xs text-ink-muted">
+            {Number(purchaseCost) > 0 ? (
+              <span>
+                This stock-in will create a Finance expense for{" "}
+                <span className="font-semibold text-ink">{money(Number(purchaseCost))}</span>.
+              </span>
+            ) : (
+              <span>No Finance expense is created unless Purchase Cost is entered.</span>
+            )}
           </div>
           <TextField
             label="Vendor"

@@ -13,7 +13,6 @@ import {
   ClipboardList,
   Scissors,
   Package,
-  Shirt,
 } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
@@ -33,19 +32,46 @@ const STAT_ICONS = {
   "Overdue Orders": AlertTriangle,
   "Pending Trials": CalendarClock,
   "Outstanding Balance": Wallet,
-  "Revenue Today": IndianRupee,
+  "Collected Today": IndianRupee,
   "Unassigned Job Cards": ClipboardList,
   "Delayed Job Cards": Scissors,
-  "Ready Job Cards": Shirt,
   "Low Stock Items": Package,
-  "Customer Fabric": Shirt,
   "Expenses Today": IndianRupee,
 } as const;
 
 // Stat cards that surface money figures — hidden for anyone without
 // orders.viewPayments (Staff-like access), per the brief's "don't show
 // revenue/report money cards" rule.
-const MONEY_STAT_LABELS = new Set(["Outstanding Balance", "Revenue Today"]);
+const MONEY_STAT_LABELS = new Set(["Outstanding Balance", "Collected Today"]);
+
+const TODAY_STAT_LABELS = [
+  "Orders Today",
+  "Deliveries Today",
+  "Pending Trials",
+  "Collected Today",
+  "Expenses Today",
+];
+
+const ATTENTION_STAT_LABELS = [
+  "Overdue Orders",
+  "Unassigned Job Cards",
+  "Delayed Job Cards",
+  "Outstanding Balance",
+  "Low Stock Items",
+];
+
+const STAT_LINKS: Record<string, string> = {
+  "Orders Today": "/orders",
+  "Deliveries Today": "/delivery",
+  "Pending Trials": "/calendar",
+  "Collected Today": "/payments",
+  "Expenses Today": "/payments",
+  "Outstanding Balance": "/payments?tab=pending-dues",
+  "Overdue Orders": "/orders?balance=overdue",
+  "Unassigned Job Cards": "/job-cards?filter=Unassigned",
+  "Delayed Job Cards": "/job-cards?filter=delayed",
+  "Low Stock Items": "/inventory?stock=low",
+};
 
 function DashboardContent() {
   const { hasPermission } = useCurrentUser();
@@ -101,6 +127,14 @@ function DashboardContent() {
     if (stat.label === "Expenses Today") return canViewExpenses;
     return true;
   });
+  const getStat = (label: string) =>
+    visibleStats.find((stat) => stat.label === label);
+  const todayStats = TODAY_STAT_LABELS.map(getStat).filter(Boolean) as NonNullable<
+    ReturnType<typeof getStat>
+  >[];
+  const attentionStats = ATTENTION_STAT_LABELS.map(getStat).filter(
+    Boolean
+  ) as NonNullable<ReturnType<typeof getStat>>[];
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -128,15 +162,48 @@ function DashboardContent() {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {visibleStats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            stat={stat}
-            icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
-          />
-        ))}
-      </div>
+      <section className="mb-6">
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-ink">Today</h2>
+            <p className="text-[13px] text-ink-muted">
+              Orders, collections, delivery, and trial pulse.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {todayStats.map((stat) => (
+            <StatCard
+              key={stat.label}
+              stat={stat}
+              icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
+              href={STAT_LINKS[stat.label]}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-6">
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-ink">Needs Attention</h2>
+            <p className="text-[13px] text-ink-muted">
+              Work that should be assigned, chased, or replenished.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {attentionStats.map((stat) => (
+            <StatCard
+              key={stat.label}
+              stat={stat}
+              icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
+              href={STAT_LINKS[stat.label]}
+              emphasized={stat.tone === "warning"}
+            />
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

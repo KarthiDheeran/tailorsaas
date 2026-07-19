@@ -6,9 +6,7 @@ import {
   Layers,
   MessageSquareText,
   Receipt,
-  Ruler,
   Settings,
-  Shirt,
   UserCog,
 } from "lucide-react";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -34,26 +32,10 @@ const SETTINGS_SECTIONS = [
     permission: "settings.view",
   },
   {
-    title: "Catalog / Garment Types",
-    description: "Garments, base prices, required measurements, and add-ons.",
+    title: "Catalog",
+    description: "Garment types, base prices, measurement fields, and add-ons.",
     href: "/catalog?tab=garment-types",
     icon: Layers,
-    status: "Available",
-    permission: "catalog.view",
-  },
-  {
-    title: "Add-ons / Extras",
-    description: "Reusable extras like lining, pockets, urgent delivery, and more.",
-    href: "/catalog?tab=addons",
-    icon: Shirt,
-    status: "Available",
-    permission: "catalog.view",
-  },
-  {
-    title: "Measurement Templates",
-    description: "Template fields used when measuring each garment type.",
-    href: "/catalog?tab=garment-types",
-    icon: Ruler,
     status: "Available",
     permission: "catalog.view",
   },

@@ -5,7 +5,6 @@ import {
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
 import {
-  getCustomerFabrics,
   getInventoryItems,
   isMissingInventorySchemaError,
 } from "@/lib/data/inventory-db";
@@ -96,12 +95,12 @@ export async function getDashboardData(
     0
   );
 
-  // "Revenue today" has no separate payment-transaction log in the stub data
+  // "Collected today" has no separate payment-transaction log in the stub data
   // model (advancePaid/balance are snapshots, not dated events), so it's
   // approximated as: new advances collected on orders placed today, plus
   // balances collected on orders delivered today (the spec's two-payment-step
   // model assumes the balance is settled at delivery).
-  const revenueToday =
+  const collectedToday =
     ordersToday.reduce((sum, o) => sum + o.advancePaid, 0) +
     todaysDeliveries.reduce((sum, o) => sum + o.balance, 0);
 
@@ -154,8 +153,8 @@ export async function getDashboardData(
       tone: "default",
     },
     {
-      label: "Revenue Today",
-      value: formatCurrency(revenueToday),
+      label: "Collected Today",
+      value: formatCurrency(collectedToday),
       sublabel: "Advance + balance collected",
       tone: "default",
     },
@@ -174,12 +173,6 @@ export async function getDashboardData(
         value: String(jobCardStats.delayed),
         sublabel: "Production attention",
         tone: jobCardStats.delayed > 0 ? "warning" : "default",
-      },
-      {
-        label: "Ready Job Cards",
-        value: String(jobCardStats.ready),
-        sublabel: "Ready for delivery",
-        tone: "default",
       }
     );
   }
@@ -191,12 +184,6 @@ export async function getDashboardData(
         value: String(inventoryStats.lowStock),
         sublabel: "Reorder needed",
         tone: inventoryStats.lowStock > 0 ? "warning" : "default",
-      },
-      {
-        label: "Customer Fabric",
-        value: String(inventoryStats.customerFabricInCustody),
-        sublabel: "Still with shop",
-        tone: "default",
       }
     );
   }
@@ -222,7 +209,7 @@ export async function getDashboardData(
 async function getDashboardJobCardStats(
   supabase: SupabaseClient,
   todayIso: string
-): Promise<{ unassigned: number; delayed: number; ready: number } | null> {
+): Promise<{ unassigned: number; delayed: number } | null> {
   try {
     const cards = await getJobCards(supabase, todayIso);
     const active = cards.filter(
@@ -231,7 +218,6 @@ async function getDashboardJobCardStats(
     return {
       unassigned: active.filter((card) => card.stage === "Unassigned").length,
       delayed: active.filter((card) => card.isDelayed).length,
-      ready: active.filter((card) => card.stage === "Ready").length,
     };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return null;
@@ -241,18 +227,12 @@ async function getDashboardJobCardStats(
 
 async function getDashboardInventoryStats(
   supabase: SupabaseClient
-): Promise<{ lowStock: number; customerFabricInCustody: number } | null> {
+): Promise<{ lowStock: number } | null> {
   try {
-    const [items, customerFabrics] = await Promise.all([
-      getInventoryItems(supabase),
-      getCustomerFabrics(supabase),
-    ]);
+    const items = await getInventoryItems(supabase);
     return {
       lowStock: items.filter(
         (item) => item.active && item.quantityOnHand <= item.reorderLevel
-      ).length,
-      customerFabricInCustody: customerFabrics.filter(
-        (fabric) => fabric.status === "Received" || fabric.status === "In Use"
       ).length,
     };
   } catch (error) {

@@ -5,6 +5,7 @@ import { AlertTriangle, IndianRupee, TrendingUp, Wallet } from "lucide-react";
 import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import {
@@ -150,30 +151,34 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
             onPresetChange={setPreset}
             onCustomChange={setCustomRange}
           />
-          <select
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allPaymentModes")}</option>
-            {paymentModes.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select
-            value={paymentType}
-            onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allPaymentTypes")}</option>
-            {PAYMENT_TYPES.map((pt) => (
-              <option key={pt} value={pt}>
-                {pt}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-56">
+            <select
+              value={paymentMode}
+              onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allPaymentModes")}</option>
+              {paymentModes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
+          <ReportSelectShell className="w-56">
+            <select
+              value={paymentType}
+              onChange={(e) => setPaymentType(e.target.value as PaymentType | "")}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allPaymentTypes")}</option>
+              {PAYMENT_TYPES.map((pt) => (
+                <option key={pt} value={pt}>
+                  {pt}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
           <input
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}

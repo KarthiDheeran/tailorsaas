@@ -5,6 +5,7 @@ import { AlertTriangle, ClipboardList, Scissors, Shirt } from "lucide-react";
 import Link from "next/link";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import {
@@ -134,29 +135,33 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
             onPresetChange={setPreset}
             onCustomChange={setCustomRange}
           />
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value as ProductionStageFilter)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="all">{t("reports.allStages")}</option>
-            <option value="unassigned">{t("reports.unassigned")}</option>
-            <option value="inProgress">{t("reports.inProgress")}</option>
-            <option value="delayed">{t("reports.delayedOnly")}</option>
-            <option value="ready">{t("reports.ready")}</option>
-          </select>
-          <select
-            value={staffId}
-            onChange={(e) => setStaffId(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allStaff")}</option>
-            {staffList.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-44">
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value as ProductionStageFilter)}
+              className={reportSelectClassName()}
+            >
+              <option value="all">{t("reports.allStages")}</option>
+              <option value="unassigned">{t("reports.unassigned")}</option>
+              <option value="inProgress">{t("reports.inProgress")}</option>
+              <option value="delayed">{t("reports.delayedOnly")}</option>
+              <option value="ready">{t("reports.ready")}</option>
+            </select>
+          </ReportSelectShell>
+          <ReportSelectShell className="w-44">
+            <select
+              value={staffId}
+              onChange={(e) => setStaffId(e.target.value)}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allStaff")}</option>
+              {staffList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
         </div>
         <ReportActions onExport={handleExport} />
       </div>

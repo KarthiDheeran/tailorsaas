@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, CalendarDays, MessageCircle, Search, Send, Settings } from "lucide-react";
+import { Bell, CalendarDays, ChevronDown, Search, Send, Settings } from "lucide-react";
 import {
   getCommunicationTargetsAction,
   getReminderInboxAction,
@@ -13,6 +13,7 @@ import { markReminderSentAction } from "@/app/(shell)/calendar/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import type { CalendarData, CalendarEvent } from "@/lib/calendar";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
@@ -178,12 +179,12 @@ function ReminderInbox({
                         "pointer-events-none opacity-50"
                     )}
                   >
-                    <MessageCircle className="h-3.5 w-3.5" />
+                    <WhatsAppIcon className="h-3.5 w-3.5" />
                     {pendingEventKey === event.eventKey ? "Saving..." : "WhatsApp"}
                   </a>
                 ) : event.customerPhone && !event.whatsappEnabled ? (
                   <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-ink-faint">
-                    <MessageCircle className="h-3.5 w-3.5" />
+                    <WhatsAppIcon className="h-3.5 w-3.5" />
                     WhatsApp off
                   </span>
                 ) : (
@@ -367,32 +368,36 @@ function CommunicationsContent() {
                 className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
               />
             </div>
-              <select
-                value={contextFilter}
-                onChange={(event) =>
-                  setContextFilter(event.target.value as "all" | WhatsAppMessageContextType)
-                }
-                className="h-10 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                {CONTEXT_FILTERS.map((context) => (
-                  <option key={context} value={context}>
-                    {context === "all" ? "All contexts" : context}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as "all" | WhatsAppMessageStatus)
-                }
-                className="h-10 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                {STATUS_FILTERS.map((status) => (
-                  <option key={status} value={status}>
-                    {status === "all" ? "All statuses" : status}
-                  </option>
-                ))}
-              </select>
+              <SelectShell className="lg:w-44">
+                <select
+                  value={contextFilter}
+                  onChange={(event) =>
+                    setContextFilter(event.target.value as "all" | WhatsAppMessageContextType)
+                  }
+                  className={selectClassName("text-ink-muted font-medium")}
+                >
+                  {CONTEXT_FILTERS.map((context) => (
+                    <option key={context} value={context}>
+                      {context === "all" ? "All contexts" : context}
+                    </option>
+                  ))}
+                </select>
+              </SelectShell>
+              <SelectShell className="lg:w-40">
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as "all" | WhatsAppMessageStatus)
+                  }
+                  className={selectClassName("text-ink-muted font-medium")}
+                >
+                  {STATUS_FILTERS.map((status) => (
+                    <option key={status} value={status}>
+                      {status === "all" ? "All statuses" : status}
+                    </option>
+                  ))}
+                </select>
+              </SelectShell>
             </div>
           </div>
 
@@ -443,7 +448,7 @@ function CommunicationsContent() {
                               href={href}
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-primary hover:bg-primary-tint"
                             >
-                              <MessageCircle className="h-3.5 w-3.5" />
+                              <WhatsAppIcon className="h-3.5 w-3.5" />
                               Open
                             </Link>
                           ) : (
@@ -538,52 +543,58 @@ function QuickWhatsAppComposer({
         </div>
       </div>
       <div className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr]">
-        <select
-          value={templateType}
-          onChange={(event) => {
-            setTemplateType(event.target.value as CommunicationTemplateType);
-            setManualMessage("");
-          }}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-        >
-          {QUICK_TEMPLATE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-        <select
-          value={customerId}
-          onChange={(event) => {
-            setCustomerId(event.target.value);
-            setOrderId("");
-            setManualMessage("");
-          }}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-        >
-          <option value="">Select customer</option>
-          {customers.map((customer) => (
-            <option key={customer.id} value={customer.id}>
-              {customer.name} - {customer.phone}
-            </option>
-          ))}
-        </select>
-        <select
-          value={orderId}
-          onChange={(event) => {
-            setOrderId(event.target.value);
-            setManualMessage("");
-          }}
-          disabled={!needsOrder || customerOrders.length === 0}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint"
-        >
-          <option value="">{needsOrder ? "Select order" : "No order needed"}</option>
-          {customerOrders.map((order) => (
-            <option key={order.id} value={order.id}>
-              {order.orderNumber} - {order.status}
-            </option>
-          ))}
-        </select>
+        <SelectShell>
+          <select
+            value={templateType}
+            onChange={(event) => {
+              setTemplateType(event.target.value as CommunicationTemplateType);
+              setManualMessage("");
+            }}
+            className={selectClassName("text-ink")}
+          >
+            {QUICK_TEMPLATE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </SelectShell>
+        <SelectShell>
+          <select
+            value={customerId}
+            onChange={(event) => {
+              setCustomerId(event.target.value);
+              setOrderId("");
+              setManualMessage("");
+            }}
+            className={selectClassName("text-ink")}
+          >
+            <option value="">Select customer</option>
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name} - {customer.phone}
+              </option>
+            ))}
+          </select>
+        </SelectShell>
+        <SelectShell disabled={!needsOrder || customerOrders.length === 0}>
+          <select
+            value={orderId}
+            onChange={(event) => {
+              setOrderId(event.target.value);
+              setManualMessage("");
+            }}
+            disabled={!needsOrder || customerOrders.length === 0}
+            className={selectClassName("text-ink disabled:bg-surface disabled:text-ink-faint")}
+          >
+            <option value="">{needsOrder ? "Select order" : "No order needed"}</option>
+            {customerOrders.map((order) => (
+              <option key={order.id} value={order.id}>
+                {order.orderNumber} - {order.status}
+              </option>
+            ))}
+          </select>
+        </SelectShell>
       </div>
       <textarea
         value={manualMessage || renderedMessage}
@@ -598,11 +609,40 @@ function QuickWhatsAppComposer({
           onClick={handleOpenWhatsApp}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark"
         >
-          <MessageCircle className="h-3.5 w-3.5" />
+          <WhatsAppIcon className="h-3.5 w-3.5" />
           Open WhatsApp
         </button>
       </div>
     </section>
+  );
+}
+
+function SelectShell({
+  children,
+  className,
+  disabled,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={cn("relative min-w-0", className)}>
+      {children}
+      <ChevronDown
+        className={cn(
+          "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2",
+          disabled ? "text-ink-faint" : "text-ink-muted"
+        )}
+      />
+    </div>
+  );
+}
+
+function selectClassName(extra?: string): string {
+  return cn(
+    "h-10 w-full appearance-none rounded-lg border border-border bg-white py-0 pl-3 pr-10 text-sm leading-10 outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+    extra
   );
 }
 

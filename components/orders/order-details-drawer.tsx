@@ -6,7 +6,6 @@ import {
   FileText,
   Loader2,
   Mail,
-  MessageCircle,
   Pencil,
   Phone,
   Printer,
@@ -35,6 +34,7 @@ import {
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { isReceivableOrder } from "@/lib/order-finance";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
@@ -187,7 +187,7 @@ function InvoiceShareActions({
         title="Share invoice on WhatsApp"
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
       >
-        <MessageCircle className="h-3.5 w-3.5" />
+        <WhatsAppIcon className="h-3.5 w-3.5" />
       </a>
       <a
         href={mailto}

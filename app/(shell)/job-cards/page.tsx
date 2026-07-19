@@ -361,10 +361,34 @@ function JobCardsContent() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const viewJobCardId = params.get("view");
-    if (!viewJobCardId) return;
-    setFocusedJobCardId(viewJobCardId);
-    setFilter("all");
-    window.history.replaceState({}, "", "/job-cards");
+    const filterParam = params.get("filter");
+    const stageParam = params.get("stage");
+    const assignedParam = params.get("assigned");
+    let consumedParam = false;
+
+    if (viewJobCardId) {
+      setFocusedJobCardId(viewJobCardId);
+      setFilter("all");
+      consumedParam = true;
+    }
+    if (
+      filterParam &&
+      FILTERS.some((option) => option.value === filterParam)
+    ) {
+      setFilter(filterParam as JobCardStage | "all" | "active" | "delayed");
+      consumedParam = true;
+    }
+    if (stageParam && STAGE_FILTERS.includes(stageParam as JobCardStage | "all")) {
+      setStageFilter(stageParam as JobCardStage | "all");
+      consumedParam = true;
+    }
+    if (assignedParam === "unassigned") {
+      setAssignedWorkerFilter("unassigned");
+      consumedParam = true;
+    }
+    if (consumedParam) {
+      window.history.replaceState({}, "", "/job-cards");
+    }
   }, []);
 
   useEffect(() => {

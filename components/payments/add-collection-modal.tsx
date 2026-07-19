@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { ChevronDown, X } from "lucide-react";
 import { recordPaymentAction } from "@/app/(shell)/orders/actions";
 import { paymentModes } from "@/lib/constants";
 import type { Order, Payment, PaymentMode, PaymentType } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { formatCurrency } from "@/lib/currency";
+import { cn } from "@/lib/utils";
 
 function money(n: number) {
   return formatCurrency(n);
@@ -197,34 +198,38 @@ export function AddCollectionModal({
               <label className="mb-1 block text-[13px] font-medium text-ink-muted">
                 {t("payments.collectionMode")}
               </label>
-              <select
-                value={collectionMode}
-                onChange={(e) => setCollectionMode(e.target.value as PaymentMode)}
-                className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                <option value="">{t("common.selectEllipsis")}</option>
-                {paymentModes.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <SelectShell>
+                <select
+                  value={collectionMode}
+                  onChange={(e) => setCollectionMode(e.target.value as PaymentMode)}
+                  className={selectClassName()}
+                >
+                  <option value="">{t("common.selectEllipsis")}</option>
+                  {paymentModes.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </SelectShell>
             </div>
             <div>
               <label className="mb-1 block text-[13px] font-medium text-ink-muted">
                 {t("payments.collectionType")}
               </label>
-              <select
-                value={collectionType}
-                onChange={(e) => {
-                  setTypeOverridden(true);
-                  setCollectionType(e.target.value as PaymentType);
-                }}
-                className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-              >
-                <option value="Partial">{t("orders.paymentTypePartial")}</option>
-                <option value="Final">{t("orders.paymentTypeFinal")}</option>
-              </select>
+              <SelectShell>
+                <select
+                  value={collectionType}
+                  onChange={(e) => {
+                    setTypeOverridden(true);
+                    setCollectionType(e.target.value as PaymentType);
+                  }}
+                  className={selectClassName()}
+                >
+                  <option value="Partial">{t("orders.paymentTypePartial")}</option>
+                  <option value="Final">{t("orders.paymentTypeFinal")}</option>
+                </select>
+              </SelectShell>
             </div>
           </div>
 
@@ -289,5 +294,20 @@ export function AddCollectionModal({
         </form>
       </div>
     </>
+  );
+}
+
+function SelectShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-w-0">
+      {children}
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+    </div>
+  );
+}
+
+function selectClassName(): string {
+  return cn(
+    "h-11 w-full appearance-none rounded-lg border border-border bg-white py-0 pl-3 pr-10 text-sm leading-[44px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
   );
 }

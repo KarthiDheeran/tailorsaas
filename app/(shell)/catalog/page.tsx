@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import type {
   AddOnInput,
   CatalogAddOn,
@@ -28,6 +29,7 @@ import { AddOnDrawer } from "@/components/catalog/addon-drawer";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { LoadingState } from "@/components/ui/loading-state";
 
 function isCatalogTab(value: string | null): value is CatalogTab {
   return value === "garment-types" || value === "addons";
@@ -61,6 +63,7 @@ function CatalogPageContent() {
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [activeAddOns, setActiveAddOns] = useState<CatalogAddOn[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
   useEffect(() => {
     if (isCatalogTab(tabParam) && tabParam !== tab) {
@@ -70,6 +73,7 @@ function CatalogPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoadingCatalog(true);
     Promise.all([
       getGarmentTypesAction(),
       getAddOnsAction(),
@@ -79,6 +83,8 @@ function CatalogPageContent() {
       setGarmentTypes(garments);
       setAddOns(allAddOns);
       setActiveAddOns(active);
+    }).finally(() => {
+      if (!cancelled) setIsLoadingCatalog(false);
     });
     return () => {
       cancelled = true;
@@ -132,6 +138,14 @@ function CatalogPageContent() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <Link
+        href="/settings"
+        className="mb-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-soft bg-white px-3 text-sm font-semibold text-ink-muted shadow-soft transition-colors hover:border-primary hover:text-primary"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Settings
+      </Link>
+
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">
@@ -169,7 +183,9 @@ function CatalogPageContent() {
         }}
       />
 
-      {tab === "garment-types" ? (
+      {isLoadingCatalog ? (
+        <LoadingState label="Loading catalog..." />
+      ) : tab === "garment-types" ? (
         <CatalogTable
           garmentTypes={garmentTypes}
           canManage={canManage}
@@ -211,10 +227,18 @@ function CatalogPageContent() {
   );
 }
 
+function CatalogPageFallback() {
+  return (
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <LoadingState label="Opening catalog..." />
+    </div>
+  );
+}
+
 export default function CatalogPage() {
   return (
     <RequirePermission permission="catalog.view">
-      <Suspense fallback={null}>
+      <Suspense fallback={<CatalogPageFallback />}>
         <CatalogPageContent />
       </Suspense>
     </RequirePermission>

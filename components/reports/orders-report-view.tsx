@@ -5,6 +5,7 @@ import { AlertTriangle, Ban, CalendarClock, Clock, Receipt, Wallet } from "lucid
 import { OrdersTable } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import {
@@ -110,37 +111,43 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
             onPresetChange={setPreset}
             onCustomChange={setCustomRange}
           />
-          <select
-            value={balanceStatus}
-            onChange={(e) => setBalanceStatus(e.target.value as OrderBalanceFilter)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="all">{t("reports.allBalanceStatus")}</option>
-            <option value="paid">{t("common.paid")}</option>
-            <option value="balanceDue">{t("reports.balanceDue")}</option>
-            <option value="overdue">{t("reports.overdue")}</option>
-          </select>
-          <select
-            value={deliveryStatus}
-            onChange={(e) => setDeliveryStatus(e.target.value as OrderDeliveryFilter)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="all">{t("reports.allDeliveries")}</option>
-            <option value="overdue">{t("reports.deliveryOverdue")}</option>
-            <option value="dueSoon">{t("reports.dueIn7Days")}</option>
-          </select>
-          <select
-            value={garmentType}
-            onChange={(e) => setGarmentType(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allGarments")}</option>
-            {garmentTypes.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-52">
+            <select
+              value={balanceStatus}
+              onChange={(e) => setBalanceStatus(e.target.value as OrderBalanceFilter)}
+              className={reportSelectClassName()}
+            >
+              <option value="all">{t("reports.allBalanceStatus")}</option>
+              <option value="paid">{t("common.paid")}</option>
+              <option value="balanceDue">{t("reports.balanceDue")}</option>
+              <option value="overdue">{t("reports.overdue")}</option>
+            </select>
+          </ReportSelectShell>
+          <ReportSelectShell className="w-48">
+            <select
+              value={deliveryStatus}
+              onChange={(e) => setDeliveryStatus(e.target.value as OrderDeliveryFilter)}
+              className={reportSelectClassName()}
+            >
+              <option value="all">{t("reports.allDeliveries")}</option>
+              <option value="overdue">{t("reports.deliveryOverdue")}</option>
+              <option value="dueSoon">{t("reports.dueIn7Days")}</option>
+            </select>
+          </ReportSelectShell>
+          <ReportSelectShell className="w-44">
+            <select
+              value={garmentType}
+              onChange={(e) => setGarmentType(e.target.value)}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allGarments")}</option>
+              {garmentTypes.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
           <input
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}

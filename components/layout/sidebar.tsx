@@ -27,6 +27,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { GlobalSearchButton } from "@/components/layout/global-search";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { cn } from "@/lib/utils";
 import { LOCALES, LOCALE_LABELS } from "@/lib/i18n/types";
@@ -192,6 +193,9 @@ export function Sidebar() {
       <div className="mb-8">
         <BrandMark />
       </div>
+      <div className="mb-4">
+        <GlobalSearchButton enableShortcut />
+      </div>
       <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
         <NavLinks />
       </nav>
@@ -210,14 +214,17 @@ export function MobileNav() {
     <div className="sticky top-0 z-40 border-b border-border-soft bg-white px-4 py-3 print:hidden lg:hidden">
       <div className="flex items-center justify-between gap-3">
         <BrandMark />
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface hover:text-ink"
-          aria-label="Open navigation"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <GlobalSearchButton compact />
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface hover:text-ink"
+            aria-label="Open navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {open && (

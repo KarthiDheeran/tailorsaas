@@ -7,7 +7,8 @@
 // components/layout/sidebar.tsx to match.
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Plus } from "lucide-react";
 import type { AppUser } from "@/lib/profiles";
 import type { Role, RoleInput } from "@/lib/roles";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -83,6 +84,14 @@ function UsersAccessPageContent() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <Link
+        href="/settings"
+        className="mb-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-soft bg-white px-3 text-sm font-semibold text-ink-muted shadow-soft transition-colors hover:border-primary hover:text-primary"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Settings
+      </Link>
+
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">{t("usersAccess.title")}</h1>

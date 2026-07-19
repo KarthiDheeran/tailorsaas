@@ -5,6 +5,7 @@ import { IndianRupee, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import { getSalesReportAction } from "@/app/(shell)/reports/actions";
@@ -83,18 +84,20 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
           onCustomChange={setCustomRange}
         />
         <div className="flex items-center gap-2 print:hidden">
-          <select
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-          >
-            <option value="">{t("reports.allPaymentModes")}</option>
-            {paymentModes.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-56">
+            <select
+              value={paymentMode}
+              onChange={(e) => setPaymentMode(e.target.value as PaymentMode | "")}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allPaymentModes")}</option>
+              {paymentModes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
           <ReportActions onExport={handleExport} />
         </div>
       </div>

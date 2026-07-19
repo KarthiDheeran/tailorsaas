@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, Loader2, MessageCircle } from "lucide-react";
+import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
@@ -59,6 +59,7 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { formatCurrency } from "@/lib/currency";
 
 function todayIso() {
@@ -1364,7 +1365,7 @@ function NewOrderPageContent() {
                     onClick={() => handleWhatsAppConfirmation(savedOrder)}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <WhatsAppIcon className="h-4 w-4" />
                     Send WhatsApp confirmation
                   </button>
                 )}

@@ -6,6 +6,7 @@ import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import {
@@ -119,18 +120,20 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
             onPresetChange={setPreset}
             onCustomChange={setCustomRange}
           />
-          <select
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allAreas")}</option>
-            {areas.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-44">
+            <select
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allAreas")}</option>
+              {areas.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
           <input
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}

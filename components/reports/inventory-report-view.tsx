@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, IndianRupee, Package } from "lucide-react";
 import { ReportActions } from "@/components/reports/report-actions";
+import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { downloadCsv } from "@/lib/csv";
 import { getInventoryReportAction } from "@/app/(shell)/reports/actions";
@@ -101,18 +102,20 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={itemType}
-            onChange={(e) => setItemType(e.target.value as InventoryItemType | "")}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint print:hidden"
-          >
-            <option value="">{t("reports.allItemTypes")}</option>
-            {ITEM_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+          <ReportSelectShell className="w-44">
+            <select
+              value={itemType}
+              onChange={(e) => setItemType(e.target.value as InventoryItemType | "")}
+              className={reportSelectClassName()}
+            >
+              <option value="">{t("reports.allItemTypes")}</option>
+              {ITEM_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </ReportSelectShell>
           <button
             type="button"
             onClick={() => setLowStockOnly((v) => !v)}

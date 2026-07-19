@@ -132,6 +132,36 @@ function OrdersPageContent() {
     if (viewOrderId) {
       setPendingOpenOrderId(viewOrderId);
       window.history.replaceState({}, "", "/orders");
+      return;
+    }
+
+    const balance = params.get("balance");
+    const delivery = params.get("delivery");
+    const status = params.get("status");
+    if (
+      balance === "paid" ||
+      balance === "due" ||
+      balance === "overdue"
+    ) {
+      setBalanceFilter(balance);
+    }
+    if (
+      delivery === "dueToday" ||
+      delivery === "dueTomorrow" ||
+      delivery === "dueWeek" ||
+      delivery === "overdue"
+    ) {
+      setDeliveryFilter(delivery);
+    }
+    if (status) {
+      setStatusFilter((current) =>
+        ["Pending", "In Progress", "Ready", "Delayed", "Delivered", "Cancelled"].includes(status)
+          ? (status as StatusFilter)
+          : current
+      );
+    }
+    if (balance || delivery || status) {
+      window.history.replaceState({}, "", "/orders");
     }
   }, []);
 
