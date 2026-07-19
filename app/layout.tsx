@@ -11,14 +11,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TailorSaaS",
+  title: "NewLook",
   description: "Order & customer management for the shop",
   applicationName: "TailorSaaS",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "TailorSaaS",
+    title: "NewLook",
   },
 };
 

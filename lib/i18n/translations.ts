@@ -532,7 +532,7 @@ const en = {
   // ---- print ------------------------------------------------------
   "print.customerReceipt": "Customer Receipt",
   "print.tailorJobCard": "Tailor Job Card",
-  "print.shopName": "TailorSaaS",
+  "print.shopName": "NewLook",
   "print.orderDetails": "Order Details",
   "print.customerDetails": "Customer Details",
   "print.measurements": "Measurements",
@@ -1084,7 +1084,7 @@ const ta: Record<TranslationKey, string> = {
   // ---- print ------------------------------------------------------
   "print.customerReceipt": "வாடிக்கையாளர் ரசீது",
   "print.tailorJobCard": "தையல்காரர் ஜாப் கார்டு",
-  "print.shopName": "TailorSaaS",
+  "print.shopName": "NewLook",
   "print.orderDetails": "ஆர்டர் விவரங்கள்",
   "print.customerDetails": "வாடிக்கையாளர் விவரங்கள்",
   "print.measurements": "அளவீடுகள்",

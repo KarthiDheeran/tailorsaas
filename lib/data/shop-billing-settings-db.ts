@@ -43,7 +43,7 @@ const LEGACY_SETTINGS_COLUMNS =
   "shop_name,tagline,phone,email,address,gstin,receipt_prefix,footer_note";
 
 export const DEFAULT_SHOP_BILLING_SETTINGS: ShopBillingSettings = {
-  shopName: "TailorSaaS",
+  shopName: "NewLook",
   tagline: "Tailoring. Simplified.",
   receiptPrefix: "INV",
   invoicePrefix: "INV",
