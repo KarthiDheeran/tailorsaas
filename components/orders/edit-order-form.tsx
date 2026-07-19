@@ -601,7 +601,7 @@ export function EditOrderForm({
         </div>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border-soft bg-white/95 px-4 py-3 shadow-soft backdrop-blur lg:left-[250px]">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border-soft bg-white/95 px-4 py-3 shadow-soft backdrop-blur lg:left-[var(--sidebar-width)]">
         <div className="mx-auto flex max-w-7xl items-center gap-2">
           <button
             type="submit"

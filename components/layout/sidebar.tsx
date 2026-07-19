@@ -15,6 +15,8 @@ import {
   Menu,
   MessageCircle,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Shirt,
   Truck,
@@ -44,7 +46,6 @@ const navItems: {
 }[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/calendar", labelKey: "nav.calendar", icon: CalendarDays, permission: "calendar.view" },
-  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, anyOf: ["calendar.view", "orders.view", "customers.view"] },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
   { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
   { href: "/production", labelKey: "nav.production", icon: Workflow, anyOf: ["orders.view", "staff.view"] },
@@ -54,6 +55,7 @@ const navItems: {
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "inventory.view" },
   { href: "/staff", labelKey: "nav.staff", icon: Users2, permission: "staff.view" },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3, permission: "reports.view" },
+  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, anyOf: ["calendar.view", "orders.view", "customers.view"] },
   {
     href: "/settings",
     labelKey: "nav.settings",
@@ -63,11 +65,11 @@ const navItems: {
   },
 ];
 
-function BrandMark() {
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2 px-2">
+    <div className={cn("flex items-center gap-2 px-2", compact && "justify-center px-0")}>
       <Shirt className="h-6 w-6 shrink-0 text-primary" />
-      <div>
+      <div className={cn(compact && "hidden")}>
         <div className="text-[18px] font-bold leading-tight tracking-tight text-ink">
           TailorSaaS
         </div>
@@ -79,7 +81,13 @@ function BrandMark() {
   );
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const { hasPermission, hasAnyPermission } = useCurrentUser();
   const { t } = useLanguage();
@@ -109,15 +117,18 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             key={href}
             href={href}
             onClick={onNavigate}
+            title={collapsed ? label : undefined}
+            aria-label={collapsed ? label : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-lg border-l-4 px-4 py-2.5 text-sm transition-colors",
+              "flex items-center gap-3 rounded-lg border-l-4 text-sm transition-colors",
+              collapsed ? "h-11 justify-center px-0" : "px-4 py-2.5",
               isActive
                 ? "border-primary bg-primary-tint font-semibold text-primary"
                 : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
             )}
           >
             <Icon className="h-[18px] w-[18px] shrink-0" />
-            <span className="break-words">{label}</span>
+            <span className={cn("break-words", collapsed && "hidden")}>{label}</span>
           </Link>
         );
       })}
@@ -125,7 +136,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function LanguageSwitcher() {
+function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const { locale, setLocale } = useLanguage();
   const [open, setOpen] = useState(false);
 
@@ -134,18 +145,28 @@ function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white px-3 py-2.5 text-left transition-colors hover:bg-surface"
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left transition-colors hover:bg-surface",
+          compact ? "h-10 justify-center px-0" : "px-3 py-2.5"
+        )}
+        title={compact ? LOCALE_LABELS[locale] : undefined}
+        aria-label={compact ? `Language: ${LOCALE_LABELS[locale]}` : undefined}
       >
         <Languages className="h-4 w-4 shrink-0 text-ink-faint" />
-        <span className="flex-1 text-sm font-medium text-ink">
+        <span className={cn("flex-1 text-sm font-medium text-ink", compact && "hidden")}>
           {LOCALE_LABELS[locale]}
         </span>
-        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+        <ChevronsUpDown className={cn("h-3.5 w-3.5 shrink-0 text-ink-faint", compact && "hidden")} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul className="absolute bottom-full left-0 z-20 mb-1.5 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
+          <ul
+            className={cn(
+              "absolute bottom-full left-0 z-20 mb-1.5 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft",
+              compact ? "w-44" : "w-full"
+            )}
+          >
             {LOCALES.map((l) => (
               <li key={l}>
                 <button
@@ -168,41 +189,70 @@ function LanguageSwitcher() {
   );
 }
 
-function UserIdentity() {
+function UserIdentity({ compact = false }: { compact?: boolean }) {
   const { currentUser, currentRole } = useCurrentUser();
+  const name = currentUser?.full_name ?? "Unknown user";
+  const role = currentRole?.name ?? "-";
+
   return (
-    <div className="flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
+    <div
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface",
+        compact ? "h-12 justify-center px-0" : "px-3 py-2.5"
+      )}
+      title={compact ? `${name} - ${role}` : undefined}
+    >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-tint text-sm font-semibold text-primary">
-        {(currentUser?.full_name ?? "?").charAt(0)}
+        {name.charAt(0)}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className={cn("min-w-0 flex-1", compact && "hidden")}>
         <div className="truncate text-sm font-semibold text-ink">
-          {currentUser?.full_name ?? "Unknown user"}
+          {name}
         </div>
         <div className="truncate text-[11px] text-ink-faint">
-          {currentRole?.name ?? "-"}
+          {role}
         </div>
       </div>
     </div>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({
+  collapsed,
+  onToggleCollapsed,
+}: {
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
   return (
-    <aside className="hidden h-screen w-[250px] shrink-0 flex-col bg-white px-4 py-6 print:hidden lg:flex">
-      <div className="mb-8">
-        <BrandMark />
+    <aside
+      className={cn(
+        "hidden h-screen shrink-0 flex-col bg-white py-6 transition-[width,padding] duration-200 print:hidden lg:flex",
+        collapsed ? "w-[72px] px-3" : "w-[250px] px-4"
+      )}
+    >
+      <div className={cn("mb-8 flex items-center gap-2", collapsed ? "justify-center" : "justify-between")}>
+        <BrandMark compact={collapsed} />
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-soft text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        >
+          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </button>
       </div>
       <div className="mb-4">
-        <GlobalSearchButton enableShortcut />
+        <GlobalSearchButton compact={collapsed} enableShortcut />
       </div>
       <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
-        <NavLinks />
+        <NavLinks collapsed={collapsed} />
       </nav>
 
-      <LanguageSwitcher />
-      <UserIdentity />
-      <LogoutButton />
+      <LanguageSwitcher compact={collapsed} />
+      <UserIdentity compact={collapsed} />
+      <LogoutButton compact={collapsed} />
     </aside>
   );
 }
