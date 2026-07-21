@@ -49,10 +49,10 @@ const SETTINGS_SECTIONS = [
   },
   {
     title: "Language",
-    description: "English and Tamil selection is available from the sidebar.",
+    description: "English and Tamil selection is available from the top menu.",
     href: "",
     icon: Languages,
-    status: "Sidebar",
+    status: "Top menu",
     permission: "settings.view",
   },
 ] as const;

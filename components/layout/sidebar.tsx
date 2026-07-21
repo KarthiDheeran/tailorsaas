@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronsUpDown,
   ClipboardList,
   FileText,
@@ -15,8 +16,6 @@ import {
   Menu,
   MessageCircle,
   Package,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   Shirt,
   Truck,
@@ -31,19 +30,22 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { GlobalSearchButton } from "@/components/layout/global-search";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
 import { LOCALES, LOCALE_LABELS } from "@/lib/i18n/types";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import type { Permission } from "@/lib/permissions";
 
-const navItems: {
+type NavItem = {
   href: string;
   labelKey: TranslationKey;
   icon: LucideIcon;
   permission?: Permission;
   anyOf?: Permission[];
   activePrefixes?: string[];
-}[] = [
+};
+
+const primaryNavItems: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/calendar", labelKey: "nav.calendar", icon: CalendarDays, permission: "calendar.view" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
@@ -52,6 +54,9 @@ const navItems: {
   { href: "/delivery", labelKey: "nav.delivery", icon: Truck, permission: "orders.view" },
   { href: "/customers", labelKey: "nav.customers", icon: Users, permission: "customers.view" },
   { href: "/payments", labelKey: "nav.payments", icon: Wallet, anyOf: ["orders.viewPayments", "expenses.view"] },
+];
+
+const moreNavItems: NavItem[] = [
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "inventory.view" },
   { href: "/staff", labelKey: "nav.staff", icon: Users2, permission: "staff.view" },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3, permission: "reports.view" },
@@ -64,6 +69,8 @@ const navItems: {
     activePrefixes: ["/settings", "/catalog", "/users-access"],
   },
 ];
+
+const navItems = [...primaryNavItems, ...moreNavItems];
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
@@ -81,67 +88,176 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function NavLinks({
-  collapsed = false,
-  onNavigate,
-}: {
-  collapsed?: boolean;
-  onNavigate?: () => void;
-}) {
+function useCloseTransientOverlays(onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    function handleCloseTransientOverlays() {
+      onCloseRef.current();
+    }
+
+    window.addEventListener(CLOSE_TRANSIENT_OVERLAYS_EVENT, handleCloseTransientOverlays);
+    return () =>
+      window.removeEventListener(CLOSE_TRANSIENT_OVERLAYS_EVENT, handleCloseTransientOverlays);
+  }, []);
+}
+
+function useVisibleNavItems(items: NavItem[]) {
   const pathname = usePathname();
   const { hasPermission, hasAnyPermission } = useCurrentUser();
   const { t } = useLanguage();
 
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.permission) return hasPermission(item.permission);
-    if (item.anyOf) return hasAnyPermission(item.anyOf);
-    return true;
-  });
+  return items
+    .filter((item) => {
+      if (item.permission) return hasPermission(item.permission);
+      if (item.anyOf) return hasAnyPermission(item.anyOf);
+      return true;
+    })
+    .map((item) => {
+      const isActive =
+        pathname === item.href ||
+        pathname.startsWith(`${item.href}/`) ||
+        item.activePrefixes?.some(
+          (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+        );
+      const label =
+        item.href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
+          ? t("nav.myTasks")
+          : t(item.labelKey);
+      return { ...item, isActive, label };
+    });
+}
+
+function NavLink({
+  item,
+  variant,
+  onNavigate,
+}: {
+  item: ReturnType<typeof useVisibleNavItems>[number];
+  variant: "vertical" | "horizontal" | "dropdown";
+  onNavigate?: () => void;
+}) {
+  const Icon = item.icon;
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      title={variant === "horizontal" ? item.label : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg text-sm transition-colors",
+        variant === "horizontal" && "h-9 shrink-0 border px-2.5 2xl:px-3",
+        variant === "vertical" && "border-l-4 px-4 py-2.5",
+        variant === "dropdown" && "px-3 py-2.5",
+        item.isActive
+          ? "border-primary bg-primary-tint font-semibold text-primary"
+          : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
+      )}
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0" />
+      <span className={cn(variant === "horizontal" ? "whitespace-nowrap" : "break-words")}>
+        {item.label}
+      </span>
+    </Link>
+  );
+}
+
+function NavLinks({
+  items = navItems,
+  variant = "vertical",
+  onNavigate,
+}: {
+  items?: NavItem[];
+  variant?: "vertical" | "horizontal" | "dropdown";
+  onNavigate?: () => void;
+}) {
+  const visibleNavItems = useVisibleNavItems(items);
 
   return (
     <>
-      {visibleNavItems.map(({ href, labelKey, icon: Icon, activePrefixes }) => {
-        const isActive =
-          pathname === href ||
-          pathname.startsWith(`${href}/`) ||
-          activePrefixes?.some(
-            (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-          );
-        const label =
-          href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
-            ? t("nav.myTasks")
-            : t(labelKey);
-
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            title={collapsed ? label : undefined}
-            aria-label={collapsed ? label : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-lg border-l-4 text-sm transition-colors",
-              collapsed ? "h-11 justify-center px-0" : "px-4 py-2.5",
-              isActive
-                ? "border-primary bg-primary-tint font-semibold text-primary"
-                : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
-            )}
-          >
-            <Icon className="h-[18px] w-[18px] shrink-0" />
-            <span className={cn("break-words", collapsed && "hidden")}>{label}</span>
-          </Link>
-        );
-      })}
+      {visibleNavItems.map((item) => (
+        <NavLink key={item.href} item={item} variant={variant} onNavigate={onNavigate} />
+      ))}
     </>
   );
 }
 
-function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
-  const { locale, setLocale } = useLanguage();
+function NavDropdown({
+  label,
+  items,
+  className,
+}: {
+  label: string;
+  items: NavItem[];
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
+  const visibleItems = useVisibleNavItems(items);
+  const active = visibleItems.some((item) => item.isActive);
+  useCloseTransientOverlays(() => setOpen(false));
+
+  if (visibleItems.length === 0) return null;
 
   return (
-    <div className="relative mb-2">
+    <div className={cn("relative", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors",
+          active
+            ? "border-primary bg-primary-tint text-primary"
+            : "border-border-soft bg-white text-ink-muted hover:bg-surface hover:text-ink"
+        )}
+        aria-expanded={open}
+      >
+        <Menu className="h-4 w-4 shrink-0" />
+        <span>{label}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-30 cursor-default"
+            aria-label={`Close ${label} menu`}
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-lg border border-border-soft bg-white p-1.5 shadow-xl">
+            {visibleItems.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                variant="dropdown"
+                onNavigate={() => setOpen(false)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function LanguageSwitcher({
+  compact = false,
+  placement = "up",
+  className,
+}: {
+  compact?: boolean;
+  placement?: "up" | "down";
+  className?: string;
+}) {
+  const { locale, setLocale } = useLanguage();
+  const [open, setOpen] = useState(false);
+  useCloseTransientOverlays(() => setOpen(false));
+
+  return (
+    <div className={cn("relative", className)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -163,7 +279,8 @@ function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <ul
             className={cn(
-              "absolute bottom-full left-0 z-20 mb-1.5 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft",
+              "absolute left-0 z-20 overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft",
+              placement === "down" ? "top-full mt-1.5" : "bottom-full mb-1.5",
               compact ? "w-44" : "w-full"
             )}
           >
@@ -189,7 +306,13 @@ function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function UserIdentity({ compact = false }: { compact?: boolean }) {
+function UserIdentity({
+  compact = false,
+  className,
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
   const { currentUser, currentRole } = useCurrentUser();
   const name = currentUser?.full_name ?? "Unknown user";
   const role = currentRole?.name ?? "-";
@@ -198,7 +321,8 @@ function UserIdentity({ compact = false }: { compact?: boolean }) {
     <div
       className={cn(
         "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface",
-        compact ? "h-12 justify-center px-0" : "px-3 py-2.5"
+        compact ? "h-10 justify-center px-0" : "px-3 py-2.5",
+        className
       )}
       title={compact ? `${name} - ${role}` : undefined}
     >
@@ -217,48 +341,104 @@ function UserIdentity({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function Sidebar({
-  collapsed,
-  onToggleCollapsed,
-}: {
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
-}) {
-  return (
-    <aside
-      className={cn(
-        "hidden h-screen shrink-0 flex-col bg-white py-6 transition-[width,padding] duration-200 print:hidden lg:flex",
-        collapsed ? "w-[72px] px-3" : "w-[250px] px-4"
-      )}
-    >
-      <div className={cn("mb-8 flex items-center gap-2", collapsed ? "justify-center" : "justify-between")}>
-        <BrandMark compact={collapsed} />
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-soft text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          title={collapsed ? "Expand navigation" : "Collapse navigation"}
-        >
-          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
-      </div>
-      <div className="mb-4">
-        <GlobalSearchButton compact={collapsed} enableShortcut />
-      </div>
-      <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
-        <NavLinks collapsed={collapsed} />
-      </nav>
+function ProfileDropdown() {
+  const { currentUser, currentRole } = useCurrentUser();
+  const { locale, setLocale } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const name = currentUser?.full_name ?? "Unknown user";
+  const role = currentRole?.name ?? "-";
+  useCloseTransientOverlays(() => setOpen(false));
 
-      <LanguageSwitcher compact={collapsed} />
-      <UserIdentity compact={collapsed} />
-      <LogoutButton compact={collapsed} />
-    </aside>
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-soft bg-white text-sm font-semibold text-primary transition-colors hover:bg-surface"
+        aria-label="Open profile menu"
+        aria-expanded={open}
+        title={`${name} - ${role}`}
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-tint">
+          {name.charAt(0)}
+        </span>
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-30 cursor-default"
+            aria-label="Close profile menu"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-lg border border-border-soft bg-white shadow-xl">
+            <div className="border-b border-border-soft px-4 py-3">
+              <div className="truncate text-sm font-semibold text-ink">{name}</div>
+              <div className="truncate text-xs text-ink-muted">{role}</div>
+            </div>
+            <div className="border-b border-border-soft p-2">
+              <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase text-ink-faint">
+                Language
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {LOCALES.map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setLocale(l)}
+                    className={cn(
+                      "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                      l === locale
+                        ? "bg-primary-tint font-semibold text-primary"
+                        : "text-ink-muted hover:bg-surface hover:text-ink"
+                    )}
+                  >
+                    <span>{LOCALE_LABELS[l]}</span>
+                    {l === locale && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-2">
+              <LogoutButton className="border-transparent px-2.5 py-2 hover:bg-surface" />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function DesktopTopNav() {
+  return (
+    <header className="sticky top-0 z-50 hidden border-b border-border-soft bg-white print:hidden lg:block">
+      <div className="flex h-16 min-w-0 items-center gap-3 px-5">
+        <div className="shrink-0">
+          <BrandMark />
+        </div>
+
+        <nav className="hidden min-w-0 flex-1 items-center gap-1 min-[1400px]:flex">
+          <NavLinks items={primaryNavItems} variant="horizontal" />
+          <NavDropdown label="More" items={moreNavItems} />
+        </nav>
+        <nav className="flex min-w-0 flex-1 min-[1400px]:hidden">
+          <NavDropdown label="Menu" items={navItems} />
+        </nav>
+
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <div className="w-10 min-[1536px]:w-[180px] 2xl:w-[280px]">
+            <GlobalSearchButton enableShortcut />
+          </div>
+          <ProfileDropdown />
+        </div>
+      </div>
+    </header>
   );
 }
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  useCloseTransientOverlays(() => setOpen(false));
 
   return (
     <div className="sticky top-0 z-40 border-b border-border-soft bg-white px-4 py-3 print:hidden lg:hidden">
@@ -301,9 +481,9 @@ export function MobileNav() {
               <NavLinks onNavigate={() => setOpen(false)} />
             </nav>
             <div className="mt-4 border-t border-border-soft pt-4">
-              <LanguageSwitcher />
+              <LanguageSwitcher className="mb-2" />
               <UserIdentity />
-              <LogoutButton />
+              <LogoutButton className="mt-2" />
             </div>
           </aside>
         </div>

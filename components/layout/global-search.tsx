@@ -8,6 +8,7 @@ import {
   type GlobalSearchGroup,
   type GlobalSearchResult,
 } from "@/app/(shell)/global-search/actions";
+import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
 
 const GROUPS: GlobalSearchGroup[] = ["Customers", "Orders", "Job Cards", "Staff"];
@@ -80,6 +81,24 @@ export function GlobalSearchButton({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enableShortcut]);
+
+  useEffect(() => {
+    function onCloseTransientOverlays() {
+      setOpen(false);
+      setQuery("");
+      setResults({
+        Customers: [],
+        Orders: [],
+        "Job Cards": [],
+        Staff: [],
+      });
+      setActiveIndex(0);
+    }
+
+    window.addEventListener(CLOSE_TRANSIENT_OVERLAYS_EVENT, onCloseTransientOverlays);
+    return () =>
+      window.removeEventListener(CLOSE_TRANSIENT_OVERLAYS_EVENT, onCloseTransientOverlays);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -177,10 +196,10 @@ export function GlobalSearchButton({
       >
         <span className="flex items-center gap-2">
           <Search className="h-4 w-4 shrink-0" />
-          {!compact && <span>Search</span>}
+          {!compact && <span className="hidden min-[1536px]:inline">Search</span>}
         </span>
         {!compact && (
-          <span className="rounded-md border border-border-soft px-1.5 py-0.5 text-[11px] text-ink-faint">
+          <span className="hidden rounded-md border border-border-soft px-1.5 py-0.5 text-[11px] text-ink-faint 2xl:inline-flex">
             {shortcutLabel}
           </span>
         )}

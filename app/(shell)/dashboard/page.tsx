@@ -151,7 +151,10 @@ function DashboardContent() {
             className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
           >
             <Plus className="h-4 w-4" />
-            New Order
+            <span>New Order</span>
+            <span className="rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] font-semibold">
+              Alt N
+            </span>
           </Link>
         )}
       </div>

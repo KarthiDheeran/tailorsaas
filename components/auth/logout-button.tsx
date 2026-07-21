@@ -8,7 +8,13 @@ import { cn } from "@/lib/utils";
 
 // Ends the real Supabase session. Deliberately standalone: reads nothing
 // from CurrentUserProvider, just calls supabase.auth.signOut() and redirects.
-export function LogoutButton({ compact = false }: { compact?: boolean }) {
+export function LogoutButton({
+  compact = false,
+  className,
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -26,8 +32,9 @@ export function LogoutButton({ compact = false }: { compact?: boolean }) {
       onClick={handleLogout}
       disabled={loading}
       className={cn(
-        "mt-2 flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-60",
-        compact ? "h-10 justify-center px-0" : "px-3 py-2.5"
+        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-60",
+        compact ? "h-10 justify-center px-0" : "px-3 py-2.5",
+        className
       )}
       title={compact ? (loading ? "Signing out..." : "Log out") : undefined}
       aria-label={compact ? (loading ? "Signing out" : "Log out") : undefined}

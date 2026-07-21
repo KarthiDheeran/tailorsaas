@@ -26,10 +26,10 @@ export const viewport: Viewport = {
   themeColor: "#2563eb",
 };
 
-// The persistent sidebar/nav (AppShell) is applied by app/(shell)/layout.tsx,
+// The persistent app navigation (AppShell) is applied by app/(shell)/layout.tsx,
 // not here — print routes (app/orders/[id]/print/**) live outside that route
 // group specifically so they render with no app chrome at all, not just a
-// print:hidden sidebar. Every other route lives under (shell) and is
+// print:hidden shell. Every other route lives under (shell) and is
 // unaffected (route groups don't change URLs).
 export default function RootLayout({
   children,

@@ -1,6 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
@@ -110,6 +116,8 @@ function buildOrderConfirmationMessage(order: Order): string {
 function NewOrderPageContent() {
   const router = useRouter();
   const customerSearchRef = useRef<HTMLDivElement>(null);
+  const customerSearchInputRef = useRef<HTMLInputElement>(null);
+  const customerResultButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -184,6 +192,7 @@ function NewOrderPageContent() {
   }, []);
 
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
+  const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
   const [duplicateCustomer, setDuplicateCustomer] = useState<Customer | null>(null);
   const [phoneDuplicateCustomer, setPhoneDuplicateCustomer] = useState<Customer | null>(null);
   const [phoneDuplicateChecking, setPhoneDuplicateChecking] = useState(false);
@@ -198,6 +207,13 @@ function NewOrderPageContent() {
   const [customerGarmentMeasurements, setCustomerGarmentMeasurements] = useState<
     GarmentMeasurement[]
   >([]);
+
+  useEffect(() => {
+    if (prefillCustomerId) return;
+    window.setTimeout(() => {
+      customerSearchInputRef.current?.focus({ preventScroll: true });
+    }, 0);
+  }, [prefillCustomerId]);
 
   // isDirty's baseline — starts blank, updated once if a prefill customer
   // loads, so "dirty" only reflects changes made *after* the form settled
@@ -237,6 +253,7 @@ function NewOrderPageContent() {
   useEffect(() => {
     if (customerMode !== "search" || !customerSearchQuery.trim()) {
       setCustomerSearchResults([]);
+      setActiveCustomerResultIndex(0);
       setCustomerResultsOpen(false);
       setCustomerSearchLoading(false);
       setCustomerSearchCompleted(false);
@@ -248,6 +265,7 @@ function NewOrderPageContent() {
     searchCustomersAction(customerSearchQuery).then((results) => {
       if (cancelled) return;
       setCustomerSearchResults(results.slice(0, 8));
+      setActiveCustomerResultIndex(0);
       setCustomerSearchLoading(false);
       setCustomerSearchCompleted(true);
       setCustomerResultsOpen(
@@ -259,6 +277,13 @@ function NewOrderPageContent() {
       setCustomerSearchLoading(false);
     };
   }, [customerMode, customerSearchQuery]);
+
+  useEffect(() => {
+    if (!customerResultsOpen) return;
+    customerResultButtonRefs.current[activeCustomerResultIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [activeCustomerResultIndex, customerResultsOpen]);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -450,6 +475,73 @@ function NewOrderPageContent() {
 
   function handleSelectCustomer(c: Customer) {
     applyCustomer(c);
+  }
+
+  function focusCustomerResult(index: number) {
+    setActiveCustomerResultIndex(index);
+    window.setTimeout(() => {
+      customerResultButtonRefs.current[index]?.focus();
+    }, 0);
+  }
+
+  function handleCustomerSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      if (customerResultsOpen) {
+        event.preventDefault();
+        setCustomerResultsOpen(false);
+      }
+      return;
+    }
+
+    if (customerSearchResults.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setCustomerResultsOpen(true);
+      focusCustomerResult(activeCustomerResultIndex);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setCustomerResultsOpen(true);
+      focusCustomerResult(customerSearchResults.length - 1);
+      return;
+    }
+
+    if (event.key === "Enter" && customerResultsOpen) {
+      const activeCustomer = customerSearchResults[activeCustomerResultIndex];
+      if (!activeCustomer) return;
+      event.preventDefault();
+      handleSelectCustomer(activeCustomer);
+    }
+  }
+
+  function handleCustomerResultKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setCustomerResultsOpen(false);
+      customerSearchInputRef.current?.focus();
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusCustomerResult((index + 1) % customerSearchResults.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (index === 0) {
+        customerSearchInputRef.current?.focus();
+        return;
+      }
+      focusCustomerResult(index - 1);
+    }
   }
 
   function handleChangeCustomer() {
@@ -837,14 +929,26 @@ function NewOrderPageContent() {
                   <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">Customer</span>
                   <input
+                    ref={customerSearchInputRef}
                     value={customerSearchQuery}
                     onChange={(e) => {
                       setCustomerSearchQuery(e.target.value);
+                      setActiveCustomerResultIndex(0);
                       setCustomerResultsOpen(true);
                     }}
                     onFocus={() => {
                       if (customerSearchResults.length > 0) setCustomerResultsOpen(true);
                     }}
+                    onKeyDown={handleCustomerSearchKeyDown}
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={customerResultsOpen}
+                    aria-controls="customer-search-results"
+                    aria-activedescendant={
+                      customerResultsOpen && customerSearchResults[activeCustomerResultIndex]
+                        ? `customer-search-result-${customerSearchResults[activeCustomerResultIndex].id}`
+                        : undefined
+                    }
                     placeholder="Search by phone number or customer name"
                     className={cn(
                       inputClass,
@@ -872,15 +976,31 @@ function NewOrderPageContent() {
                       <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
                         No customers found.
                       </div>
-                    )}
+                  )}
                   {customerResultsOpen && customerSearchResults.length > 0 && (
-                    <ul className="-mt-px max-h-56 overflow-y-auto rounded-b-lg border border-border border-t-0 bg-primary-tint/15 shadow-soft">
-                      {customerSearchResults.map((c) => (
+                    <ul
+                      id="customer-search-results"
+                      role="listbox"
+                      className="-mt-px max-h-56 overflow-y-auto rounded-b-lg border border-border border-t-0 bg-primary-tint/15 shadow-soft"
+                    >
+                      {customerSearchResults.map((c, index) => (
                         <li key={c.id} className="border-b border-border-soft last:border-b-0">
                           <button
+                            id={`customer-search-result-${c.id}`}
+                            ref={(node) => {
+                              customerResultButtonRefs.current[index] = node;
+                            }}
+                            role="option"
+                            aria-selected={index === activeCustomerResultIndex}
                             type="button"
                             onClick={() => handleSelectCustomer(c)}
-                            className="block w-full cursor-pointer px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-white/70 focus:bg-white"
+                            onFocus={() => setActiveCustomerResultIndex(index)}
+                            onKeyDown={(event) => handleCustomerResultKeyDown(event, index)}
+                            onMouseEnter={() => setActiveCustomerResultIndex(index)}
+                            className={cn(
+                              "block w-full cursor-pointer px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-white/70 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-primary",
+                              index === activeCustomerResultIndex && "bg-white ring-2 ring-inset ring-primary"
+                            )}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
@@ -1083,6 +1203,21 @@ function NewOrderPageContent() {
               </div>
             </div>
 
+            {submitAttempted && errors.items && (
+              <p className="text-xs font-medium text-chip-red-fg">
+                {errors.items}
+              </p>
+            )}
+            <NewOrderItemsCard
+              customerId={matchedCustomer?.id ?? null}
+              items={items}
+              onItemsChange={setItems}
+              garmentTypes={garmentTypes}
+              addOns={addOns}
+              previousOrders={customerDetail?.orders ?? []}
+              autoSnapshotDefaultMeasurements
+            />
+
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
               <h3 className="mb-4 text-[17px] font-semibold text-ink">
                 {t("orders.orderDates")}
@@ -1155,21 +1290,6 @@ function NewOrderPageContent() {
                 </label>
               </div>
             </div>
-
-            {submitAttempted && errors.items && (
-              <p className="text-xs font-medium text-chip-red-fg">
-                {errors.items}
-              </p>
-            )}
-            <NewOrderItemsCard
-              customerId={matchedCustomer?.id ?? null}
-              items={items}
-              onItemsChange={setItems}
-              garmentTypes={garmentTypes}
-              addOns={addOns}
-              previousOrders={customerDetail?.orders ?? []}
-              autoSnapshotDefaultMeasurements
-            />
 
             <OrderAttachmentDraftCard
               itemOptions={attachmentItemOptions}
