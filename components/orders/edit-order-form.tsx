@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import type { Customer, Order, OrderAttachment, OrderStatus } from "@/lib/types";
@@ -184,7 +184,7 @@ export function EditOrderForm({
   const attachmentItemOptions: AttachmentItemOption[] = [];
   const originalAttachmentItemOptions: AttachmentItemOption[] = order.items.map((item) => ({
     key: item.id ? `item-${item.id}` : `saved-${item.serialNo}`,
-    label: `Item ${item.serialNo} — ${item.particular}`,
+    label: `Item ${item.serialNo} - ${item.particular}`,
     orderItemId: item.id,
     serialNo: item.serialNo,
   }));
@@ -195,7 +195,7 @@ export function EditOrderForm({
     const label = computed.particular || `Item ${index + 1}`;
     attachmentItemOptions.push({
       key: item.draftKey,
-      label: `Item ${index + 1} — ${label}`,
+      label: `Item ${index + 1} - ${label}`,
       orderItemId: item.orderItemId,
       serialNo: valid ? predictedSerialNo : undefined,
     });
@@ -515,6 +515,7 @@ export function EditOrderForm({
             garmentTypes={garmentTypes}
             addOns={addOns}
             autoSnapshotDefaultMeasurements
+            excludeOrderId={order.id}
           />
           {submitAttempted && itemsError && (
             <p className="-mt-3 text-sm font-medium text-chip-red-fg">{itemsError}</p>

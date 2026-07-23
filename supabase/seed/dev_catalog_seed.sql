@@ -42,50 +42,50 @@ begin
   -- Unlinked to any garment yet, same as the original seed's intent.
   insert into catalog_addons (name, default_price) values ('Urgent Delivery', 250);
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Pant', 400,
+    'Pant', 7, 400,
     array['waist', 'hip', 'seat', 'pantLength', 'inseam', 'thigh', 'knee', 'calf', 'bottom', 'rise'],
     array[v_addon_inner_pocket, v_addon_extra_pocket, v_addon_elastic_waist]
   );
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Shirt', 800,
+    'Shirt', 10, 800,
     array['chest', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'shirtLength', 'neck', 'collar', 'waist', 'armhole', 'cuff'],
     array[v_addon_inner_pocket, v_addon_extra_pocket, v_addon_premium_buttons]
   );
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Blouse', 750,
+    'Blouse', 2, 750,
     array['bust', 'waist', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'blouseLength', 'neckWidth', 'neckDepthFront', 'neckDepthBack', 'armhole', 'dartPoint', 'princessCut'],
     array[v_addon_boat_neck, v_addon_deep_neck, v_addon_padded, v_addon_lining]
   );
 
   -- Kurta/Suit/Alteration base price + fields are assumptions (no spec beyond
   -- "seed these garment types"), same as the original mock seed's own note.
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Kurta', 700,
+    'Kurta', 5, 700,
     array['chest', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'kurtaLength', 'waist', 'hip', 'neck', 'armhole', 'slitLength'],
     array[]::uuid[]
   );
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Suit', 2500,
+    'Suit', 11, 2500,
     array['chest', 'waist', 'hip', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'coatLength', 'neck', 'armhole', 'pantLength', 'inseam', 'thigh', 'bottom'],
     array[]::uuid[]
   );
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
   values (
-    'Dress', 0,
+    'Dress', 3, 0,
     array['bust', 'waist', 'hip', 'shoulder', 'crossFront', 'crossBack', 'sleeveLength', 'sleeveRound', 'armhole', 'neck', 'neckDepthFront', 'neckDepthBack', 'dressLength', 'flare'],
     array[]::uuid[]
   );
 
-  insert into catalog_garment_types (name, base_price, measurement_field_ids, addon_ids)
-  values ('Alteration', 0, array[]::text[], array[]::uuid[]);
+  insert into catalog_garment_types (name, shortcut_code, base_price, measurement_field_ids, addon_ids)
+  values ('Alteration', 1, 0, array[]::text[], array[]::uuid[]);
 end $$;

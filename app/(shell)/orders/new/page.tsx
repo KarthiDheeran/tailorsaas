@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   Suspense,
@@ -169,9 +169,10 @@ function NewOrderPageContent() {
   const [repeatCopyMessage, setRepeatCopyMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [leavingToOrders, setLeavingToOrders] = useState(false);
+  const [garmentFocusRequest, setGarmentFocusRequest] = useState(0);
 
   // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
-  // once here and threaded down to NewOrderItemsCard as props — every
+  // once here and threaded down to NewOrderItemsCard as props - every
   // per-row/per-render lookup inside that component and the pure helpers
   // below stays a synchronous array find(), not its own Supabase call.
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
@@ -215,7 +216,7 @@ function NewOrderPageContent() {
     }, 0);
   }, [prefillCustomerId]);
 
-  // isDirty's baseline — starts blank, updated once if a prefill customer
+  // isDirty's baseline - starts blank, updated once if a prefill customer
   // loads, so "dirty" only reflects changes made *after* the form settled
   // into its starting state (prefilled or not).
   function applyCustomer(c: Customer) {
@@ -233,7 +234,7 @@ function NewOrderPageContent() {
   }
 
   // Prefill from ?customerId= (the "New Order" link from an already-selected
-  // customer) — fetched via Server Action now, so the form starts blank and
+  // customer) - fetched via Server Action now, so the form starts blank and
   // populates a moment after mount instead of on first paint.
   useEffect(() => {
     if (!prefillCustomerId) return;
@@ -248,7 +249,7 @@ function NewOrderPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillCustomerId]);
 
-  // Phone-suggestions autosuggest — only searches once a customer isn't
+  // Phone-suggestions autosuggest - only searches once a customer isn't
   // already matched, same trigger condition as before.
   useEffect(() => {
     if (customerMode !== "search" || !customerSearchQuery.trim()) {
@@ -342,7 +343,7 @@ function NewOrderPageContent() {
     };
   }, [customerMode, newCustomer.name]);
 
-  // Previous Orders / saved-measurements summary panel data — re-fetched
+  // Previous Orders / saved-measurements summary panel data - re-fetched
   // whenever the matched customer changes.
   useEffect(() => {
     if (!matchedCustomer) {
@@ -400,7 +401,7 @@ function NewOrderPageContent() {
       "Unselected item";
     attachmentItemOptions.push({
       key: item.draftKey,
-      label: `Item ${index + 1} — ${garmentName}`,
+      label: `Item ${index + 1} - ${garmentName}`,
       serialNo: valid ? predictedSerialNo : undefined,
     });
     if (valid) predictedSerialNo += 1;
@@ -475,6 +476,7 @@ function NewOrderPageContent() {
 
   function handleSelectCustomer(c: Customer) {
     applyCustomer(c);
+    setGarmentFocusRequest((current) => current + 1);
   }
 
   function focusCustomerResult(index: number) {
@@ -795,7 +797,7 @@ function NewOrderPageContent() {
     setSaving(false);
 
     // Show the success state with print options rather than redirecting
-    // immediately — the shopkeeper's very next step is usually printing the
+    // immediately - the shopkeeper's very next step is usually printing the
     // receipt/job card, so don't force them back to the list first.
     setSavedOrder(created.data);
   }
@@ -835,7 +837,7 @@ function NewOrderPageContent() {
   // Payment Status reuses the exact same computation as the rest of the app
   // instead of a second copy of the rules. An empty deliveryDate sorts as
   // "before" any real date string, which would make BalanceBadge report
-  // "overdue" before the shopkeeper has even picked a delivery date — so an
+  // "overdue" before the shopkeeper has even picked a delivery date - so an
   // unset date is treated as far in the future here instead.
   const draftOrderForBadge: Order = {
     id: "draft",
@@ -909,7 +911,7 @@ function NewOrderPageContent() {
                           {matchedCustomer.name}
                         </div>
                         <div className="mt-0.5 text-sm text-ink-muted">
-                          {matchedCustomer.phone} · {matchedCustomer.area || "-"}
+                          {matchedCustomer.phone} Â· {matchedCustomer.area || "-"}
                         </div>
                       </div>
                       <button
@@ -1008,7 +1010,7 @@ function NewOrderPageContent() {
                                   {c.name}
                                 </div>
                                 <div className="text-ink-muted">
-                                  {c.phone} · {c.area || "-"}
+                                  {c.phone} Â· {c.area || "-"}
                                 </div>
                               </div>
                               <span className="shrink-0 text-xs font-semibold text-primary">
@@ -1146,7 +1148,7 @@ function NewOrderPageContent() {
                             {phoneDuplicateCustomer.name}
                           </div>
                           <div className="text-ink-muted">
-                            {phoneDuplicateCustomer.phone} · {phoneDuplicateCustomer.area || "-"}
+                            {phoneDuplicateCustomer.phone} Â· {phoneDuplicateCustomer.area || "-"}
                           </div>
                         </div>
                         <button
@@ -1175,7 +1177,7 @@ function NewOrderPageContent() {
                                 {customer.name}
                               </div>
                               <div className="text-ink-muted">
-                                {customer.phone} · {customer.area || "-"}
+                                {customer.phone} Â· {customer.area || "-"}
                               </div>
                             </div>
                             <button
@@ -1216,6 +1218,7 @@ function NewOrderPageContent() {
               addOns={addOns}
               previousOrders={customerDetail?.orders ?? []}
               autoSnapshotDefaultMeasurements
+              focusFirstGarmentRequest={garmentFocusRequest}
             />
 
             <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
@@ -1450,7 +1453,7 @@ function NewOrderPageContent() {
               disabled={saving}
               className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {saving ? "Saving…" : t("orders.saveOrder")}
+              {saving ? "Savingâ€¦" : t("orders.saveOrder")}
             </button>
           </div>
         </div>
@@ -1458,7 +1461,7 @@ function NewOrderPageContent() {
 
       {savedOrder && (
         <>
-          {/* z-[80]/[90], above the Measurements modal's z-[60]/[70] — the
+          {/* z-[80]/[90], above the Measurements modal's z-[60]/[70] - the
               success modal must always win if that modal's overlay hasn't
               fully unmounted yet. */}
           <div className="fixed inset-0 z-[80] bg-black/40" />

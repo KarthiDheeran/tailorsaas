@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { initialShortcutCodeForGarmentName } from "@/lib/catalog";
 import type {
   AddOnInput,
   CatalogAddOn,
@@ -124,26 +125,48 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
+  "id, name, shortcut_code, base_price, measurement_field_ids, addon_ids, is_active";
+const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
 interface GarmentRow {
   id: string;
   name: string;
+  shortcut_code: number | null;
   base_price: number;
   measurement_field_ids: string[];
   addon_ids: string[];
   is_active: boolean;
 }
 
+type LegacyGarmentRow = Omit<GarmentRow, "shortcut_code">;
+
+function isMissingShortcutCodeColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "42703"
+  );
+}
+
 function mapGarment(row: GarmentRow): CatalogGarmentType {
   return {
     id: row.id,
     name: row.name,
+    shortcutCode: row.shortcut_code ?? initialShortcutCodeForGarmentName(row.name),
     basePrice: row.base_price,
     measurementFieldIds: row.measurement_field_ids ?? [],
     addOnIds: row.addon_ids ?? [],
     isActive: row.is_active,
   };
+}
+
+function mapLegacyGarment(row: LegacyGarmentRow): CatalogGarmentType {
+  return mapGarment({
+    ...row,
+    shortcut_code: initialShortcutCodeForGarmentName(row.name),
+  });
 }
 
 export async function getAllGarmentTypes(
@@ -153,7 +176,15 @@ export async function getAllGarmentTypes(
     .from("catalog_garment_types")
     .select(GARMENT_COLUMNS)
     .order("name");
-  if (error) throw error;
+  if (error) {
+    if (!isMissingShortcutCodeColumn(error)) throw error;
+    const { data: legacyData, error: legacyError } = await supabase
+      .from("catalog_garment_types")
+      .select(LEGACY_GARMENT_COLUMNS)
+      .order("name");
+    if (legacyError) throw legacyError;
+    return ((legacyData as LegacyGarmentRow[]) ?? []).map(mapLegacyGarment);
+  }
   return ((data as GarmentRow[]) ?? []).map(mapGarment);
 }
 
@@ -165,7 +196,16 @@ export async function getActiveGarmentTypes(
     .select(GARMENT_COLUMNS)
     .eq("is_active", true)
     .order("name");
-  if (error) throw error;
+  if (error) {
+    if (!isMissingShortcutCodeColumn(error)) throw error;
+    const { data: legacyData, error: legacyError } = await supabase
+      .from("catalog_garment_types")
+      .select(LEGACY_GARMENT_COLUMNS)
+      .eq("is_active", true)
+      .order("name");
+    if (legacyError) throw legacyError;
+    return ((legacyData as LegacyGarmentRow[]) ?? []).map(mapLegacyGarment);
+  }
   return ((data as GarmentRow[]) ?? []).map(mapGarment);
 }
 
@@ -178,7 +218,16 @@ export async function getGarmentById(
     .select(GARMENT_COLUMNS)
     .eq("id", id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    if (!isMissingShortcutCodeColumn(error)) throw error;
+    const { data: legacyData, error: legacyError } = await supabase
+      .from("catalog_garment_types")
+      .select(LEGACY_GARMENT_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    return legacyData ? mapLegacyGarment(legacyData as LegacyGarmentRow) : undefined;
+  }
   return data ? mapGarment(data as GarmentRow) : undefined;
 }
 
@@ -190,6 +239,7 @@ export async function createGarmentType(
     .from("catalog_garment_types")
     .insert({
       name: data.name,
+      shortcut_code: data.shortcutCode,
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
@@ -210,6 +260,7 @@ export async function updateGarmentType(
     .from("catalog_garment_types")
     .update({
       name: data.name,
+      shortcut_code: data.shortcutCode,
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
@@ -234,6 +285,16 @@ export async function setGarmentTypeActive(
     .eq("id", id)
     .select(GARMENT_COLUMNS)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    if (!isMissingShortcutCodeColumn(error)) throw error;
+    const { data: legacyRow, error: legacyError } = await supabase
+      .from("catalog_garment_types")
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select(LEGACY_GARMENT_COLUMNS)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    return legacyRow ? mapLegacyGarment(legacyRow as LegacyGarmentRow) : undefined;
+  }
   return row ? mapGarment(row as GarmentRow) : undefined;
 }

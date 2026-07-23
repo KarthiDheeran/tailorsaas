@@ -1,8 +1,12 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Plus, Ruler, Tag, Trash2 } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
+import {
+  getRecentMeasurementSnapshotsForCustomerGarmentAction,
+  type HistoricalMeasurementSnapshot,
+} from "@/app/(shell)/orders/actions";
 import {
   getAddOnsForGarment,
   calculateGarmentAmount,
@@ -18,24 +22,14 @@ import type {
   OrderItemFabricSource,
 } from "@/lib/types";
 import {
-  GarmentMeasurementModal,
   MEASUREMENT_NOTES_KEY,
   countFilledFields,
   measurementNotesFromValues,
   measurementValuesOnly,
   type GarmentMeasurementDraft,
 } from "@/components/orders/garment-measurement-modal";
-import { Select } from "@/components/ui/select";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
-
-const FABRIC_SOURCES: OrderItemFabricSource[] = [
-  "Not specified",
-  "Customer provided",
-  "Shop provided",
-];
-
-const ALTERATION_CHARGE_TYPES: AlterationChargeType[] = ["Paid", "Free"];
 
 function garmentMeasurementFields(
   garment: CatalogGarmentType | undefined
@@ -48,7 +42,7 @@ function garmentMeasurementFields(
 }
 
 // Phase 6B: Catalog data is now fetched once, at the page level
-// (app/(shell)/orders/new/page.tsx), and threaded down as plain arrays —
+// (app/(shell)/orders/new/page.tsx), and threaded down as plain arrays -
 // every lookup below is a pure, synchronous find() over that already-
 // fetched data rather than its own Supabase call, so per-row/per-render
 // computations stay exactly as fast as they were against the old mock
@@ -69,7 +63,7 @@ export interface DraftItem {
   qty: number;
   rate: number;
   // Once the shopkeeper edits Rate directly, garment changes stop
-  // auto-filling it — manual override always wins for that row.
+  // auto-filling it - manual override always wins for that row.
   rateOverridden: boolean;
   addOnIds: string[];
   fabricSource: OrderItemFabricSource;
@@ -107,7 +101,7 @@ export function blankDraftItem(): DraftItem {
 
 // Reverse-maps a previously saved order item back into a draft row, for the
 // Repeat Order action. Garment is matched by name against the *active*
-// catalog list (an inactive/renamed garment simply comes back unselected —
+// catalog list (an inactive/renamed garment simply comes back unselected -
 // qty/rate still carry over so the shopkeeper only needs to re-pick it).
 // Rate is always treated as an override so the customer's previously agreed
 // price is preserved even if the catalog's base price has since changed.
@@ -158,12 +152,6 @@ export function orderItemToDraftItem(
   };
 }
 
-function isAlterationGarment(
-  garment: CatalogGarmentType | undefined
-): boolean {
-  return (garment?.name ?? "").toLowerCase().includes("alteration");
-}
-
 function selectedAddOns(
   it: DraftItem,
   garmentTypes: CatalogGarmentType[],
@@ -176,7 +164,632 @@ function selectedAddOns(
   );
 }
 
-// Item Amount = Qty × (Rate + selected add-ons total) — Rate here is the
+function formatGarmentCodeName(garment: CatalogGarmentType): string {
+  return `${garmentCodeLabel(garment)} - ${garment.name}`;
+}
+
+function formatOrderDate(date: string): string {
+  if (!date) return "";
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+type ItemModalMode = "add" | "edit";
+
+function configuredDraftItems(items: DraftItem[]): Array<{ item: DraftItem; index: number }> {
+  return items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.garmentTypeId);
+}
+
+function newDraftForGarment(garment: CatalogGarmentType): DraftItem {
+  return {
+    ...blankDraftItem(),
+    garmentTypeId: garment.id,
+    rate: garment.basePrice,
+  };
+}
+
+function ConfigureItemModal({
+  mode,
+  draft,
+  garment,
+  addOns,
+  customerId,
+  excludeOrderId,
+  autoSnapshotDefaultMeasurements,
+  onCancel,
+  onSave,
+}: {
+  mode: ItemModalMode;
+  draft: DraftItem;
+  garment: CatalogGarmentType;
+  addOns: CatalogAddOn[];
+  customerId: string | null;
+  excludeOrderId?: string;
+  autoSnapshotDefaultMeasurements: boolean;
+  onCancel: () => void;
+  onSave: (draft: DraftItem) => void;
+}) {
+  const firstMeasurementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const fields = garmentMeasurementFields(garment);
+  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(draft.addOnIds);
+  const [measurement, setMeasurement] = useState<GarmentMeasurementDraft>(
+    draft.measurement ?? {
+      garmentType: garment.name,
+      values: {},
+      fitNotes: "",
+      notes: "",
+      updateCustomerMeasurements: false,
+      hasCustomerDefaultMeasurements: false,
+    }
+  );
+  const [history, setHistory] = useState<HistoricalMeasurementSnapshot[]>([]);
+  const [defaultSeed, setDefaultSeed] = useState<{
+    values: Record<string, string>;
+    fitNotes: string;
+    notes: string;
+  } | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const addOnOptions = getAddOnsForGarment(garment, addOns).filter(
+    (addOn) => addOn.isActive
+  );
+  const defaultHasMeasurements =
+    defaultSeed !== null &&
+    (Object.values(defaultSeed.values).some((value) => value.trim() !== "") ||
+      defaultSeed.notes.trim() !== "");
+  const selectedAddOnsForModal = addOnOptions.filter((addOn) =>
+    selectedAddOnIds.includes(addOn.id)
+  );
+
+  useEffect(() => {
+    firstMeasurementRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!customerId) {
+      setHistory([]);
+      setDefaultSeed(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingHistory(true);
+    Promise.all([
+      getGarmentMeasurementDraftSeedAction(customerId, garment.name),
+      getRecentMeasurementSnapshotsForCustomerGarmentAction(
+        customerId,
+        garment.id,
+        excludeOrderId
+      ),
+    ]).then(([seed, snapshots]) => {
+      if (cancelled) return;
+      setDefaultSeed(seed);
+      setHistory(snapshots);
+      setLoadingHistory(false);
+      if (!draft.measurement && autoSnapshotDefaultMeasurements) {
+        const seededDraft: GarmentMeasurementDraft = {
+          garmentType: garment.name,
+          values: seed.values,
+          fitNotes: seed.fitNotes,
+          notes: seed.notes,
+          updateCustomerMeasurements: false,
+          hasCustomerDefaultMeasurements:
+            Object.values(seed.values).some((value) => value.trim() !== "") ||
+            seed.notes.trim() !== "",
+        };
+        setMeasurement(seededDraft);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoSnapshotDefaultMeasurements,
+    customerId,
+    draft.measurement,
+    excludeOrderId,
+    garment.id,
+    garment.name,
+  ]);
+
+  function toggleAddOn(id: string) {
+    setSelectedAddOnIds((current) =>
+      current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]
+    );
+  }
+
+  function loadMeasurementValues(values: Record<string, string>, notes?: string) {
+    setMeasurement((current) => ({
+      ...current,
+      values: measurementValuesOnly(values),
+      notes: measurementNotesFromValues(values) || notes || "",
+    }));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (
+      measurement.updateCustomerMeasurements &&
+      measurement.hasCustomerDefaultMeasurements &&
+      !window.confirm(
+        `This will replace the customer's saved ${garment.name} measurements after the order is saved. Continue?`
+      )
+    ) {
+      return;
+    }
+
+    const hasMeasurementContent = countFilledFields(measurement) > 0;
+    onSave({
+      ...draft,
+      garmentTypeId: garment.id,
+      addOnIds: selectedAddOnIds,
+      measurement: hasMeasurementContent || measurement.updateCustomerMeasurements
+        ? measurement
+        : null,
+    });
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusable || focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/30" onClick={onCancel} />
+      <div
+        className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+        onKeyDown={handleKeyDown}
+      >
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="configure-item-title"
+          className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft"
+        >
+          <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
+            <div>
+              <p className="text-[13px] font-medium text-ink-muted">
+                {formatGarmentCodeName(garment)}
+              </p>
+              <h3 id="configure-item-title" className="text-[18px] font-semibold text-ink">
+                Configure {garment.name}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+              <section>
+                <h4 className="mb-3 text-[15px] font-semibold text-ink">Previous measurements</h4>
+                <div className="space-y-2 rounded-lg border border-border-soft bg-surface p-3">
+                  {defaultSeed && defaultHasMeasurements && (
+                      <button
+                        type="button"
+                        onClick={() => loadMeasurementValues(defaultSeed.values, defaultSeed.notes)}
+                        className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left text-sm font-medium text-ink transition-colors hover:bg-primary-tint"
+                      >
+                        <span>Customer default measurements</span>
+                        <span className="text-xs text-ink-muted">
+                          {Object.values(defaultSeed.values).filter((value) => value.trim()).length} fields
+                        </span>
+                      </button>
+                    )}
+                  {loadingHistory ? (
+                    <p className="text-sm text-ink-muted">Loading previous measurements...</p>
+                  ) : history.length === 0 && !defaultHasMeasurements ? (
+                    <p className="text-sm text-ink-muted">
+                      No previous measurements found for this customer and garment.
+                    </p>
+                  ) : (
+                    history.map((snapshot) => (
+                      <button
+                        key={`${snapshot.orderId}-${snapshot.serialNo}`}
+                        type="button"
+                        onClick={() => loadMeasurementValues(snapshot.measurements)}
+                        className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left text-sm font-medium text-ink transition-colors hover:bg-primary-tint"
+                      >
+                        <span>
+                          {snapshot.orderNumber} - {formatOrderDate(snapshot.orderDate)}
+                        </span>
+                        <span className="text-xs text-ink-muted">
+                          {Object.values(measurementValuesOnly(snapshot.measurements)).filter((value) => value.trim()).length} fields
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h4 className="mb-3 text-[15px] font-semibold text-ink">Measurements</h4>
+                {fields.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {fields.map(({ key, label }, index) => (
+                      <label key={key} className="flex flex-col gap-1.5">
+                        <span className="text-[13px] font-medium text-ink-muted">{label}</span>
+                        <input
+                          ref={(node) => {
+                            if (index === 0) firstMeasurementRef.current = node;
+                          }}
+                          type="text"
+                          inputMode="decimal"
+                          value={measurement.values[key] ?? ""}
+                          onChange={(event) =>
+                            setMeasurement((current) => ({
+                              ...current,
+                              values: { ...current.values, [key]: event.target.value },
+                            }))
+                          }
+                          className={inputClass}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+                    No standard measurement fields for this garment.
+                  </p>
+                )}
+                <label className="mt-3 flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">Measurement Notes</span>
+                  <textarea
+                    ref={(node) => {
+                      if (fields.length === 0) firstMeasurementRef.current = node;
+                    }}
+                    value={measurement.notes}
+                    onChange={(event) =>
+                      setMeasurement((current) => ({ ...current, notes: event.target.value }))
+                    }
+                    rows={3}
+                    className="rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
+                <label className="mt-3 flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={measurement.updateCustomerMeasurements ?? false}
+                    onChange={(event) =>
+                      setMeasurement((current) => ({
+                        ...current,
+                        updateCustomerMeasurements: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
+                  />
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Save as customer&apos;s default {garment.name} measurements
+                  </span>
+                </label>
+              </section>
+
+              <section>
+                <h4 className="mb-3 text-[15px] font-semibold text-ink">Add-ons</h4>
+                {addOnOptions.length === 0 ? (
+                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+                    No add-ons configured for this garment.
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {addOnOptions.map((addOn) => (
+                      <label
+                        key={addOn.id}
+                        className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-soft bg-white px-3 py-2 text-sm transition-colors hover:bg-surface"
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedAddOnIds.includes(addOn.id)}
+                            onChange={() => toggleAddOn(addOn.id)}
+                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
+                          />
+                          <span className="font-medium text-ink">{addOn.name}</span>
+                        </span>
+                        <span className="text-ink-muted">+{formatCurrency(addOn.defaultPrice)}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-sm text-ink-muted">
+                  {selectedAddOnsForModal.length > 0
+                    ? `Selected add-ons: ${selectedAddOnsForModal.map((addOn) => addOn.name).join(", ")}`
+                    : "No add-ons selected"}
+                </p>
+              </section>
+
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-border-soft bg-white px-5 py-4">
+              <button
+                type="submit"
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                {mode === "add" ? "Save Item Details" : "Update Item Details"}
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function NewOrderItemsCard({
+  customerId,
+  items,
+  onItemsChange,
+  garmentTypes,
+  addOns,
+  autoSnapshotDefaultMeasurements = false,
+  focusFirstGarmentRequest = 0,
+  excludeOrderId,
+}: {
+  customerId: string | null;
+  items: DraftItem[];
+  onItemsChange: (items: DraftItem[]) => void;
+  garmentTypes: CatalogGarmentType[];
+  addOns: CatalogAddOn[];
+  previousOrders?: Order[];
+  autoSnapshotDefaultMeasurements?: boolean;
+  focusFirstGarmentRequest?: number;
+  excludeOrderId?: string;
+}) {
+  const selectorRef = useRef<HTMLInputElement | null>(null);
+  const editButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const qtyInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const rateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const activeGarments = useMemo(
+    () => sortGarmentsForKeyboard(garmentTypes),
+    [garmentTypes]
+  );
+  const rows = configuredDraftItems(items);
+  const [modal, setModal] = useState<null | {
+    mode: ItemModalMode;
+    index?: number;
+    draft: DraftItem;
+    returnKey?: string;
+  }>(null);
+
+  useEffect(() => {
+    if (focusFirstGarmentRequest <= 0) return;
+    window.setTimeout(() => selectorRef.current?.focus(), 0);
+  }, [focusFirstGarmentRequest]);
+
+  function openAddModal(garmentTypeId: string) {
+    const garment = findGarmentById(garmentTypes, garmentTypeId);
+    if (!garment) return;
+    setModal({ mode: "add", draft: newDraftForGarment(garment) });
+  }
+
+  function saveModalDraft(nextDraft: DraftItem) {
+    if (modal?.mode === "edit" && typeof modal.index === "number") {
+      onItemsChange(items.map((item, index) => (index === modal.index ? nextDraft : item)));
+      const returnKey = modal.returnKey ?? nextDraft.draftKey;
+      setModal(null);
+      window.setTimeout(() => editButtonRefs.current[returnKey]?.focus(), 0);
+      return;
+    }
+    onItemsChange([...items.filter((item) => item.garmentTypeId), nextDraft]);
+    setModal(null);
+    window.setTimeout(() => qtyInputRefs.current[nextDraft.draftKey]?.focus(), 0);
+  }
+
+  function updateItem(index: number, patch: Partial<DraftItem>) {
+    onItemsChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  }
+
+  function deleteRow(index: number) {
+    if (!window.confirm("Remove this item?")) return;
+    onItemsChange(items.filter((_, itemIndex) => itemIndex !== index));
+    window.setTimeout(() => selectorRef.current?.focus(), 0);
+  }
+
+  return (
+    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-[17px] font-semibold text-ink">Order Items</h3>
+          <p className="text-sm text-ink-muted">Select a garment code to configure an item.</p>
+        </div>
+        <div className="w-full max-w-sm">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-ink-muted">Garment Type</span>
+            <GarmentTypeCombobox
+              value=""
+              garments={activeGarments}
+              inputRef={(node) => {
+                selectorRef.current = node;
+              }}
+              onChange={openAddModal}
+              onSelected={() => undefined}
+            />
+          </label>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border-soft bg-surface px-4 py-8 text-center text-sm text-ink-muted">
+          No items added yet.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border-soft">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-surface text-[13px] font-semibold text-ink-muted">
+              <tr>
+                <th className="whitespace-nowrap px-4 py-3">Garment</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Qty</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Rate</th>
+                <th className="whitespace-nowrap px-4 py-3">Add-ons</th>
+                <th className="whitespace-nowrap px-4 py-3">Measurements</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Amount</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ item, index }) => {
+                const garment = findGarmentById(garmentTypes, item.garmentTypeId);
+                const selected = selectedAddOns(item, garmentTypes, addOns);
+                const measurementCount = item.measurement ? countFilledFields(item.measurement) : 0;
+                const amount = computeAmount(item, garmentTypes, addOns);
+                return (
+                  <tr key={item.draftKey} className="border-t border-border-soft">
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink">
+                      {garment ? formatGarmentCodeName(garment) : "Unknown garment"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-ink">
+                      <input
+                        ref={(node) => {
+                          qtyInputRefs.current[item.draftKey] = node;
+                        }}
+                        type="number"
+                        min={1}
+                        value={item.qty}
+                        onChange={(event) =>
+                          updateItem(index, { qty: Number(event.target.value) })
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            rateInputRefs.current[item.draftKey]?.focus();
+                          }
+                        }}
+                        className="h-9 w-20 rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-ink">
+                      <input
+                        ref={(node) => {
+                          rateInputRefs.current[item.draftKey] = node;
+                        }}
+                        type="number"
+                        min={0}
+                        value={item.rate}
+                        onChange={(event) =>
+                          updateItem(index, {
+                            rate: Number(event.target.value),
+                            rateOverridden: true,
+                          })
+                        }
+                        className="h-9 w-28 rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-ink-muted">
+                      {selected.length > 0 ? selected.map((addOn) => addOn.name).join(", ") : "None"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
+                      {measurementCount > 0 ? `${measurementCount} fields` : "Not entered"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">
+                      {formatCurrency(amount)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          ref={(node) => {
+                            editButtonRefs.current[item.draftKey] = node;
+                          }}
+                          onClick={() => setModal({
+                            mode: "edit",
+                            index,
+                            draft: item,
+                            returnKey: item.draftKey,
+                          })}
+                          className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteRow(index)}
+                          className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modal && (() => {
+        const garment = findGarmentById(garmentTypes, modal.draft.garmentTypeId);
+        if (!garment) return null;
+        return (
+          <ConfigureItemModal
+            mode={modal.mode}
+            draft={modal.draft}
+            garment={garment}
+            addOns={addOns}
+            customerId={customerId}
+            excludeOrderId={excludeOrderId}
+            autoSnapshotDefaultMeasurements={autoSnapshotDefaultMeasurements}
+            onCancel={() => {
+              const returnKey = modal.returnKey;
+              setModal(null);
+              window.setTimeout(() => {
+                if (returnKey) {
+                  editButtonRefs.current[returnKey]?.focus();
+                } else {
+                  selectorRef.current?.focus();
+                }
+              }, 0);
+            }}
+            onSave={saveModalDraft}
+          />
+        );
+      })()}
+    </div>
+  );
+}
+
+// Item Amount = Qty Ã- (Rate + selected add-ons total) - Rate here is the
 // row's current effective rate (Catalog base price, or the shopkeeper's
 // manual override), not necessarily the garment's basePrice.
 function computeAmount(
@@ -185,14 +798,6 @@ function computeAmount(
   addOns: CatalogAddOn[]
 ): number {
   return calculateGarmentAmount(it.rate, selectedAddOns(it, garmentTypes, addOns), it.qty);
-}
-
-function hasGarmentSpecificDraftData(it: DraftItem): boolean {
-  return (
-    it.addOnIds.length > 0 ||
-    (it.measurement !== null &&
-      (countFilledFields(it.measurement) > 0 || it.measurement.notes.trim() !== ""))
-  );
 }
 
 export function computeOrderItems(
@@ -213,7 +818,7 @@ export function computeOrderItems(
     const addOnsTotal = itemAddOns.reduce((sum, a) => sum + a.amount, 0);
     const finalRate = it.rate + addOnsTotal;
     // Only snapshot measurements onto the item when the shopkeeper actually
-    // opened/filled the modal for this row (it.measurement !== null) — not
+    // opened/filled the modal for this row (it.measurement !== null) - not
     // silently pulling in auto-seeded baseline values they never confirmed.
     const hasMeasurements =
       it.measurement && countFilledFields(it.measurement) > 0;
@@ -222,7 +827,7 @@ export function computeOrderItems(
       serialNo: i + 1,
       particular: garment?.name ?? "",
       // Catalog garment type id, so order_items can reference
-      // catalog_garment_types "where possible" (Phase 6C) — Edit Order's
+      // catalog_garment_types "where possible" (Phase 6C) - Edit Order's
       // own items never set this, since that flow has no Catalog dropdown.
       garmentTypeId: it.garmentTypeId || undefined,
       qty: it.qty,
@@ -258,563 +863,204 @@ export function computeOrderItems(
 const inputClass =
   "h-11 w-full min-w-0 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
-const itemCardClass = "overflow-hidden rounded-lg border border-border-soft bg-white";
-const itemCardHeaderClass =
-  "flex items-center justify-between gap-3 border-b border-border-soft bg-primary-tint/60 px-4 py-1.5";
-const itemCardBodyClass = "p-4";
-
-function orderItemActionButtonClass({
-  disabled,
-  saved,
-}: {
-  disabled?: boolean;
-  saved?: boolean;
-}) {
-  const base =
-    "flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors";
-  if (disabled) {
-    return `${base} cursor-not-allowed border-border-soft text-ink-faint`;
-  }
-  if (saved) {
-    return `${base} cursor-pointer border-primary bg-primary-tint text-primary hover:bg-primary/10`;
-  }
-  return `${base} cursor-pointer border-border bg-white text-ink hover:bg-surface`;
+function garmentCodeLabel(garment: CatalogGarmentType): string {
+  return garment.shortcutCode === null ? "-" : String(garment.shortcutCode);
 }
 
-function AddOnsPicker({
-  addOns,
-  selectedIds,
-  onToggle,
-  garmentSelected,
+function garmentDisplayLabel(garment: CatalogGarmentType): string {
+  return `${garmentCodeLabel(garment)} - ${garment.name}`;
+}
+
+function sortGarmentsForKeyboard(
+  garments: CatalogGarmentType[]
+): CatalogGarmentType[] {
+  return [...garments].sort((a, b) => {
+    if (a.shortcutCode !== null && b.shortcutCode !== null) {
+      return a.shortcutCode - b.shortcutCode;
+    }
+    if (a.shortcutCode !== null) return -1;
+    if (b.shortcutCode !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function GarmentTypeCombobox({
+  value,
+  garments,
+  required,
+  inputRef,
+  onChange,
+  onSelected,
 }: {
-  // Only the add-ons linked to the selected garment type (lib/catalog.ts's
-  // getAddOnsForGarment) — never the full add-ons master.
-  addOns: CatalogAddOn[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  garmentSelected: boolean;
+  value: string;
+  garments: CatalogGarmentType[];
+  required?: boolean;
+  inputRef?: (node: HTMLInputElement | null) => void;
+  onChange: (garmentTypeId: string) => void;
+  onSelected: () => void;
 }) {
   const { t } = useLanguage();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const disabled = !garmentSelected || addOns.length === 0;
-  const selected = addOns.filter((a) => selectedIds.includes(a.id));
-  const selectedTotal = selected.reduce((sum, a) => sum + a.defaultPrice, 0);
-  // Shows the add-ons total inline so it's visible alongside Rate/Amount —
-  // otherwise Amount = (Rate + add-ons) × Qty looks like an unexplained
-  // mismatch against Rate alone.
-  const label =
-    selected.length > 0
-      ? `${t("common.addOns")}: ${selected.length} · ${formatCurrency(selectedTotal)}`
-      : t("common.addOns");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const selectedGarment = garments.find((g) => g.id === value);
+  const trimmedQuery = query.trim();
+  const numericQuery = /^\d+$/.test(trimmedQuery);
 
-  // Popover is positioned `fixed` (computed from the trigger button's own
-  // viewport rect) rather than `absolute`, so it isn't clipped by any
-  // ancestor's overflow/stacking context.
-  function openPicker() {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) setCoords({ top: rect.bottom + 4, left: rect.left });
-    setOpen(true);
-  }
-
-  return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => (open ? setOpen(false) : openPicker())}
-        title={
-          !garmentSelected
-            ? t("orders.selectGarmentFirst")
-            : addOns.length === 0
-              ? t("orders.noAddOnsConfigured")
-              : t("orders.selectAddOns")
-        }
-        className={orderItemActionButtonClass({
-          disabled,
-          saved: selected.length > 0,
-        })}
-      >
-        <Tag className="h-3.5 w-3.5 shrink-0" />
-        {label}
-      </button>
-      {open && !disabled && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div
-            style={{ top: coords.top, left: coords.left }}
-            className="fixed z-40 w-60 rounded-lg border border-border-soft bg-white p-2 shadow-soft"
-          >
-            {addOns.map((a) => (
-              <label
-                key={a.id}
-                className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-surface"
-              >
-                <span className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(a.id)}
-                    onChange={() => onToggle(a.id)}
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
-                  />
-                  {a.name}
-                </span>
-                <span className="text-ink-muted">+{formatCurrency(a.defaultPrice)}</span>
-              </label>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-export function NewOrderItemsCard({
-  customerId,
-  items,
-  onItemsChange,
-  garmentTypes,
-  addOns,
-  previousOrders = [],
-  autoSnapshotDefaultMeasurements = false,
-}: {
-  // null while the customer is still unsaved (brand-new customer) — the
-  // Measurements modal simply has nothing to seed from yet in that case.
-  customerId: string | null;
-  items: DraftItem[];
-  onItemsChange: (items: DraftItem[]) => void;
-  // Phase 6B: fetched once at the page level (active garment types, all
-  // add-ons) and passed down here — every lookup in this component is a
-  // pure, synchronous find() over these arrays, not its own Supabase call.
-  garmentTypes: CatalogGarmentType[];
-  addOns: CatalogAddOn[];
-  previousOrders?: Order[];
-  autoSnapshotDefaultMeasurements?: boolean;
-}) {
-  const { t } = useLanguage();
-  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
-  // Already pre-filtered to active garments by the page's fetch
-  // (getActiveGarmentTypesAction) — no further filtering needed here.
-  const activeGarments = garmentTypes;
-  // Phase 5A: measurement seeds now come from a Server Action
-  // (getGarmentMeasurementDraftSeedAction), not a synchronous stub-data.ts
-  // call — cached here since measurementDraftFor/hasMeasurementData are read
-  // multiple times per render (once per item row, every render).
-  const [seedCache, setSeedCache] = useState<
-    Record<string, { values: Record<string, string>; fitNotes: string; notes: string }>
-  >({});
-
-  const garmentNames = items
-    .map((it) => findGarmentById(garmentTypes, it.garmentTypeId)?.name)
-    .filter((n): n is string => !!n);
-
-  useEffect(() => {
-    if (!customerId) return;
-    let cancelled = false;
-    const missing = Array.from(new Set(garmentNames)).filter(
-      (name) => !(`${customerId}::${name.toLowerCase()}` in seedCache)
+  const filteredGarments = useMemo(() => {
+    if (!trimmedQuery) return garments;
+    const normalized = trimmedQuery.toLowerCase();
+    if (numericQuery) {
+      return garments.filter((garment) =>
+        garment.shortcutCode?.toString().startsWith(trimmedQuery)
+      );
+    }
+    return garments.filter((garment) =>
+      garment.name.toLowerCase().includes(normalized)
     );
-    if (missing.length === 0) return;
-    Promise.all(
-      missing.map(async (name) => {
-        const seed = await getGarmentMeasurementDraftSeedAction(customerId, name);
-        return [`${customerId}::${name.toLowerCase()}`, seed] as const;
-      })
-    ).then((entries) => {
-      if (cancelled) return;
-      setSeedCache((prev) => {
-        const next = { ...prev };
-        for (const [key, seed] of entries) next[key] = seed;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerId, garmentNames.join("|")]);
+  }, [garments, numericQuery, trimmedQuery]);
 
-  function updateItem(index: number, patch: Partial<DraftItem>) {
-    onItemsChange(
-      items.map((it, i) => (i === index ? { ...it, ...patch } : it))
-    );
-  }
-  function addItem() {
-    onItemsChange([...items, blankDraftItem()]);
-  }
-  function removeItem(index: number) {
-    onItemsChange(items.filter((_, i) => i !== index));
+  const inputValue = open
+    ? query
+    : selectedGarment
+      ? garmentDisplayLabel(selectedGarment)
+      : "";
+
+  function selectGarment(garment: CatalogGarmentType) {
+    setError(null);
+    setOpen(false);
+    setQuery("");
+    setActiveIndex(0);
+    onChange(garment.id);
+    window.setTimeout(onSelected, 0);
   }
 
-  function handleGarmentTypeChange(index: number, garmentTypeId: string) {
-    const current = items[index];
-    if (
-      current.garmentTypeId &&
-      current.garmentTypeId !== garmentTypeId &&
-      hasGarmentSpecificDraftData(current) &&
-      !window.confirm(
-        "Changing the garment type will clear this item's add-ons and measurements. Continue?"
-      )
-    ) {
+  function handleEnter() {
+    if (numericQuery) {
+      const exactMatch = garments.find(
+        (garment) => garment.shortcutCode?.toString() === trimmedQuery
+      );
+      if (exactMatch) {
+        selectGarment(exactMatch);
+        return;
+      }
+      setError(`No garment found for code ${trimmedQuery}`);
+      setOpen(true);
       return;
     }
-    const garment = findGarmentById(garmentTypes, garmentTypeId);
-    onItemsChange(
-      items.map((it, i) => {
-        if (i !== index) return it;
-        const rate = it.rateOverridden ? it.rate : garment?.basePrice ?? 0;
-        return {
-          ...it,
-          garmentTypeId,
-          rate,
-          addOnIds: [],
-          // Fields differ per garment type, so a measurement draft entered
-          // for the previous garment type no longer applies.
-          measurement: null,
-        };
-      })
-    );
-  }
-  function handleRateChange(index: number, rate: number) {
-    updateItem(index, { rate, rateOverridden: true });
-  }
-  function toggleAddOn(index: number, id: string) {
-    onItemsChange(
-      items.map((it, i) => {
-        if (i !== index) return it;
-        const addOnIds = it.addOnIds.includes(id)
-          ? it.addOnIds.filter((x) => x !== id)
-          : [...it.addOnIds, id];
-        return { ...it, addOnIds };
-      })
-    );
+
+    const activeGarment = filteredGarments[activeIndex];
+    if (activeGarment) selectGarment(activeGarment);
   }
 
-  function measurementDraftFor(index: number): GarmentMeasurementDraft {
-    const it = items[index];
-    const garmentName = findGarmentById(garmentTypes, it.garmentTypeId)?.name ?? "";
-    if (it.measurement) return it.measurement;
-    if (!customerId) return {
-      garmentType: garmentName,
-      values: {},
-      fitNotes: "",
-      notes: "",
-      updateCustomerMeasurements: false,
-      hasCustomerDefaultMeasurements: false,
-    };
-    const seed = seedCache[`${customerId}::${garmentName.toLowerCase()}`];
-    if (!seed) return {
-      garmentType: garmentName,
-      values: {},
-      fitNotes: "",
-      notes: "",
-      updateCustomerMeasurements: false,
-      hasCustomerDefaultMeasurements: false,
-    };
-    const seededDraft = { garmentType: garmentName, ...seed };
-    return {
-      ...seededDraft,
-      updateCustomerMeasurements: false,
-      hasCustomerDefaultMeasurements: countFilledFields(seededDraft) > 0,
-    };
-  }
-
-  useEffect(() => {
-    if (!autoSnapshotDefaultMeasurements || !customerId) return;
-    let changed = false;
-    const nextItems = items.map((it) => {
-      if (it.measurement !== null || !it.garmentTypeId) return it;
-      const garmentName = findGarmentById(garmentTypes, it.garmentTypeId)?.name ?? "";
-      if (!garmentName) return it;
-      const seed = seedCache[`${customerId}::${garmentName.toLowerCase()}`];
-      if (!seed) return it;
-      const seededDraft = { garmentType: garmentName, ...seed };
-      const draft: GarmentMeasurementDraft = {
-        ...seededDraft,
-        updateCustomerMeasurements: false,
-        hasCustomerDefaultMeasurements: countFilledFields(seededDraft) > 0,
-      };
-      if (countFilledFields(draft) === 0) return it;
-      changed = true;
-      return { ...it, measurement: draft };
-    });
-    if (changed) onItemsChange(nextItems);
-  }, [
-    autoSnapshotDefaultMeasurements,
-    customerId,
-    items,
-    garmentTypes,
-    seedCache,
-    onItemsChange,
-  ]);
-
-  function hasMeasurementData(index: number): boolean {
-    const it = items[index];
-    if (!it.garmentTypeId) return false;
-    // Saved-state means this order item has its own measurement snapshot in
-    // the draft/order, not merely that customer defaults are available to seed
-    // the modal when the user opens it.
-    return it.measurement !== null && countFilledFields(it.measurement) > 0;
-  }
-  function handleSaveMeasurement(draft: GarmentMeasurementDraft) {
-    if (activeItemIndex === null) return;
-    updateItem(activeItemIndex, { measurement: draft });
-    setActiveItemIndex(null);
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) =>
+        filteredGarments.length === 0
+          ? 0
+          : Math.min(current + 1, filteredGarments.length - 1)
+      );
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleEnter();
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setQuery("");
+      setError(null);
+    }
   }
 
   return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[17px] font-semibold text-ink">{t("orders.orderItems")}</h3>
-        <button
-          type="button"
-          onClick={addItem}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface"
+    <div
+      ref={rootRef}
+      className="relative"
+      onBlur={(e) => {
+        if (!rootRef.current?.contains(e.relatedTarget as Node | null)) {
+          setOpen(false);
+          setQuery("");
+        }
+      }}
+    >
+      <input
+        ref={inputRef}
+        required={required}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-activedescendant={
+          open && filteredGarments[activeIndex]
+            ? `${listboxId}-${filteredGarments[activeIndex].id}`
+            : undefined
+        }
+        autoComplete="off"
+        value={inputValue}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+          setError(null);
+          setActiveIndex(0);
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          setError(null);
+          setActiveIndex(0);
+        }}
+        onKeyDown={handleInputKeyDown}
+        placeholder={t("common.selectEllipsis")}
+        className={inputClass}
+      />
+      {open && (
+        <div
+          id={listboxId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border-soft bg-white py-1 shadow-soft"
         >
-          <Plus className="h-4 w-4" /> {t("orders.addItem")}
-        </button>
-      </div>
-      <div className="space-y-8">
-        {items.map((it, i) => {
-          const garment = findGarmentById(garmentTypes, it.garmentTypeId);
-          const addOnOptions = garment ? getAddOnsForGarment(garment, addOns) : [];
-          const amount = computeAmount(it, garmentTypes, addOns);
-          const measurementsFilled = hasMeasurementData(i);
-          const hasMeasurementFields = (garment?.measurementFieldIds.length ?? 0) > 0;
-          const measurementsDisabled = !it.garmentTypeId || !hasMeasurementFields;
-          const isAlteration = isAlterationGarment(garment);
-          return (
-            <div key={i} className={itemCardClass}>
-              <div className={itemCardHeaderClass}>
-                <p className="text-[15px] font-semibold text-ink">
-                  Item {i + 1}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => removeItem(i)}
-                  disabled={items.length === 1}
-                  title={t("orders.removeItem")}
-                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-white px-2.5 text-xs font-medium text-ink-faint transition-colors hover:bg-chip-red hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  {t("orders.deleteItem")}
-                </button>
-              </div>
-              <div className={itemCardBodyClass}>
-              <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr]">
-                <label className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.garmentType")}
-                  </span>
-                  <Select
-                    required
-                    value={it.garmentTypeId}
-                    onChange={(e) => handleGarmentTypeChange(i, e.target.value)}
-                  >
-                    <option value="" disabled>
-                      {t("common.selectEllipsis")}
-                    </option>
-                    {activeGarments.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="flex min-w-0 flex-col gap-1.5 sm:col-auto">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.qty")}
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={it.qty}
-                    onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
-                    className={inputClass}
-                  />
-                </label>
-                <label className="flex min-w-0 flex-col gap-1.5 sm:col-auto">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.rate")}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={it.rate}
-                    onChange={(e) => handleRateChange(i, Number(e.target.value))}
-                    className={inputClass}
-                  />
-                </label>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.amount")}
-                  </span>
-                  <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    {formatCurrency(amount)}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-3 border-t border-border-soft pt-3 md:grid-cols-[0.8fr_1fr_1fr]">
-                <label className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.fabricSource")}
-                  </span>
-                  <Select
-                    value={it.fabricSource}
-                    onChange={(e) =>
-                      updateItem(i, {
-                        fabricSource: e.target.value as OrderItemFabricSource,
-                      })
-                    }
-                  >
-                    {FABRIC_SOURCES.map((source) => (
-                      <option key={source} value={source}>
-                        {source}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.fabricNotes")}
-                  </span>
-                  <textarea
-                    value={it.fabricNotes}
-                    onChange={(e) => updateItem(i, { fabricNotes: e.target.value })}
-                    placeholder={t("orders.fabricNotesPlaceholder")}
-                    rows={2}
-                    className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                  />
-                </label>
-                <label className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.designNotes")}
-                  </span>
-                  <textarea
-                    value={it.designNotes}
-                    onChange={(e) => updateItem(i, { designNotes: e.target.value })}
-                    placeholder={t("orders.designNotesPlaceholder")}
-                    rows={2}
-                    className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                  />
-                </label>
-              </div>
-              {isAlteration && (
-                <div className="mt-3 grid gap-3 border-t border-border-soft pt-3 md:grid-cols-2">
-                  <label className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
-                      Original Issue
-                    </span>
-                    <textarea
-                      value={it.alterationIssue}
-                      onChange={(e) => updateItem(i, { alterationIssue: e.target.value })}
-                      placeholder="Too tight at waist, sleeve length wrong, torn seam..."
-                      rows={2}
-                      className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                    />
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
-                      Required Change
-                    </span>
-                    <textarea
-                      value={it.alterationRequiredChange}
-                      onChange={(e) =>
-                        updateItem(i, { alterationRequiredChange: e.target.value })
-                      }
-                      placeholder="Loosen waist 1 inch, shorten sleeves, replace zip..."
-                      rows={2}
-                      className="min-h-[44px] w-full min-w-0 resize-y rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                    />
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
-                      Free / Paid
-                    </span>
-                    <Select
-                      value={it.alterationChargeType}
-                      onChange={(e) =>
-                        updateItem(i, {
-                          alterationChargeType: e.target.value as AlterationChargeType,
-                          rate: e.target.value === "Free" ? 0 : it.rate,
-                          rateOverridden:
-                            e.target.value === "Free" ? true : it.rateOverridden,
-                        })
-                      }
-                    >
-                      {ALTERATION_CHARGE_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
-                      Linked Original Order
-                    </span>
-                    <Select
-                      value={it.linkedOriginalOrderId}
-                      onChange={(e) =>
-                        updateItem(i, { linkedOriginalOrderId: e.target.value })
-                      }
-                    >
-                      <option value="">Not linked</option>
-                      {previousOrders.map((order) => (
-                        <option key={order.id} value={order.id}>
-                          {order.orderNumber} -{" "}
-                          {order.items.map((item) => item.particular).join(", ")}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                </div>
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border-soft pt-3">
-                <AddOnsPicker
-                  addOns={addOnOptions}
-                  selectedIds={it.addOnIds}
-                  onToggle={(id) => toggleAddOn(i, id)}
-                  garmentSelected={!!it.garmentTypeId}
-                />
-                <button
-                  type="button"
-                  onClick={() => setActiveItemIndex(i)}
-                  disabled={measurementsDisabled}
-                  title={
-                    !it.garmentTypeId
-                      ? t("orders.selectGarmentFirst")
-                      : !hasMeasurementFields
-                        ? t("orders.noMeasurementFieldsConfigured")
-                        : undefined
-                  }
-                  className={orderItemActionButtonClass({
-                    disabled: measurementsDisabled,
-                    saved: measurementsFilled,
-                  })}
-                >
-                  <Ruler className="h-3.5 w-3.5 shrink-0" />
-                  {measurementsFilled ? t("orders.measurementsAdded") : t("orders.measurements")}
-                </button>
-              </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {activeItemIndex !== null && (
-        <GarmentMeasurementModal
-          initial={measurementDraftFor(activeItemIndex)}
-          fields={garmentMeasurementFields(
-            findGarmentById(garmentTypes, items[activeItemIndex].garmentTypeId)
+          {filteredGarments.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-ink-muted">No garments found</div>
+          ) : (
+            filteredGarments.map((garment, index) => (
+              <button
+                key={garment.id}
+                id={`${listboxId}-${garment.id}`}
+                type="button"
+                role="option"
+                aria-selected={garment.id === value}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selectGarment(garment)}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                  index === activeIndex
+                    ? "bg-primary-tint text-primary"
+                    : "text-ink hover:bg-surface"
+                }`}
+              >
+                <span className="min-w-8 rounded-md border border-border-soft bg-white px-1.5 py-0.5 text-center font-mono text-xs font-semibold text-primary">
+                  {garmentCodeLabel(garment)}
+                </span>
+                <span className="text-ink-faint">-</span>
+                <span className="min-w-0 truncate font-medium">{garment.name}</span>
+              </button>
+            ))
           )}
-          onCancel={() => setActiveItemIndex(null)}
-          onSave={handleSaveMeasurement}
-        />
+        </div>
       )}
+      {error && <p className="mt-1 text-xs font-medium text-chip-red-fg">{error}</p>}
     </div>
   );
 }

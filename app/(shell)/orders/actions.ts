@@ -201,6 +201,48 @@ export async function getOrdersForCustomerAction(customerId: string): Promise<Or
   return getOrdersForCustomer(supabase, customerId);
 }
 
+export interface HistoricalMeasurementSnapshot {
+  orderId: string;
+  orderNumber: string;
+  orderDate: string;
+  itemId?: string;
+  serialNo: number;
+  measurements: Record<string, string>;
+}
+
+export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
+  customerId: string,
+  garmentTypeId: string,
+  excludeOrderId?: string
+): Promise<HistoricalMeasurementSnapshot[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+
+  const orders = await getOrdersForCustomer(supabase, customerId);
+  return orders
+    .filter((order) => order.id !== excludeOrderId && order.status !== "Cancelled")
+    .flatMap((order) =>
+      order.items
+        .filter(
+          (item) =>
+            item.garmentTypeId === garmentTypeId &&
+            item.measurements &&
+            Object.values(item.measurements).some((value) => value.trim() !== "")
+        )
+        .map((item) => ({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          orderDate: order.orderDate,
+          itemId: item.id,
+          serialNo: item.serialNo,
+          measurements: item.measurements ?? {},
+        }))
+    )
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
+    .slice(0, 5);
+}
+
 // Non-mutating preview of the next order number for New Order's header — the
 // real number is (re)computed by createOrderAction itself at save time, same
 // as before this phase.

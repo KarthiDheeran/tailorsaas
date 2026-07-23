@@ -38,6 +38,9 @@ export function GarmentTypeDrawer({
   const { t } = useLanguage();
   const isEdit = garment !== null;
   const [name, setName] = useState(garment?.name ?? "");
+  const [shortcutCode, setShortcutCode] = useState(
+    garment?.shortcutCode?.toString() ?? ""
+  );
   const [basePrice, setBasePrice] = useState<number>(garment?.basePrice ?? 0);
   const [isActive, setIsActive] = useState(garment?.isActive ?? true);
   const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>(
@@ -87,6 +90,22 @@ export function GarmentTypeDrawer({
       setError(t("catalog.garmentNameRequired"));
       return;
     }
+    const trimmedCode = shortcutCode.trim();
+    const parsedShortcutCode: number | null =
+      trimmedCode === "" ? null : Number(trimmedCode);
+    if (
+      trimmedCode &&
+      (!/^\d+$/.test(trimmedCode) ||
+        parsedShortcutCode === null ||
+        parsedShortcutCode <= 0)
+    ) {
+      setError("Numeric code must be a positive whole number.");
+      return;
+    }
+    if (isActive && parsedShortcutCode === null) {
+      setError("Numeric code is required for active garment types.");
+      return;
+    }
     if (!Number.isFinite(basePrice) || basePrice < 0) {
       setError(t("catalog.basePriceRequired"));
       return;
@@ -95,6 +114,7 @@ export function GarmentTypeDrawer({
     setSubmitting(true);
     const result = await onSaved({
       name: trimmedName,
+      shortcutCode: parsedShortcutCode,
       basePrice,
       measurementFieldIds: selectedFieldIds,
       addOnIds: selectedAddOnIds,
@@ -163,6 +183,19 @@ export function GarmentTypeDrawer({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Pant"
+                    className={inputClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Numeric Code
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={shortcutCode}
+                    onChange={(e) => setShortcutCode(e.target.value)}
+                    placeholder="e.g. 10"
                     className={inputClass}
                   />
                 </label>

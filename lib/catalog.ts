@@ -37,10 +37,30 @@ export interface CatalogAddOn {
 export interface CatalogGarmentType {
   id: string;
   name: string;
+  shortcutCode: number | null;
   basePrice: number;
   measurementFieldIds: string[];
   addOnIds: string[];
   isActive: boolean;
+}
+
+export const INITIAL_GARMENT_SHORTCUT_CODES: Record<string, number> = {
+  alteration: 1,
+  blouse: 2,
+  dress: 3,
+  gown: 4,
+  kurta: 5,
+  lehenga: 6,
+  pant: 7,
+  "salwar suit": 8,
+  "saree fall/pico": 9,
+  shirt: 10,
+  suit: 11,
+  waistcoat: 12,
+};
+
+export function initialShortcutCodeForGarmentName(name: string): number | null {
+  return INITIAL_GARMENT_SHORTCUT_CODES[name.trim().toLowerCase()] ?? null;
 }
 
 // Global measurement field library the shopkeeper picks from when configuring
@@ -213,6 +233,7 @@ export function calculateGarmentAmount(
 
 export type GarmentTypeInput = {
   name: string;
+  shortcutCode: number | null;
   basePrice: number;
   measurementFieldIds: string[];
   addOnIds: string[];

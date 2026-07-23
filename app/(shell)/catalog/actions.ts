@@ -9,6 +9,7 @@ import {
   getActiveGarmentTypes,
   getAllAddOns,
   getAllGarmentTypes,
+  getGarmentById,
   setAddOnActive,
   setGarmentTypeActive,
   updateAddOn,
@@ -80,9 +81,27 @@ export async function getActiveAddOnsAction(): Promise<CatalogAddOn[]> {
 
 function validateGarmentInput(
   data: GarmentTypeInput,
-  validAddOnIds: Set<string>
+  validAddOnIds: Set<string>,
+  existingGarments: CatalogGarmentType[],
+  currentGarmentId?: string
 ): string | null {
   if (!data.name.trim()) return "Garment name is required.";
+  if (data.shortcutCode !== null) {
+    if (!Number.isInteger(data.shortcutCode) || data.shortcutCode <= 0) {
+      return "Numeric code must be a positive whole number.";
+    }
+    const duplicate = existingGarments.find(
+      (garment) =>
+        garment.id !== currentGarmentId &&
+        garment.shortcutCode === data.shortcutCode
+    );
+    if (duplicate) {
+      return `Numeric code ${data.shortcutCode} is already used by ${duplicate.name}.`;
+    }
+  }
+  if (data.isActive && data.shortcutCode === null) {
+    return "Numeric code is required for active garment types.";
+  }
   if (!Number.isFinite(data.basePrice) || data.basePrice < 0) {
     return "Base price must be 0 or greater.";
   }
@@ -105,6 +124,24 @@ function validateGarmentInput(
   return null;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "23505"
+  );
+}
+
+function isMissingShortcutCodeColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "42703"
+  );
+}
+
 function validateAddOnInput(data: AddOnInput): string | null {
   if (!data.name.trim()) return "Add-on name is required.";
   if (!Number.isFinite(data.defaultPrice) || data.defaultPrice < 0) {
@@ -123,12 +160,33 @@ export async function createGarmentTypeAction(
   // Every addon_id must exist in the real catalog_addons table — re-checked
   // fresh here, never trusting the client's copy (same authority pattern as
   // every other write in this app).
-  const validAddOnIds = new Set((await getAllAddOns(supabase)).map((a) => a.id));
-  const validationError = validateGarmentInput(data, validAddOnIds);
+  const [allAddOns, existingGarments] = await Promise.all([
+    getAllAddOns(supabase),
+    getAllGarmentTypes(supabase),
+  ]);
+  const validAddOnIds = new Set(allAddOns.map((a) => a.id));
+  const validationError = validateGarmentInput(
+    data,
+    validAddOnIds,
+    existingGarments
+  );
   if (validationError) return { success: false, error: validationError };
 
-  const garment = await createGarmentType(supabase, data);
-  return { success: true, data: garment };
+  try {
+    const garment = await createGarmentType(supabase, data);
+    return { success: true, data: garment };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { success: false, error: "Numeric code already exists. Choose another code." };
+    }
+    if (isMissingShortcutCodeColumn(error)) {
+      return {
+        success: false,
+        error: "Run the garment numeric code migration before saving garment codes.",
+      };
+    }
+    throw error;
+  }
 }
 
 export async function updateGarmentTypeAction(
@@ -139,13 +197,35 @@ export async function updateGarmentTypeAction(
   const guard = await requireServerPermission(supabase, "catalog.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validAddOnIds = new Set((await getAllAddOns(supabase)).map((a) => a.id));
-  const validationError = validateGarmentInput(data, validAddOnIds);
+  const [allAddOns, existingGarments] = await Promise.all([
+    getAllAddOns(supabase),
+    getAllGarmentTypes(supabase),
+  ]);
+  const validAddOnIds = new Set(allAddOns.map((a) => a.id));
+  const validationError = validateGarmentInput(
+    data,
+    validAddOnIds,
+    existingGarments,
+    id
+  );
   if (validationError) return { success: false, error: validationError };
 
-  const garment = await updateGarmentType(supabase, id, data);
-  if (!garment) return { success: false, error: "Garment type not found." };
-  return { success: true, data: garment };
+  try {
+    const garment = await updateGarmentType(supabase, id, data);
+    if (!garment) return { success: false, error: "Garment type not found." };
+    return { success: true, data: garment };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { success: false, error: "Numeric code already exists. Choose another code." };
+    }
+    if (isMissingShortcutCodeColumn(error)) {
+      return {
+        success: false,
+        error: "Run the garment numeric code migration before saving garment codes.",
+      };
+    }
+    throw error;
+  }
 }
 
 export async function setGarmentTypeActiveAction(
@@ -156,9 +236,27 @@ export async function setGarmentTypeActiveAction(
   const guard = await requireServerPermission(supabase, "catalog.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const garment = await setGarmentTypeActive(supabase, id, isActive);
-  if (!garment) return { success: false, error: "Garment type not found." };
-  return { success: true, data: garment };
+  if (isActive) {
+    const existing = await getGarmentById(supabase, id);
+    if (!existing) return { success: false, error: "Garment type not found." };
+    if (existing.shortcutCode === null) {
+      return {
+        success: false,
+        error: "Numeric code is required before activating this garment type.",
+      };
+    }
+  }
+
+  try {
+    const garment = await setGarmentTypeActive(supabase, id, isActive);
+    if (!garment) return { success: false, error: "Garment type not found." };
+    return { success: true, data: garment };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { success: false, error: "Numeric code already exists. Choose another code." };
+    }
+    throw error;
+  }
 }
 
 export async function createAddOnAction(

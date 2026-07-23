@@ -38,6 +38,7 @@ export function CatalogTable({
             <th className="whitespace-nowrap px-5 py-3">
               {t("catalog.garmentTypes")}
             </th>
+            <th className="whitespace-nowrap px-5 py-3">Code</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">
               {t("catalog.basePrice")}
             </th>
@@ -65,6 +66,15 @@ export function CatalogTable({
             >
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink">
                 {garment.name}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                {garment.shortcutCode === null ? (
+                  <span className="text-ink-faint">-</span>
+                ) : (
+                  <span className="inline-flex min-w-8 justify-center rounded-md border border-border-soft bg-surface px-2 py-1 font-mono text-xs font-semibold text-primary">
+                    {garment.shortcutCode}
+                  </span>
+                )}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
                 {formatCurrency(garment.basePrice)}
