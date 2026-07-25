@@ -24,6 +24,15 @@ import {
   isMissingJobCardActivitySchemaError,
   logJobCardActivity,
 } from "@/lib/data/job-card-activity-db";
+import {
+  createJobCardStageSlip,
+  getJobCardStageSlipById,
+  getJobCardStageSlipByScanCode,
+  getTalliedJobCardStageSlips,
+  markJobCardStageSlipTallied,
+  type CreateJobCardStageSlipInput,
+  type JobCardStageSlip,
+} from "@/lib/data/job-card-stage-slips-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import {
   getStaff,
@@ -199,6 +208,71 @@ export async function getJobCardActivityLogsAction(
     if (isMissingJobCardActivitySchemaError(error)) return null;
     throw error;
   }
+}
+
+export async function createJobCardStageSlipAction(
+  data: CreateJobCardStageSlipInput
+): Promise<ActionResult<JobCardStageSlip>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!data.orderId) return { success: false, error: "Order is required." };
+  if (!Number.isInteger(data.orderItemSerialNo) || data.orderItemSerialNo < 1) {
+    return { success: false, error: "Order item is required." };
+  }
+  if (!Number.isInteger(data.unitNo) || data.unitNo < 1) {
+    return { success: false, error: "Unit is required." };
+  }
+  if (!VALID_TASK_TYPES.has(data.stage)) return { success: false, error: "Stage is required." };
+  if (!data.staffId) return { success: false, error: "Worker is required." };
+  if (
+    data.wageRate !== undefined &&
+    (!Number.isFinite(data.wageRate) || data.wageRate < 0)
+  ) {
+    return { success: false, error: "Rate must be zero or more." };
+  }
+
+  try {
+    const slip = await createJobCardStageSlip(supabase, data);
+    return { success: true, data: slip };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create job card slip.",
+    };
+  }
+}
+
+export async function getJobCardStageSlipAction(
+  id: string
+): Promise<JobCardStageSlip | undefined> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return undefined;
+  return getJobCardStageSlipById(supabase, id);
+}
+
+export async function scanJobCardStageSlipAction(
+  code: string
+): Promise<ActionResult<JobCardStageSlip>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const slip = await getJobCardStageSlipByScanCode(supabase, code);
+  if (!slip) return { success: false, error: "Job card not found." };
+  if (slip.talliedAt) return { success: true, data: slip };
+  const tallied = await markJobCardStageSlipTallied(supabase, slip.id);
+  return tallied
+    ? { success: true, data: tallied }
+    : { success: false, error: "Job card not found." };
+}
+
+export async function getTalliedJobCardStageSlipsAction(): Promise<JobCardStageSlip[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return [];
+  return getTalliedJobCardStageSlips(supabase);
 }
 
 export async function assignJobCardAction(

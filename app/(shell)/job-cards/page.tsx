@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Barcode,
   ClipboardList,
   MoreVertical,
   Printer,
@@ -528,11 +529,22 @@ function JobCardsContent() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
-        <h1 className="text-[26px] font-semibold text-ink">Job Cards</h1>
-        <p className="text-sm text-ink-muted">
-          Garment-level work cards for assignment, production, and delivery tracking.
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-[26px] font-semibold text-ink">Job Cards</h1>
+          <p className="text-sm text-ink-muted">
+            Garment-level work cards for assignment, production, and delivery tracking.
+          </p>
+        </div>
+        {canManageStaff && (
+          <Link
+            href="/job-cards/tally"
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+          >
+            <Barcode className="h-4 w-4" />
+            Tally Scans
+          </Link>
+        )}
       </div>
 
       {loadError && (

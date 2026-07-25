@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Repeat, User } from "lucide-react";
 import type {
   Customer,
-  CustomerMeasurements,
-  GarmentMeasurement,
   Order,
 } from "@/lib/types";
 import type { CustomerDetail } from "@/lib/customers-db";
 import { formatDate } from "@/components/orders/orders-table";
-import { countFilledFields } from "@/components/orders/garment-measurement-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
@@ -23,8 +21,8 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <h3 className="mb-3 text-[17px] font-semibold text-ink">{title}</h3>
+    <div className="rounded-xl border border-border-soft bg-white p-4 shadow-soft">
+      <h3 className="mb-2.5 text-[17px] font-semibold text-ink">{title}</h3>
       {children}
     </div>
   );
@@ -33,16 +31,12 @@ function Card({
 export function NewOrderSummaryPanel({
   customer,
   detail,
-  measurements,
-  garmentMeasurements,
   onRepeatOrder,
   repeatCopyMessage,
   newCustomerPending = false,
 }: {
   customer: Customer | null;
   detail: CustomerDetail | undefined;
-  measurements: CustomerMeasurements | undefined;
-  garmentMeasurements: GarmentMeasurement[];
   onRepeatOrder: (order: Order) => void;
   repeatCopyMessage?: string | null;
   newCustomerPending?: boolean;
@@ -50,6 +44,7 @@ export function NewOrderSummaryPanel({
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const { t } = useLanguage();
+  const [showAllPreviousOrders, setShowAllPreviousOrders] = useState(false);
 
   if (!customer) {
     if (newCustomerPending) {
@@ -76,16 +71,15 @@ export function NewOrderSummaryPanel({
     );
   }
 
-  const filledMeasurementCount = measurements
-    ? Object.values(measurements.values).filter((v) => v.trim() !== "").length
-    : 0;
   const recentOrders = [...detail.orders]
     .filter((order) => order.status !== "Cancelled")
-    .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1))
-    .slice(0, 3);
+    .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1));
+  const visibleRecentOrders = showAllPreviousOrders
+    ? recentOrders
+    : recentOrders.slice(0, 2);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <Card title={t("orders.customerSummary")}>
         <div className="space-y-1.5 text-sm">
           <p className="font-semibold text-ink">{customer.name}</p>
@@ -120,38 +114,6 @@ export function NewOrderSummaryPanel({
         </div>
       </Card>
 
-      <Card title={t("orders.savedMeasurements")}>
-        {garmentMeasurements.length > 0 ? (
-          <ul className="space-y-1.5 text-sm">
-            {garmentMeasurements.map((gm) => {
-              const count = countFilledFields({
-                garmentType: gm.garmentType,
-                values: gm.values,
-                fitNotes: gm.fitNotes ?? "",
-                notes: gm.notes ?? "",
-              });
-              return (
-                <li
-                  key={gm.garmentType}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="font-medium text-ink">{gm.garmentType}</span>
-                  <span className="text-ink-muted">
-                    {count} {t("orders.fieldsSaved")}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : filledMeasurementCount > 0 ? (
-          <p className="text-sm text-ink-muted">
-            {filledMeasurementCount} {t("orders.fieldsSaved")}
-          </p>
-        ) : (
-          <p className="text-sm text-ink-muted">{t("orders.noSavedMeasurements")}</p>
-        )}
-      </Card>
-
       {recentOrders.length > 0 && (
         <Card title={t("orders.previousOrders")}>
           {repeatCopyMessage && (
@@ -160,7 +122,7 @@ export function NewOrderSummaryPanel({
             </p>
           )}
           <div className="space-y-3">
-            {recentOrders.map((o) => (
+            {visibleRecentOrders.map((o) => (
               <div
                 key={o.id}
                 className="space-y-1.5 border-b border-border-soft pb-3 text-sm last:border-0 last:pb-0"
@@ -193,6 +155,15 @@ export function NewOrderSummaryPanel({
               </div>
             ))}
           </div>
+          {recentOrders.length > 2 && (
+            <button
+              type="button"
+              onClick={() => setShowAllPreviousOrders((current) => !current)}
+              className="mt-3 text-xs font-semibold text-primary hover:underline"
+            >
+              {showAllPreviousOrders ? "Show less" : `View all (${recentOrders.length})`}
+            </button>
+          )}
         </Card>
       )}
     </div>

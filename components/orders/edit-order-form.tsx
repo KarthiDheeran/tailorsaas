@@ -514,6 +514,52 @@ export function EditOrderForm({
             onItemsChange={setItems}
             garmentTypes={garmentTypes}
             addOns={addOns}
+            paymentStrip={
+              canViewPayments ? (
+                <div className="grid gap-3 text-sm md:grid-cols-3 xl:grid-cols-[0.8fr_1.1fr_0.8fr_1.2fr_1.1fr]">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="block text-[12px] font-medium text-ink-muted">
+                      {taxBreakdown && !taxBreakdown.pricesIncludeTax ? t("common.total") : "Subtotal"}
+                    </span>
+                    <span className="flex h-9 items-center font-semibold text-ink">
+                      {formatCurrency(totalAmount)}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="block text-[12px] font-medium text-ink-muted">
+                      {t("common.paid")}
+                    </span>
+                    <span className="flex h-9 items-center font-semibold text-ink">
+                      {formatCurrency(order.advancePaid)}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="block text-[12px] font-medium text-ink-muted">
+                      {t("common.balance")}
+                    </span>
+                    <span className="flex h-9 items-center font-semibold text-ink">
+                      {formatCurrency(balance)}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="block text-[12px] font-medium text-ink-muted">
+                      {t("orders.paymentMode")}
+                    </span>
+                    <span className="flex h-9 items-center font-semibold text-ink">
+                      {order.paymentMode}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="block text-[12px] font-medium text-ink-muted">
+                      {t("orders.paymentStatus")}
+                    </span>
+                    <div className="flex h-9 items-center">
+                      <BalanceBadge order={draftOrder} todayIso={todayIso()} />
+                    </div>
+                  </div>
+                </div>
+              ) : undefined
+            }
             autoSnapshotDefaultMeasurements
             excludeOrderId={order.id}
           />
@@ -535,9 +581,7 @@ export function EditOrderForm({
         )}
       >
         <OrderAttachmentDraftCard
-          itemOptions={attachmentItemOptions}
           existing={existingAttachments}
-          onExistingChange={setExistingAttachments}
           removedExistingIds={removedAttachmentIds}
           onRemovedExistingIdsChange={setRemovedAttachmentIds}
           queued={queuedAttachments}
@@ -545,62 +589,6 @@ export function EditOrderForm({
           error={(submitAttempted && attachmentValidationError) || attachmentError}
         />
       </div>
-
-      {canViewPayments && (
-        <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-          <h3 className="mb-4 text-[17px] font-semibold text-ink">
-            {t("orders.paymentSummary")}
-          </h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-ink-muted">
-                {taxBreakdown?.pricesIncludeTax ? t("common.total") : "Subtotal"}
-              </span>
-              <span className="font-semibold text-ink">
-                {formatCurrency(
-                  taxBreakdown && !taxBreakdown.pricesIncludeTax
-                    ? taxBreakdown.taxableValue
-                    : totalAmount
-                )}
-              </span>
-            </div>
-            {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
-              <div className="flex items-center justify-between">
-                <span className="text-ink-muted">
-                  {billingSettings.taxLabel} {billingSettings.taxRatePercent}%
-                </span>
-                <span className="font-semibold text-ink">
-                  {formatCurrency(taxBreakdown.taxAmount)}
-                </span>
-              </div>
-            )}
-            {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
-              <div className="flex items-center justify-between">
-                <span className="text-ink-muted">{t("common.total")}</span>
-                <span className="font-semibold text-ink">
-                  {formatCurrency(totalAmount)}
-                </span>
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <span className="text-ink-muted">{t("common.paid")}</span>
-              <span className="font-semibold text-ink">
-                {formatCurrency(order.advancePaid)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-ink-muted">{t("common.balance")}</span>
-              <span className="font-semibold text-ink">
-                {formatCurrency(balance)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-ink-muted">{t("orders.paymentStatus")}</span>
-              <BalanceBadge order={draftOrder} todayIso={todayIso()} />
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border-soft bg-white/95 px-4 py-3 shadow-soft backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-2">

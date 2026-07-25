@@ -1,6 +1,7 @@
 "use client";
 
 import { DesktopTopNav, MobileNav } from "@/components/layout/sidebar";
+import { OrderScanProvider } from "@/components/layout/order-scan";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useGlobalNewOrderShortcut } from "@/hooks/use-global-new-order-shortcut";
@@ -13,6 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // so this only affects the logged-in app shell.
   const { isLoading, hasPermission } = useCurrentUser();
   useGlobalNewOrderShortcut(!isLoading && hasPermission("orders.create"));
+  const canScanOrders = !isLoading && hasPermission("orders.view");
 
   if (isLoading) {
     return (
@@ -28,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-surface">
       <MobileNav />
       <DesktopTopNav />
+      <OrderScanProvider enabled={canScanOrders} />
       <main className="min-w-0 bg-surface">{children}</main>
     </div>
   );

@@ -9,7 +9,7 @@ import {
   updateOrderAttachmentAction,
   uploadOrderAttachmentAction,
 } from "@/app/(shell)/orders/actions";
-import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 export const ORDER_ATTACHMENT_TYPES: OrderAttachmentType[] = [
   "Design Reference",
@@ -83,11 +83,6 @@ function isImage(file: File | OrderAttachment) {
   return file instanceof File
     ? file.type.startsWith("image/")
     : file.mimeType.startsWith("image/");
-}
-
-function attachmentItemLabel(options: AttachmentItemOption[], key: string) {
-  if (!key) return "Whole order";
-  return options.find((option) => option.key === key)?.label ?? "Reassign item";
 }
 
 function validateFile(file: File): string | null {
@@ -224,28 +219,30 @@ export async function detachEditableOrderAttachments(
 }
 
 export function OrderAttachmentDraftCard({
-  itemOptions,
   queued,
   onQueuedChange,
   existing = [],
-  onExistingChange,
   removedExistingIds = [],
   onRemovedExistingIdsChange,
   error,
+  embedded = false,
+  inlineSummary = false,
 }: {
-  itemOptions: AttachmentItemOption[];
   queued: QueuedOrderAttachment[];
   onQueuedChange: (attachments: QueuedOrderAttachment[]) => void;
   existing?: EditableOrderAttachment[];
-  onExistingChange?: (attachments: EditableOrderAttachment[]) => void;
   removedExistingIds?: string[];
   onRemovedExistingIdsChange?: (ids: string[]) => void;
   error?: string | null;
+  embedded?: boolean;
+  inlineSummary?: boolean;
 }) {
   const [preview, setPreview] = useState<{ src: string; name: string } | null>(null);
+  const [managerOpen, setManagerOpen] = useState(false);
   const visibleExisting = existing.filter(
     (attachment) => !removedExistingIds.includes(attachment.id)
   );
+  const attachmentCount = visibleExisting.length + queued.length;
 
   useEffect(() => {
     if (!preview) return;
@@ -282,20 +279,10 @@ export function OrderAttachmentDraftCard({
     onQueuedChange([...queued, ...additions]);
   }
 
-  function updateQueued(id: string, patch: Partial<QueuedOrderAttachment>) {
-    onQueuedChange(queued.map((item) => (item.id === id ? { ...item, ...patch } : item)));
-  }
-
   function removeQueued(id: string) {
     const attachment = queued.find((item) => item.id === id);
     if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
     onQueuedChange(queued.filter((item) => item.id !== id));
-  }
-
-  function updateExisting(id: string, patch: Partial<EditableOrderAttachment>) {
-    onExistingChange?.(
-      existing.map((item) => (item.id === id ? { ...item, ...patch } : item))
-    );
   }
 
   function removeExisting(id: string) {
@@ -303,14 +290,98 @@ export function OrderAttachmentDraftCard({
     onRemovedExistingIdsChange?.([...removedExistingIds, id]);
   }
 
+  const summaryAttachments = [
+    ...visibleExisting.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.fileName,
+      size: attachment.fileSize,
+      previewUrl: attachment.signedUrl,
+      image: isImage(attachment),
+      onPreview: () =>
+        attachment.signedUrl &&
+        isImage(attachment) &&
+        setPreview({ src: attachment.signedUrl, name: attachment.fileName }),
+    })),
+    ...queued.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.file.name,
+      size: attachment.file.size,
+      previewUrl: attachment.previewUrl,
+      image: Boolean(attachment.previewUrl),
+      onPreview: () =>
+        attachment.previewUrl &&
+        setPreview({ src: attachment.previewUrl, name: attachment.file.name }),
+    })),
+  ];
+
   return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-[17px] font-semibold text-ink">Attachments / Photos</h3>
-          <p className="text-sm text-ink-muted">Optional references for this order.</p>
+    <div
+      className={cn(
+        embedded
+          ? ""
+          : cn(
+              "rounded-xl border border-border-soft bg-white shadow-soft",
+              inlineSummary ? "flex h-full flex-col justify-center p-3.5" : "p-3"
+            )
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("font-semibold text-ink", inlineSummary ? "text-[15px]" : "text-[13px]")}>
+            {inlineSummary
+              ? `Attachments - ${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}`
+              : `Photos - ${attachmentCount}`}
+          </span>
+          {summaryAttachments.length > 0 && (
+            <div className="flex min-w-0 items-center">
+              {summaryAttachments.slice(0, 3).map((attachment, index) => (
+                <button
+                  key={attachment.id}
+                  type="button"
+                  onClick={attachment.onPreview}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface",
+                    index > 0 && "-ml-2"
+                  )}
+                  title={attachment.name}
+                >
+                  {attachment.image && attachment.previewUrl ? (
+                    <Image
+                      src={attachment.previewUrl}
+                      alt={attachment.name}
+                      width={32}
+                      height={32}
+                      unoptimized
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon className="h-4 w-4 text-ink-faint" />
+                  )}
+                </button>
+              ))}
+              {summaryAttachments.length > 3 && (
+                <span className="-ml-2 flex h-8 w-8 items-center justify-center rounded-md border border-border-soft bg-white text-[11px] font-semibold text-ink-muted">
+                  +{summaryAttachments.length - 3}
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface">
+        {(attachmentCount > 0 || inlineSummary) && (
+          <button
+            type="button"
+            onClick={() => setManagerOpen(true)}
+            className="h-8 shrink-0 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+          >
+            {inlineSummary ? "Manage attachments" : "Manage"}
+          </button>
+        )}
+        <label
+          className={cn(
+            "h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface",
+            inlineSummary ? "hidden" : "flex"
+          )}
+        >
           <FileUp className="h-4 w-4" />
           Add files
           <input
@@ -326,218 +397,215 @@ export function OrderAttachmentDraftCard({
         </label>
       </div>
 
+      {inlineSummary && attachmentCount === 0 && (
+        <p className="mt-2 text-sm text-ink-muted">No files attached</p>
+      )}
+
       {error && (
-        <p className="mb-3 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
+        <p className="mt-2 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">
           {error}
         </p>
       )}
 
-      {visibleExisting.length === 0 && queued.length === 0 ? (
-        <p className="text-sm text-ink-muted">No attachments selected.</p>
-      ) : (
-        <div className="space-y-3">
-          {visibleExisting.map((attachment) => (
-            <div
-              key={attachment.id}
-              id={`attachment-${attachment.id}`}
-              tabIndex={-1}
-              className="rounded-lg border border-border-soft bg-surface/40 p-3"
-            >
-              <div className="grid gap-3 md:grid-cols-[72px_1fr_auto]">
-                <button
-                  type="button"
-                  onClick={() =>
-                    attachment.signedUrl &&
-                    isImage(attachment) &&
-                    setPreview({ src: attachment.signedUrl, name: attachment.fileName })
-                  }
-                  disabled={!attachment.signedUrl || !isImage(attachment)}
-                  title={isImage(attachment) ? "Preview attachment" : undefined}
-                  className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-border-soft bg-surface disabled:cursor-default"
-                >
-                  {isImage(attachment) && attachment.signedUrl ? (
-                    <Image
-                      src={attachment.signedUrl}
-                      alt={attachment.fileName}
-                      width={64}
-                      height={64}
-                      unoptimized
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <ImageIcon className="h-5 w-5 text-ink-faint" />
-                  )}
-                </button>
-                <div className="min-w-0 space-y-2">
-                  <div className="truncate text-sm font-semibold text-ink">
-                    {attachment.fileName}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Select
-                      value={attachment.attachmentType}
-                      onChange={(event) =>
-                        updateExisting(attachment.id, {
-                          attachmentType: event.target.value as OrderAttachmentType,
-                        })
-                      }
-                    >
-                      {ORDER_ATTACHMENT_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={attachment.orderItemKey}
-                      onChange={(event) =>
-                        updateExisting(attachment.id, { orderItemKey: event.target.value })
-                      }
-                    >
-                      <option value="">Whole order</option>
-                      {itemOptions.map((option) => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <input
-                    value={attachment.notes ?? ""}
-                    onChange={(event) =>
-                      updateExisting(attachment.id, { notes: event.target.value })
-                    }
-                    placeholder="Notes"
-                    className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+      {!inlineSummary && (
+        <div className="mt-2 flex min-h-10 items-center justify-between gap-2">
+        {summaryAttachments.length > 0 ? (
+          <div className="flex min-w-0 items-center">
+            {summaryAttachments.slice(0, 3).map((attachment, index) => (
+              <button
+                key={attachment.id}
+                type="button"
+                onClick={attachment.onPreview}
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface",
+                  index > 0 && "-ml-2"
+                )}
+                title={attachment.name}
+              >
+                {attachment.image && attachment.previewUrl ? (
+                  <Image
+                    src={attachment.previewUrl}
+                    alt={attachment.name}
+                    width={40}
+                    height={40}
+                    unoptimized
+                    className="h-full w-full object-cover"
                   />
-                </div>
-                <div className="flex items-start gap-1.5">
-                  {attachment.signedUrl && (
-                    <a
-                      href={attachment.signedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open attachment"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeExisting(attachment.id)}
-                    title="Remove attachment"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-ink-muted transition-colors hover:bg-chip-red hover:text-chip-red-fg"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+                ) : (
+                  <ImageIcon className="h-4 w-4 text-ink-faint" />
+                )}
+              </button>
+            ))}
+            {summaryAttachments.length > 3 && (
+              <span className="-ml-2 flex h-10 w-10 items-center justify-center rounded-md border border-border-soft bg-white text-xs font-semibold text-ink-muted">
+                +{summaryAttachments.length - 3}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-sm text-ink-muted">No photos attached</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setManagerOpen(true)}
+          className="h-8 shrink-0 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+        >
+          View/Edit
+        </button>
+        </div>
+      )}
 
-          {queued.map((attachment) => (
-            <div
-              key={attachment.id}
-              className="rounded-lg border border-border-soft bg-surface/40 p-3"
-            >
-              <div className="grid gap-3 md:grid-cols-[72px_1fr_auto]">
-                <button
-                  type="button"
-                  onClick={() =>
-                    attachment.previewUrl &&
-                    setPreview({ src: attachment.previewUrl, name: attachment.file.name })
-                  }
-                  disabled={!attachment.previewUrl}
-                  title={attachment.previewUrl ? "Preview attachment" : undefined}
-                  className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-border-soft bg-surface disabled:cursor-default"
-                >
-                  {attachment.previewUrl ? (
-                    <Image
-                      src={attachment.previewUrl}
-                      alt={attachment.file.name}
-                      width={64}
-                      height={64}
-                      unoptimized
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <ImageIcon className="h-5 w-5 text-ink-faint" />
-                  )}
-                </button>
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-ink">
-                      {attachment.file.name}
-                    </span>
-                    <span className="text-xs text-ink-muted">
-                      {formatFileSize(attachment.file.size)}
-                    </span>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Select
-                      value={attachment.attachmentType}
-                      onChange={(event) =>
-                        updateQueued(attachment.id, {
-                          attachmentType: event.target.value as OrderAttachmentType,
-                        })
-                      }
-                    >
-                      {ORDER_ATTACHMENT_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={attachment.orderItemKey}
-                      onChange={(event) =>
-                        updateQueued(attachment.id, { orderItemKey: event.target.value })
-                      }
-                    >
-                      <option value="">Whole order</option>
-                      {itemOptions.map((option) => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <input
-                    value={attachment.notes}
-                    onChange={(event) =>
-                      updateQueued(attachment.id, { notes: event.target.value })
-                    }
-                    placeholder="Notes"
-                    className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                  />
-                  {attachment.error && (
-                    <p className="text-xs font-medium text-chip-red-fg">
-                      {attachment.error}
-                    </p>
-                  )}
-                  {attachment.orderItemKey &&
-                    !itemOptions.some((option) => option.key === attachment.orderItemKey) && (
-                      <p className="text-xs font-medium text-chip-red-fg">
-                        The linked item was removed. Reassign or remove this file.
-                      </p>
-                    )}
-                  <p className="text-xs text-ink-muted">
-                    {attachmentItemLabel(itemOptions, attachment.orderItemKey)}
-                  </p>
-                </div>
-                <div className="flex items-start">
-                  <button
-                    type="button"
-                    onClick={() => removeQueued(attachment.id)}
-                    title="Remove queued file"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-ink-muted transition-colors hover:bg-chip-red hover:text-chip-red-fg"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
+      {managerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft">
+            <div className="flex items-center justify-between border-b border-border-soft px-4 py-3">
+              <h3 className="text-[17px] font-semibold text-ink">Photos</h3>
+              <button
+                type="button"
+                onClick={() => setManagerOpen(false)}
+                aria-label="Close attachment manager"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          ))}
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="mb-3 flex justify-end">
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface">
+                  <FileUp className="h-4 w-4" />
+                  Add more files
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      handleAddFiles(event.target.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {attachmentCount === 0 ? (
+                <p className="text-sm text-ink-muted">No attachments selected.</p>
+              ) : (
+                <div className="space-y-2">
+                  {visibleExisting.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      id={`attachment-${attachment.id}`}
+                      tabIndex={-1}
+                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          attachment.signedUrl &&
+                          isImage(attachment) &&
+                          setPreview({ src: attachment.signedUrl, name: attachment.fileName })
+                        }
+                        disabled={!attachment.signedUrl || !isImage(attachment)}
+                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface disabled:cursor-default"
+                      >
+                        {isImage(attachment) && attachment.signedUrl ? (
+                          <Image
+                            src={attachment.signedUrl}
+                            alt={attachment.fileName}
+                            width={56}
+                            height={56}
+                            unoptimized
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <ImageIcon className="h-5 w-5 text-ink-faint" />
+                        )}
+                      </button>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{attachment.fileName}</p>
+                        <p className="text-xs text-ink-muted">{formatFileSize(attachment.fileSize)}</p>
+                      </div>
+                      <div className="flex justify-end gap-1.5">
+                        {attachment.signedUrl && (
+                          <a
+                            href={attachment.signedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open attachment"
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeExisting(attachment.id)}
+                          title="Remove attachment"
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-ink-muted transition-colors hover:bg-chip-red hover:text-chip-red-fg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {queued.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          attachment.previewUrl &&
+                          setPreview({ src: attachment.previewUrl, name: attachment.file.name })
+                        }
+                        disabled={!attachment.previewUrl}
+                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface disabled:cursor-default"
+                      >
+                        {attachment.previewUrl ? (
+                          <Image
+                            src={attachment.previewUrl}
+                            alt={attachment.file.name}
+                            width={56}
+                            height={56}
+                            unoptimized
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <ImageIcon className="h-5 w-5 text-ink-faint" />
+                        )}
+                      </button>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{attachment.file.name}</p>
+                        <p className="text-xs text-ink-muted">{formatFileSize(attachment.file.size)}</p>
+                        {attachment.error && (
+                          <p className="truncate text-xs font-medium text-chip-red-fg">{attachment.error}</p>
+                        )}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeQueued(attachment.id)}
+                          title="Remove queued file"
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-ink-muted transition-colors hover:bg-chip-red hover:text-chip-red-fg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end border-t border-border-soft px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setManagerOpen(false)}
+                className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

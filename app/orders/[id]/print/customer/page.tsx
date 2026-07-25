@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import {
   getOrderByIdAction,
@@ -8,11 +9,7 @@ import {
 } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
-import {
-  formatDate,
-  formatOptionalDate,
-  ORDER_STATUS_LABEL_KEYS,
-} from "@/components/orders/orders-table";
+import { formatDate } from "@/components/orders/orders-table";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -21,25 +18,32 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
+import { barcodeSvgDataUri } from "@/lib/barcode-code128";
 import { formatCurrency } from "@/lib/currency";
-import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import type { Customer, Order, Payment } from "@/lib/types";
 
-// No shop-settings module exists yet (see CLAUDE.md) — using the app's own
-// name as a stand-in until a real shop profile/name field is introduced.
-
-// Phase 7E: the receipt used to show order.paymentMode directly, as if an
-// order only ever had one payment — not true once an order can have an
-// advance, a partial, and a final payment each recorded in a different
-// mode. Kept deliberately simple per this chunk's own instruction (no
-// itemized ledger on the receipt — that's what the Order Details drawer's
-// Payment History and the Reports Payments tab are for): voided payments
-// are excluded entirely, then collapsed to "—" (none), the one mode (one
-// payment), or "Multiple" with a small per-mode breakdown (more than one).
 type PaymentModeSummary =
   | { kind: "none" }
   | { kind: "single"; mode: string }
   | { kind: "multiple"; breakdown: { mode: string; amount: number }[] };
+
+type ReceiptRow =
+  | {
+      type: "item";
+      key: string;
+      particular: string;
+      qty: number;
+      rate: number;
+      total: number;
+    }
+  | {
+      type: "addon";
+      key: string;
+      label: string;
+      amount: number;
+    };
+
+const ROWS_PER_RECEIPT_PAGE = 8;
 
 function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   const counted = payments.filter((p) => !p.voided);
@@ -55,28 +59,198 @@ function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   };
 }
 
+function paymentModeLabel(summary: PaymentModeSummary) {
+  if (summary.kind === "none") return "";
+  if (summary.kind === "single") return summary.mode;
+  return "Multiple";
+}
+
+function receiptRows(order: Order): ReceiptRow[] {
+  return order.items.flatMap((item) => {
+    const rows: ReceiptRow[] = [
+      {
+        type: "item",
+        key: `item-${item.serialNo}`,
+        particular: item.particular,
+        qty: item.qty,
+        rate: item.rate,
+        total: item.amount,
+      },
+    ];
+    (item.addOns ?? []).forEach((addOn, index) => {
+      rows.push({
+        type: "addon",
+        key: `item-${item.serialNo}-addon-${addOn.key}-${index}`,
+        label: addOn.label,
+        amount: addOn.amount,
+      });
+    });
+    return rows;
+  });
+}
+
+function paginateRows(rows: ReceiptRow[]) {
+  const pages: ReceiptRow[][] = [];
+  for (let i = 0; i < rows.length; i += ROWS_PER_RECEIPT_PAGE) {
+    pages.push(rows.slice(i, i + ROWS_PER_RECEIPT_PAGE));
+  }
+  return pages.length > 0 ? pages : [[]];
+}
+
+function ReceiptPage({
+  order,
+  customer,
+  payments,
+  billingSettings,
+  scanPayload,
+  rows,
+  pageNumber,
+  pageCount,
+  canViewPayments,
+}: {
+  order: Order;
+  customer: Customer | undefined;
+  payments: Payment[];
+  billingSettings: ShopBillingSettings;
+  scanPayload: string;
+  rows: ReceiptRow[];
+  pageNumber: number;
+  pageCount: number;
+  canViewPayments: boolean;
+}) {
+  const modeSummary = summarizePaymentModes(payments);
+  const modeLabel = paymentModeLabel(modeSummary);
+  const isFinalPage = pageNumber === pageCount;
+
+  return (
+    <section className="receipt-page">
+      <header className="receipt-header">
+        <div className="receipt-shop">
+          <div className="receipt-shop-name">{billingSettings.shopName || "NewLook"}</div>
+          {billingSettings.tagline && (
+            <div className="receipt-tagline">{billingSettings.tagline}</div>
+          )}
+          <dl className="receipt-details">
+            <div>
+              <dt>Order No</dt>
+              <dd>{order.orderNumber}</dd>
+            </div>
+            <div>
+              <dt>Order Date</dt>
+              <dd>{formatDate(order.orderDate)}</dd>
+            </div>
+            <div>
+              <dt>Delivery Date</dt>
+              <dd>{formatDate(order.deliveryDate)}</dd>
+            </div>
+          </dl>
+        </div>
+        <div className="receipt-customer">
+          <dl className="receipt-details">
+            <div>
+              <dt>Name</dt>
+              <dd>{customer?.name ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Mobile</dt>
+              <dd>{customer?.phone ?? "-"}</dd>
+            </div>
+            {customer?.area && (
+              <div>
+                <dt>Area</dt>
+                <dd>{customer.area}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      </header>
+
+      <main className="receipt-body">
+        <table className="receipt-items">
+          <thead>
+            <tr>
+              <th>Particular</th>
+              <th className="num">Qty</th>
+              <th className="num">Rate</th>
+              <th className="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) =>
+              row.type === "item" ? (
+                <tr key={row.key}>
+                  <td>{row.particular}</td>
+                  <td className="num">{row.qty}</td>
+                  <td className="num">{formatCurrency(row.rate)}</td>
+                  <td className="num">{formatCurrency(row.total)}</td>
+                </tr>
+              ) : (
+                <tr key={row.key} className="addon-row">
+                  <td>+ {row.label}</td>
+                  <td className="num" />
+                  <td className="num">{formatCurrency(row.amount)}</td>
+                  <td className="num">{formatCurrency(row.amount)}</td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </main>
+
+      <footer className="receipt-footer">
+        <div className="receipt-note">
+          <div className="receipt-barcode" aria-label={`Scan to open ${order.orderNumber}`}>
+            <Image
+              src={barcodeSvgDataUri(scanPayload)}
+              alt=""
+              width={190}
+              height={36}
+              unoptimized
+            />
+            <span>{order.orderNumber}</span>
+          </div>
+          <span>{billingSettings.footerNote || "Please bring this receipt during pickup."}</span>
+          {pageCount > 1 && (
+            <span className="receipt-page-number">
+              Page {pageNumber} of {pageCount}
+            </span>
+          )}
+        </div>
+        {canViewPayments && isFinalPage && (
+          <div className="receipt-summary">
+            <div>
+              <span>Bill Amount</span>
+              <strong>{formatCurrency(order.totalAmount)}</strong>
+            </div>
+            <div>
+              <span>Paid</span>
+              <strong>{formatCurrency(order.advancePaid)}</strong>
+            </div>
+            <div className="balance">
+              <span>Balance</span>
+              <strong>{formatCurrency(order.balance)}</strong>
+            </div>
+            {modeLabel && (
+              <div>
+                <span>Payment Mode</span>
+                <strong>{modeLabel}</strong>
+              </div>
+            )}
+          </div>
+        )}
+      </footer>
+    </section>
+  );
+}
+
 function CustomerReceiptPrintPageContent({
   params,
 }: {
   params: { id: string };
 }) {
-  const { t } = useLanguage();
   const { hasPermission } = useCurrentUser();
-  // Phase 5D: orders.printCustomerReceipt and orders.viewPayments are
-  // siblings under orders.view, not parent/child — a custom role could
-  // grant one without the other. Every other payment display in the app
-  // (OrdersTable, OrderDetailsDrawer, Edit Order, New Order) already
-  // hides figures behind this same check; this print page was the one
-  // place that didn't, so a role without orders.viewPayments could still
-  // see Total/Paid/Balance/Payment Mode here.
+  useLanguage();
   const canViewPayments = hasPermission("orders.viewPayments");
-
-  // Phase 6C: order/customer data now comes from real Supabase tables via
-  // Server Actions, not a direct synchronous stub-data.ts read — this page
-  // never had its data source converted before now (Phase 5D only added
-  // the permission gate above), so it needed the same effect-driven
-  // fetch/loading-state conversion every other client component already
-  // went through in 5A/6B.
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -103,10 +277,6 @@ function CustomerReceiptPrintPageContent({
     };
   }, [params.id]);
 
-  // Phase 7E: only fetched when the caller can see payment figures at all —
-  // getPaymentsForOrderAction already re-checks orders.viewPayments
-  // server-side and would just return [] otherwise, but there's no reason
-  // to make the round trip when this block won't even render.
   useEffect(() => {
     if (!canViewPayments) {
       setPayments([]);
@@ -121,208 +291,305 @@ function CustomerReceiptPrintPageContent({
     };
   }, [params.id, canViewPayments]);
 
+  const pages = useMemo(() => {
+    if (!order) return [[]] as ReceiptRow[][];
+    return paginateRows(receiptRows(order));
+  }, [order]);
+
   if (order === undefined) return null;
   if (order === null) notFound();
 
-  const modeSummary = summarizePaymentModes(payments);
-  const itemSubtotal = order.items.reduce((sum, item) => sum + item.amount, 0);
-  const taxSplit = getOrderTaxBreakdown(itemSubtotal, billingSettings);
-  const formattedTrialDate = formatOptionalDate(order.trialDate);
+  const scanPayload = order.scanToken ? `TS|ORD|${order.scanToken}` : order.orderNumber;
 
   return (
-    <PrintPageFrame showClose>
-      <div className="border-b-2 border-black pb-4">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-2xl font-bold">{billingSettings.shopName}</h1>
-            {billingSettings.tagline && (
-              <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
-            )}
-            {(billingSettings.phone || billingSettings.email) && (
-              <p className="text-xs text-gray-600">
-                {[billingSettings.phone, billingSettings.email].filter(Boolean).join(" | ")}
-              </p>
-            )}
-            {billingSettings.address && (
-              <p className="mt-1 max-w-md whitespace-pre-line text-xs text-gray-600">
-                {billingSettings.address}
-              </p>
-            )}
-            {billingSettings.gstin && (
-              <p className="mt-1 text-xs font-semibold text-gray-700">
-                GSTIN: {billingSettings.gstin}
-              </p>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
-              {t("print.customerReceipt")}
-            </p>
-            {order.invoiceNumber && (
-              <>
-                <p className="mt-1 text-xs text-gray-500">Invoice No</p>
-                <p className="font-semibold">{order.invoiceNumber}</p>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+    <PrintPageFrame showClose contentClassName="receipt-preview-frame">
+      <style jsx global>{`
+        @page {
+          size: 6in 4in;
+          margin: 0;
+        }
 
-      <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
-        <div>
-          <p className="text-gray-500">{t("print.orderNo")}</p>
-          <p className="font-semibold">{order.orderNumber}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.orderStatus")}</p>
-          <p className="font-semibold">
-            {t(ORDER_STATUS_LABEL_KEYS[order.status])}
-          </p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.orderDate")}</p>
-          <p className="font-semibold">{formatDate(order.orderDate)}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.deliveryDate")}</p>
-          <p className="font-semibold">{formatDate(order.deliveryDate)}</p>
-        </div>
-        {formattedTrialDate && (
-          <div>
-            <p className="text-gray-500">{t("orders.trialDate")}</p>
-            <p className="font-semibold">{formattedTrialDate}</p>
-          </div>
-        )}
-        <div>
-          <p className="text-gray-500">{t("print.customerName")}</p>
-          <p className="font-semibold">{customer?.name ?? "—"}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.customerPhone")}</p>
-          <p className="font-semibold">{customer?.phone ?? "—"}</p>
-        </div>
-      </div>
+        .receipt-preview-frame {
+          width: fit-content;
+          max-width: none;
+          padding: 0;
+          background: transparent;
+          box-shadow: none;
+        }
 
-      <div className="mt-6">
-        <p className="mb-2 border-b border-gray-300 pb-1 text-sm font-semibold uppercase tracking-wide">
-          {t("print.items")}
-        </p>
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-black">
-              <th className="py-1.5">{t("print.particular")}</th>
-              <th className="py-1.5 text-right">{t("print.qty")}</th>
-              <th className="py-1.5 text-right">{t("print.rate")}</th>
-              <th className="py-1.5 text-right">{t("print.amount")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.items.map((item) => {
-              const addOns = item.addOns ?? [];
-              return (
-                <Fragment key={item.serialNo}>
-                  <tr className={addOns.length > 0 ? "" : "border-b border-gray-200"}>
-                    <td className="py-1.5">{item.particular}</td>
-                    <td className="py-1.5 text-right">{item.qty}</td>
-                    <td className="py-1.5 text-right">
-                      {formatCurrency(item.rate)}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      {formatCurrency(item.amount)}
-                    </td>
-                  </tr>
-                  {addOns.length > 0 && (
-                    <tr className="border-b border-gray-200">
-                      <td colSpan={4} className="pb-1.5 pl-4 pr-2 text-xs text-gray-600">
-                        <span className="font-semibold">
-                          Includes add-on{addOns.length === 1 ? "" : "s"}:{" "}
-                        </span>
-                        <span className="break-words">
-                          {addOns
-                            .map((addOn) => `${addOn.label} ${formatCurrency(addOn.amount)}`)
-                            .join(", ")}
-                        </span>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+        .receipt-page {
+          width: 6in;
+          height: 4in;
+          box-sizing: border-box;
+          overflow: hidden;
+          break-after: page;
+          page-break-after: always;
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          padding: 0.2in;
+          background: white;
+          color: #111827;
+          font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
 
-      {canViewPayments && (
-        <div className="mt-6 flex justify-end">
-          <div className="w-64 text-sm">
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">
-                {taxSplit ? "Taxable Value" : t("print.total")}
-              </span>
-              <span className="font-semibold">
-                {formatCurrency(taxSplit ? taxSplit.taxableValue : order.totalAmount)}
-              </span>
-            </div>
-            {taxSplit && (
-              <>
-                <div className="flex justify-between py-1">
-                  <span className="text-gray-500">
-                    CGST ({taxSplit.cgstRate}%)
-                  </span>
-                  <span className="font-semibold">
-                    {formatCurrency(taxSplit.cgstAmount)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-gray-500">SGST ({taxSplit.sgstRate}%)</span>
-                  <span className="font-semibold">
-                    {formatCurrency(taxSplit.sgstAmount)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-gray-500">{t("print.total")}</span>
-                  <span className="font-semibold">
-                    {formatCurrency(taxSplit.totalWithTax)}
-                  </span>
-                </div>
-              </>
-            )}
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">{t("print.paid")}</span>
-              <span className="font-semibold">
-                {formatCurrency(order.advancePaid)}
-              </span>
-            </div>
-            <div className="flex justify-between border-t border-black py-1.5 text-base">
-              <span className="font-semibold">{t("print.balance")}</span>
-              <span className="font-bold">
-                {formatCurrency(order.balance)}
-              </span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">{t("print.paymentMode")}</span>
-              <span className="font-semibold">
-                {modeSummary.kind === "none" && "—"}
-                {modeSummary.kind === "single" && modeSummary.mode}
-                {modeSummary.kind === "multiple" && t("print.multiplePaymentModes")}
-              </span>
-            </div>
-            {modeSummary.kind === "multiple" && (
-              <div className="flex justify-end">
-                <span className="text-right text-xs text-gray-500">
-                  {modeSummary.breakdown
-                    .map((b) => `${b.mode} ${formatCurrency(b.amount)}`)
-                    .join(" · ")}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+        .receipt-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
 
-      <p className="mt-10 border-t border-gray-300 pt-4 text-center text-xs text-gray-600">
-        {billingSettings.footerNote || t("print.bringReceipt")}
-      </p>
+        .receipt-header {
+          display: grid;
+          grid-template-columns: 1.25fr 1fr;
+          gap: 0.16in;
+          border-bottom: 1px solid #111827;
+          padding-bottom: 0.07in;
+        }
+
+        .receipt-shop-name {
+          font-size: 20px;
+          line-height: 1;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
+
+        .receipt-tagline {
+          margin-top: 2px;
+          font-size: 9px;
+          color: #4b5563;
+        }
+
+        .receipt-details {
+          margin: 0.06in 0 0;
+          display: grid;
+          gap: 2px;
+          font-size: 9.5px;
+        }
+
+        .receipt-details div {
+          display: grid;
+          grid-template-columns: 0.72in 1fr;
+          gap: 0.05in;
+          min-width: 0;
+        }
+
+        .receipt-customer .receipt-details div {
+          grid-template-columns: 0.48in 1fr;
+        }
+
+        .receipt-barcode {
+          margin-bottom: 0.03in;
+          display: grid;
+          gap: 2px;
+          justify-items: start;
+        }
+
+        .receipt-barcode img {
+          display: block;
+          width: 1.86in;
+          height: 0.34in;
+          image-rendering: crisp-edges;
+        }
+
+        .receipt-barcode span {
+          max-width: 1.86in;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 8px;
+          font-weight: 700;
+          color: #111827;
+        }
+
+        .receipt-details dt {
+          color: #4b5563;
+          font-weight: 600;
+        }
+
+        .receipt-details dd {
+          margin: 0;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-weight: 700;
+        }
+
+        .receipt-body {
+          min-height: 0;
+          padding-top: 0.07in;
+        }
+
+        .receipt-items {
+          width: 100%;
+          border-collapse: collapse;
+          table-layout: fixed;
+          font-size: 9.5px;
+          line-height: 1.15;
+        }
+
+        .receipt-items th {
+          border-bottom: 1px solid #111827;
+          padding: 3px 3px;
+          text-align: left;
+          font-size: 10px;
+          font-weight: 800;
+        }
+
+        .receipt-items th:first-child {
+          width: 58%;
+        }
+
+        .receipt-items th:nth-child(2) {
+          width: 10%;
+        }
+
+        .receipt-items th:nth-child(3),
+        .receipt-items th:nth-child(4) {
+          width: 16%;
+        }
+
+        .receipt-items td {
+          padding: 3px 3px;
+          vertical-align: top;
+          border-bottom: 1px solid #e5e7eb;
+          break-inside: avoid;
+        }
+
+        .receipt-items td:first-child {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-weight: 650;
+        }
+
+        .receipt-items .addon-row td {
+          color: #4b5563;
+          font-size: 8.8px;
+          border-bottom-color: #f1f5f9;
+        }
+
+        .receipt-items .addon-row td:first-child {
+          padding-left: 0.14in;
+          font-weight: 500;
+        }
+
+        .num {
+          text-align: right !important;
+          white-space: nowrap;
+        }
+
+        .receipt-footer {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 0.12in;
+          align-items: end;
+          border-top: 1px solid #111827;
+          padding-top: 0.06in;
+        }
+
+        .receipt-note {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          font-size: 8.5px;
+          color: #4b5563;
+        }
+
+        .receipt-page-number {
+          font-weight: 700;
+          color: #111827;
+        }
+
+        .receipt-summary {
+          width: 1.75in;
+          font-size: 9.5px;
+        }
+
+        .receipt-summary div {
+          display: flex;
+          justify-content: space-between;
+          gap: 0.12in;
+          padding: 1px 0;
+        }
+
+        .receipt-summary span {
+          color: #4b5563;
+          white-space: nowrap;
+        }
+
+        .receipt-summary strong {
+          white-space: nowrap;
+          font-weight: 800;
+        }
+
+        .receipt-summary .balance {
+          margin-top: 2px;
+          border-top: 1px solid #111827;
+          padding-top: 3px;
+          font-size: 11px;
+        }
+
+        @media screen {
+          .receipt-preview-frame {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+          }
+
+          .receipt-page {
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+          }
+        }
+
+        @media screen and (max-width: 760px) {
+          .receipt-page {
+            transform: scale(calc((100vw - 24px) / 576));
+            transform-origin: top center;
+            margin-bottom: calc(-4in + ((100vw - 24px) / 1.5));
+          }
+        }
+
+        @media print {
+          html,
+          body {
+            width: 6in;
+            min-height: 4in;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+
+          * {
+            animation: none !important;
+            transition: none !important;
+          }
+
+          .receipt-preview-frame {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+
+          .receipt-page {
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+      {pages.map((pageRows, index) => (
+        <ReceiptPage
+          key={index}
+          order={order}
+          customer={customer}
+          payments={payments}
+          billingSettings={billingSettings}
+          scanPayload={scanPayload}
+          rows={pageRows}
+          pageNumber={index + 1}
+          pageCount={pages.length}
+          canViewPayments={canViewPayments}
+        />
+      ))}
     </PrintPageFrame>
   );
 }

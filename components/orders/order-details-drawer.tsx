@@ -32,6 +32,7 @@ import {
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
+import { StageJobCardPrintModal } from "@/components/orders/stage-job-card-print-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
@@ -40,9 +41,10 @@ import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
 import { formatCurrency } from "@/lib/currency";
 
-function PrintMenu({ orderId }: { orderId: string }) {
+function PrintMenu({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
+  const [showStagePrint, setShowStagePrint] = useState(false);
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -70,7 +72,7 @@ function PrintMenu({ orderId }: { orderId: string }) {
             {canPrintReceipt && (
               <li>
                 <Link
-                  href={`/orders/${orderId}/print/customer`}
+                  href={`/orders/${order.id}/print/customer`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
@@ -93,30 +95,29 @@ function PrintMenu({ orderId }: { orderId: string }) {
             )}
             {canPrintJobCard && (
               <li>
-                <Link
-                  href={`/orders/${orderId}/job-cards/print`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
                   onClick={() => {
-                    setOpeningPrint("job-card");
-                    window.setTimeout(() => {
-                      setOpeningPrint(null);
-                      setOpen(false);
-                    }, 900);
+                    setShowStagePrint(true);
+                    setOpen(false);
                   }}
-                  className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+                  className="block w-full px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
                 >
                   <span className="flex items-center gap-1.5">
-                    {openingPrint === "job-card" && (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    )}
-                    {openingPrint === "job-card" ? "Opening..." : "Print All Job Cards"}
+                    Print Stage Job Card
                   </span>
-                </Link>
+                </button>
               </li>
             )}
           </ul>
         </>
+      )}
+      {showStagePrint && (
+        <StageJobCardPrintModal
+          order={order}
+          target={{ serialNo: order.items[0]?.serialNo ?? 1 }}
+          onClose={() => setShowStagePrint(false)}
+        />
       )}
     </div>
   );
@@ -544,7 +545,7 @@ export function OrderDetailsDrawer({
                       {openingEdit ? "Opening..." : "Edit"}
                     </Link>
                   )}
-                  <PrintMenu orderId={order.id} />
+                  <PrintMenu order={order} />
                 </div>
                 {customer && <InvoiceShareActions order={order} customer={customer} />}
               </div>

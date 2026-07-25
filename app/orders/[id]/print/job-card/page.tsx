@@ -1,370 +1,353 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { notFound } from "next/navigation";
-import { getJobCardsAction } from "@/app/(shell)/job-cards/actions";
+import { Loader2 } from "lucide-react";
+import {
+  createJobCardStageSlipAction,
+  getJobCardStageSlipAction,
+} from "@/app/(shell)/job-cards/actions";
 import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
+import { getStaffAction } from "@/app/(shell)/staff/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
-import {
-  getCustomerByIdAction,
-  getGarmentMeasurementDraftSeedAction,
-} from "@/app/(shell)/customers/actions";
-import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
-import {
-  formatDate,
-  formatOptionalDate,
-  ORDER_STATUS_LABEL_KEYS,
-} from "@/components/orders/orders-table";
+import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
-import { useLanguage } from "@/components/i18n/language-provider";
+import { formatDate } from "@/components/orders/orders-table";
+import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
+import { barcodeSvgDataUri } from "@/lib/barcode-code128";
 import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
-import { buildJobCards, type JobCard } from "@/lib/job-cards";
-import type { Customer, Order, OrderItem } from "@/lib/types";
+import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
+import type { Customer, Order, Staff, TaskType } from "@/lib/types";
+
+const TASK_TYPES: TaskType[] = [
+  "Measurement",
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Alteration",
+  "Ironing/Packing",
+  "Delivery",
+];
 
 const FIELD_LABELS: Record<string, string> = Object.fromEntries(
   measurementFields.map((field) => [field.id, field.label])
 );
 
-const MEASUREMENT_NOTES_KEY = "__measurementNotes";
-const MEASUREMENT_NOTE_KEYS = new Set([
-  MEASUREMENT_NOTES_KEY,
-  "measurementNotes",
-  "measurement_notes",
-  "notes",
-]);
-
-type MeasurementDraftSeed = {
-  values: Record<string, string>;
-  fitNotes: string;
-  notes: string;
-};
-
-function safeMeasurementValue(value: unknown) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
-  if (typeof value === "bigint") return String(value);
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "[object Object]" || trimmed.toLowerCase() === "nan") {
-    return "";
-  }
-  return trimmed;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function measurementSnapshotRecord(item: OrderItem) {
-  const root = asRecord(item.measurements as unknown);
-  if (!root) return null;
-
-  for (const key of ["values", "measurements", "measurement_values"]) {
-    const nested = asRecord(root[key]);
-    if (nested) {
-      return {
-        valuesRecord: nested,
-        notesRecord: root,
-      };
-    }
-  }
-
-  return {
-    valuesRecord: root,
-    notesRecord: root,
-  };
-}
-
-function measurementSeedRecord(fallbackSeed?: MeasurementDraftSeed) {
-  if (!fallbackSeed) return null;
-  return {
-    valuesRecord: fallbackSeed.values as Record<string, unknown>,
-    notesRecord: fallbackSeed.notes
-      ? ({ [MEASUREMENT_NOTES_KEY]: fallbackSeed.notes } as Record<string, unknown>)
-      : {},
-  };
-}
-
-function measurementNotesFromRecord(record: Record<string, unknown>) {
-  const parts: string[] = [];
-  for (const key of Array.from(MEASUREMENT_NOTE_KEYS)) {
-    const value = safeMeasurementValue(record[key]);
-    if (value && !parts.some((part) => part.toLowerCase() === value.toLowerCase())) {
-      parts.push(value);
-    }
-  }
-  return parts.join("\n");
-}
-
-function resolveMeasurements(item: OrderItem, fallbackSeed?: MeasurementDraftSeed) {
-  let snapshot = measurementSnapshotRecord(item) ?? measurementSeedRecord(fallbackSeed);
-  if (!snapshot) return { values: [], measurementNotes: "" };
-
-  const readValues = (record: Record<string, unknown>) => {
-    const valuesByKey = new Map<string, string>();
-    for (const [key, value] of Object.entries(record)) {
-      if (MEASUREMENT_NOTE_KEYS.has(key)) continue;
-      if (asRecord(value)) continue;
-      const displayValue = safeMeasurementValue(value);
-      if (displayValue) valuesByKey.set(key, displayValue);
-    }
-    return valuesByKey;
-  };
-
-  let valuesByKey = readValues(snapshot.valuesRecord);
-  let measurementNotes = measurementNotesFromRecord(snapshot.notesRecord);
-  if (valuesByKey.size === 0 && !measurementNotes) {
-    const fallbackSnapshot = measurementSeedRecord(fallbackSeed);
-    if (fallbackSnapshot && fallbackSnapshot !== snapshot) {
-      snapshot = fallbackSnapshot;
-      valuesByKey = readValues(snapshot.valuesRecord);
-      measurementNotes = measurementNotesFromRecord(snapshot.notesRecord);
-    }
-  }
-
-  const knownOrder = measurementFields.map((field) => field.id);
-  const orderedKeys = [
-    ...knownOrder.filter((key) => valuesByKey.has(key)),
-    ...Array.from(valuesByKey.keys()).filter((key) => !knownOrder.includes(key)),
-  ];
-
-  return {
-    values: orderedKeys.map((key) => ({
-      key,
-      label: FIELD_LABELS[key] ?? measurementFieldLabel(key),
-      value: valuesByKey.get(key) ?? "",
-    })),
-    measurementNotes,
-  };
-}
-
 function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function filteredJobCards(
-  cards: JobCard[],
-  searchParams?: Record<string, string | string[] | undefined>
-) {
-  const jobCardId = firstValue(searchParams?.jobCardId);
-  const serialNo = Number(firstValue(searchParams?.orderItemSerialNo));
-  const unitNo = Number(firstValue(searchParams?.unitNo));
-
-  if (jobCardId) return cards.filter((card) => card.id === jobCardId);
-  if (Number.isFinite(serialNo) && Number.isFinite(unitNo)) {
-    return cards.filter(
-      (card) => card.item.serialNo === serialNo && card.unitNo === unitNo
-    );
-  }
-  return cards;
+function measurementEntries(measurements?: Record<string, string>) {
+  if (!measurements) return [];
+  const keys = [
+    ...measurementFields.map((field) => field.id).filter((key) => measurements[key]?.trim()),
+    ...Object.keys(measurements).filter(
+      (key) => !measurementFields.some((field) => field.id === key) && measurements[key]?.trim()
+    ),
+  ];
+  return keys.map((key) => ({
+    key,
+    label: FIELD_LABELS[key] ?? measurementFieldLabel(key),
+    value: measurements[key],
+  }));
 }
 
-function orderItemForCard(order: Order, card: JobCard) {
-  return order.items.find((item) => item.serialNo === card.item.serialNo) ?? card.item;
+function activeStaff(staff: Staff[]) {
+  return staff.filter((member) => member.status === "Active");
 }
 
-function TailorJobCardSheet({
-  card,
+function defaultRateFor(staff: Staff | undefined, stage: TaskType) {
+  if (!staff || staff.paymentType !== "Per Piece") return 0;
+  const rate = Number(staff.pieceRates?.[stage] ?? 0);
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+}
+
+function PrintSetup({
   order,
-  customer,
-  billingSettings,
-  measurementSeeds,
+  staff,
+  initialSerialNo,
+  initialUnitNo,
 }: {
-  card: JobCard;
   order: Order;
-  customer: Customer | undefined;
-  billingSettings: ShopBillingSettings;
-  measurementSeeds: Record<string, MeasurementDraftSeed>;
+  staff: Staff[];
+  initialSerialNo?: number;
+  initialUnitNo?: number;
 }) {
-  const { t } = useLanguage();
-  const item = orderItemForCard(order, card);
-  const { values, measurementNotes } = resolveMeasurements(
-    item,
-    measurementSeeds[item.particular.trim().toLowerCase()]
+  const firstItem = order.items[0];
+  const [serialNo, setSerialNo] = useState(
+    initialSerialNo && order.items.some((item) => item.serialNo === initialSerialNo)
+      ? initialSerialNo
+      : firstItem?.serialNo ?? 1
   );
-  const formattedTrialDate = formatOptionalDate(order.trialDate);
-  const hasMeaningfulFabricSource =
-    item.fabricSource && item.fabricSource !== "Not specified";
-  const hasItemNotes = hasMeaningfulFabricSource || item.fabricNotes || item.designNotes;
+  const selectedItem = order.items.find((item) => item.serialNo === serialNo) ?? firstItem;
+  const maxUnit = Math.max(1, selectedItem?.qty ?? 1);
+  const [unitNo, setUnitNo] = useState(
+    initialUnitNo && initialUnitNo >= 1 && initialUnitNo <= maxUnit ? initialUnitNo : 1
+  );
+  const [stage, setStage] = useState<TaskType>("Cutting");
+  const visibleStaff = useMemo(() => activeStaff(staff), [staff]);
+  const [staffId, setStaffId] = useState(visibleStaff[0]?.id ?? "");
+  const selectedStaff = visibleStaff.find((member) => member.id === staffId);
+  const [rate, setRate] = useState("0");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setUnitNo((current) => Math.min(Math.max(1, current), maxUnit));
+  }, [maxUnit]);
+
+  useEffect(() => {
+    setRate(String(defaultRateFor(selectedStaff, stage)));
+  }, [selectedStaff, stage]);
+
+  async function submit() {
+    if (!selectedItem) return;
+    setError("");
+    setSaving(true);
+    const result = await createJobCardStageSlipAction({
+      orderId: order.id,
+      orderItemSerialNo: selectedItem.serialNo,
+      unitNo,
+      stage,
+      staffId,
+      wageRate: Number(rate),
+      notes,
+    });
+    setSaving(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    window.location.href = `/orders/${order.id}/print/job-card?slipId=${result.data.id}`;
+  }
 
   return (
-    <section className="break-inside-avoid break-after-page pb-4 last:break-after-auto">
-      <div className="border-b-2 border-black pb-4">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-2xl font-bold">{billingSettings.shopName}</h1>
-            {billingSettings.tagline && (
-              <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
-            )}
-            {(billingSettings.phone || billingSettings.email) && (
-              <p className="text-xs text-gray-600">
-                {[billingSettings.phone, billingSettings.email].filter(Boolean).join(" | ")}
-              </p>
-            )}
-            {billingSettings.address && (
-              <p className="mt-1 max-w-md whitespace-pre-line text-xs text-gray-600">
-                {billingSettings.address}
-              </p>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
-              {t("print.tailorJobCard")}
-            </p>
-            <p className="mt-1 text-xs text-gray-500">Job Card No</p>
-            <p className="font-semibold">{card.jobCardNumber}</p>
-          </div>
+    <PrintPageFrame showClose>
+      <div className="w-full max-w-3xl rounded-xl border border-border-soft bg-white p-5 shadow-soft print:hidden">
+        <div className="mb-5">
+          <h1 className="text-2xl font-semibold text-ink">Print Stage Job Card</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            {order.orderNumber} - choose the stage and worker for this printout.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Garment
+            <select
+              value={serialNo}
+              onChange={(event) => setSerialNo(Number(event.target.value))}
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+            >
+              {order.items.map((item) => (
+                <option key={item.serialNo} value={item.serialNo}>
+                  {item.serialNo} - {item.particular}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Unit
+            <select
+              value={unitNo}
+              onChange={(event) => setUnitNo(Number(event.target.value))}
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+            >
+              {Array.from({ length: maxUnit }, (_, index) => index + 1).map((unit) => (
+                <option key={unit} value={unit}>
+                  Unit {unit} of {maxUnit}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Stage
+            <select
+              value={stage}
+              onChange={(event) => setStage(event.target.value as TaskType)}
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+            >
+              {TASK_TYPES.map((task) => (
+                <option key={task} value={task}>
+                  {task}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Worker
+            <select
+              value={staffId}
+              onChange={(event) => setStaffId(event.target.value)}
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+            >
+              <option value="">Select worker</option>
+              {visibleStaff.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name} - {member.role}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Labour Rate
+            <input
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
+              inputMode="decimal"
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+            />
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Work Notes
+            <input
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="h-11 rounded-lg border border-border px-3 font-normal"
+              placeholder="Optional"
+            />
+          </label>
+        </div>
+
+        {error && <p className="mt-4 text-sm font-semibold text-red-700">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={submit}
+            disabled={saving || !selectedItem || !staffId}
+            className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Create Printout
+          </button>
         </div>
       </div>
+    </PrintPageFrame>
+  );
+}
 
-      <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
-        <div>
-          <p className="text-gray-500">{t("print.orderNo")}</p>
-          <p className="font-semibold">{order.orderNumber}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.orderStatus")}</p>
-          <p className="font-semibold">{t(ORDER_STATUS_LABEL_KEYS[order.status])}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.customerName")}</p>
-          <p className="font-semibold">{customer?.name ?? order.customerSnapshot?.name ?? "-"}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.customerPhone")}</p>
-          <p className="font-semibold">{customer?.phone ?? order.customerSnapshot?.phone ?? "-"}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.orderDate")}</p>
-          <p className="font-semibold">{formatDate(order.orderDate)}</p>
-        </div>
-        <div>
-          <p className="text-gray-500">{t("print.deliveryDate")}</p>
-          <p className="font-semibold">{formatDate(order.deliveryDate)}</p>
-        </div>
-        {formattedTrialDate && (
-          <div>
-            <p className="text-gray-500">{t("orders.trialDate")}</p>
-            <p className="font-semibold">{formattedTrialDate}</p>
-          </div>
-        )}
-        {order.deliveryPromiseNote && (
-          <div className="col-span-2">
-            <p className="text-gray-500">Delivery Promise Note</p>
-            <p className="whitespace-pre-line font-semibold">{order.deliveryPromiseNote}</p>
-          </div>
-        )}
-      </div>
+function StageSlipPrint({
+  slip,
+  customer,
+  billingSettings,
+}: {
+  slip: JobCardStageSlip;
+  customer: Customer | undefined;
+  billingSettings: ShopBillingSettings;
+}) {
+  const measurements = measurementEntries(slip.measurementsSnapshot);
+  const barcodeValue = `TS|JOB|${slip.scanToken}`;
 
-      <div className="mt-6 border border-gray-400 p-4">
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <p className="text-base font-bold">
-            Item {item.serialNo} - {item.particular}
-          </p>
-          <p className="text-sm font-semibold">
-            Unit {card.unitNo} of {card.totalUnits}
-          </p>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <p className="text-gray-500">Assigned Worker</p>
-            <p className="font-semibold">{card.assignedTo || "Unassigned"}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Production Stage</p>
-            <p className="font-semibold">{card.stage}</p>
-          </div>
-        </div>
-
-        {item.addOns && item.addOns.length > 0 && (
-          <p className="mt-3 text-sm">
-            <span className="text-gray-500">{t("print.addOns")}: </span>
-            {item.addOns.map((addOn) => addOn.label).join(", ")}
-          </p>
-        )}
-
-        {hasItemNotes && (
-          <div className="mt-3 border border-gray-300 p-2 text-sm">
-            {hasMeaningfulFabricSource && (
-              <p>
-                <span className="font-semibold text-gray-500">Fabric Source: </span>
-                {item.fabricSource}
+  return (
+    <PrintPageFrame showClose>
+      <section className="break-after-page bg-white p-8 text-ink print:p-6">
+        <div className="border-b-2 border-black pb-4">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <h1 className="text-2xl font-bold">{billingSettings.shopName || "NewLook"}</h1>
+              {billingSettings.tagline && (
+                <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+                Stage Job Card
               </p>
-            )}
-            {item.fabricNotes && (
-              <p>
-                <span className="font-semibold text-gray-500">Fabric Notes: </span>
-                {item.fabricNotes}
-              </p>
-            )}
-            {item.designNotes && (
-              <p>
-                <span className="font-semibold text-gray-500">Design Notes: </span>
-                {item.designNotes}
-              </p>
-            )}
+              <p className="mt-1 text-2xl font-bold">{slip.stage}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
+          <Info label="Order No" value={slip.orderNumber} />
+          <Info label="Worker" value={slip.staffName} />
+          <Info label="Customer" value={customer?.name ?? slip.customerSnapshot?.name ?? "-"} />
+          <Info label="Mobile" value={customer?.phone ?? slip.customerSnapshot?.phone ?? "-"} />
+          <Info label="Garment" value={`${slip.garmentType} - Unit ${slip.unitNo}`} />
+          <Info label="Labour" value={`₹${slip.wageAmount}`} />
+          <Info label="Printed" value={formatDate(slip.printedAt.slice(0, 10))} />
+          <Info label="Qty" value={String(slip.quantity)} />
+        </div>
+
+        {slip.addOnsSnapshot && slip.addOnsSnapshot.length > 0 && (
+          <div className="mt-4 rounded border border-gray-300 p-3 text-sm">
+            <p className="font-semibold text-gray-600">Add-ons</p>
+            <p className="mt-1">{slip.addOnsSnapshot.map((addOn) => addOn.label).join(", ")}</p>
           </div>
         )}
 
-        {card.notes && (
-          <p className="mt-3 whitespace-pre-line text-sm">
-            <span className="font-semibold text-gray-500">Work Notes: </span>
-            {card.notes}
-          </p>
-        )}
-
-        <div className="mt-3">
+        <div className="mt-4">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            {t("print.measurements")}
+            Measurements
           </p>
-          {values.length > 0 ? (
+          {measurements.length > 0 ? (
             <div className="grid grid-cols-4 gap-x-4 gap-y-1.5 text-sm">
-              {values.map((entry) => (
-                <div
-                  key={entry.key}
-                  className="flex justify-between border-b border-dotted border-gray-300 pb-0.5"
-                >
+              {measurements.map((entry) => (
+                <div key={entry.key} className="flex justify-between border-b border-dotted border-gray-300">
                   <span className="text-gray-600">{entry.label}</span>
                   <span className="font-semibold">{entry.value}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm italic text-gray-500">
-              {t("print.noMeasurementsRecorded")}
-            </p>
+            <p className="text-sm italic text-gray-500">No measurements recorded.</p>
           )}
         </div>
 
-        {measurementNotes && (
-          <p className="mt-4 whitespace-pre-line text-sm">
-            <span className="font-semibold text-gray-500">Measurement Notes: </span>
-            {measurementNotes}
+        {slip.notes && (
+          <p className="mt-4 text-sm">
+            <span className="font-semibold text-gray-500">Work Notes: </span>
+            {slip.notes}
           </p>
         )}
 
-        <div className="mt-10 grid grid-cols-3 gap-8 border-t border-black pt-6 text-sm">
-          <div>
-            <p className="mb-8 text-gray-500">{t("print.cutting")}:</p>
-            <div className="border-t border-gray-400" />
+        <div className="mt-8 grid grid-cols-[1fr_auto] items-end gap-6 border-t border-black pt-5">
+          <div className="grid grid-cols-2 gap-8 text-sm">
+            <div>
+              <p className="mb-8 text-gray-500">Worker Signature:</p>
+              <div className="border-t border-gray-400" />
+            </div>
+            <div>
+              <p className="mb-8 text-gray-500">Checked By:</p>
+              <div className="border-t border-gray-400" />
+            </div>
           </div>
-          <div>
-            <p className="mb-8 text-gray-500">{t("print.stitching")}:</p>
-            <div className="border-t border-gray-400" />
-          </div>
-          <div>
-            <p className="mb-8 text-gray-500">{t("print.checkedBy")}:</p>
-            <div className="border-t border-gray-400" />
+          <div className="grid justify-items-end gap-1">
+            <Image
+              src={barcodeSvgDataUri(barcodeValue)}
+              alt=""
+              width={230}
+              height={44}
+              unoptimized
+              className="h-11 w-[230px]"
+            />
+            <p className="text-xs font-semibold">{slip.orderNumber}</p>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </PrintPageFrame>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-gray-500">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
   );
 }
 
@@ -377,105 +360,65 @@ function TailorJobCardPrintPageContent({
 }) {
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
-  const [jobCards, setJobCards] = useState<JobCard[] | undefined>(undefined);
-  const [measurementSeeds, setMeasurementSeeds] = useState<Record<string, MeasurementDraftSeed>>(
-    {}
-  );
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [slip, setSlip] = useState<JobCardStageSlip | null | undefined>(undefined);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
+  const slipId = firstValue(searchParams?.slipId);
+  const initialSerialNo = Number(firstValue(searchParams?.orderItemSerialNo));
+  const initialUnitNo = Number(firstValue(searchParams?.unitNo));
 
   useEffect(() => {
     let cancelled = false;
     getPrintableBillingSettingsAction().then((settings) => {
       if (!cancelled) setBillingSettings(settings);
     });
-
     getOrderByIdAction(params.id).then((result) => {
       if (cancelled) return;
       setOrder(result ?? null);
-      if (!result) return;
-
-      getCustomerByIdAction(result.customerId).then((foundCustomer) => {
-        if (!cancelled) setCustomer(foundCustomer);
-      });
-
-      Promise.all(
-        Array.from(new Set(result.items.map((item) => item.particular))).map(
-          async (garmentType) =>
-            [
-              garmentType.trim().toLowerCase(),
-              await getGarmentMeasurementDraftSeedAction(result.customerId, garmentType),
-            ] as const
-        )
-      )
-        .then((entries) => {
-          if (!cancelled) setMeasurementSeeds(Object.fromEntries(entries));
-        })
-        .catch(() => {
-          if (!cancelled) setMeasurementSeeds({});
+      if (result) {
+        getCustomerByIdAction(result.customerId).then((found) => {
+          if (!cancelled) setCustomer(found);
         });
-
-      const todayIso = new Date().toISOString().slice(0, 10);
-      getJobCardsAction(todayIso)
-        .then((cardsResult) => {
-          if (!cancelled) {
-            setJobCards((cardsResult ?? []).filter((card) => card.orderId === result.id));
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setJobCards([]);
-        });
+      }
     });
-
+    getStaffAction().then((result) => {
+      if (!cancelled) setStaff(result);
+    });
+    if (slipId) {
+      getJobCardStageSlipAction(slipId).then((result) => {
+        if (!cancelled) setSlip(result ?? null);
+      });
+    } else {
+      setSlip(undefined);
+    }
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [params.id, slipId]);
 
-  if (order === undefined) return null;
+  if (order === undefined || (slipId && slip === undefined)) return null;
   if (order === null) notFound();
+  if (slipId && slip === null) notFound();
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const requestedJobCardId = firstValue(searchParams?.jobCardId);
-  if (requestedJobCardId && jobCards === undefined) {
+  if (slip) {
     return (
-      <PrintPageFrame showClose>
-        <p className="text-sm italic text-gray-500">Loading job card...</p>
-      </PrintPageFrame>
+      <StageSlipPrint
+        slip={slip}
+        customer={customer}
+        billingSettings={billingSettings}
+      />
     );
   }
 
-  const loadedJobCards = jobCards ?? [];
-  const allJobCards = (loadedJobCards.length > 0 ? loadedJobCards : buildJobCards([order], todayIso))
-    .slice()
-    .sort(
-      (a, b) =>
-        a.item.serialNo - b.item.serialNo ||
-        a.unitNo - b.unitNo ||
-        a.jobCardNumber.localeCompare(b.jobCardNumber)
-    );
-  const printableCards = filteredJobCards(allJobCards, searchParams);
-
   return (
-    <PrintPageFrame showClose>
-      {printableCards.length > 0 ? (
-        <div className="space-y-0">
-          {printableCards.map((card) => (
-            <TailorJobCardSheet
-              key={card.id}
-              card={card}
-              order={order}
-              customer={customer}
-              billingSettings={billingSettings}
-              measurementSeeds={measurementSeeds}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm italic text-gray-500">No job cards found for this order.</p>
-      )}
-    </PrintPageFrame>
+    <PrintSetup
+      order={order}
+      staff={staff}
+      initialSerialNo={Number.isFinite(initialSerialNo) ? initialSerialNo : undefined}
+      initialUnitNo={Number.isFinite(initialUnitNo) ? initialUnitNo : undefined}
+    />
   );
 }
 

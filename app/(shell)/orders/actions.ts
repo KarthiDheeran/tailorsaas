@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/require-server-permission";
 import {
   createOrder,
+  findOrderByOrderNumber,
+  findOrderByScanToken,
   getAllOrders,
   getOrderById,
   getOrdersForCustomer,
@@ -194,6 +196,42 @@ export async function getOrderByIdAction(id: string): Promise<Order | undefined>
   return getOrderById(supabase, id);
 }
 
+function parseOrderScanCode(rawCode: string):
+  | { kind: "scan-token"; value: string }
+  | { kind: "order-number"; value: string }
+  | undefined {
+  const code = rawCode.trim().toUpperCase();
+  if (!code) return undefined;
+  const tokenPrefix = "TS|ORD|";
+  if (code.startsWith(tokenPrefix)) {
+    const token = code.slice(tokenPrefix.length).trim();
+    return token ? { kind: "scan-token", value: token } : undefined;
+  }
+  if (/^ORD-\d{4}-\d{3,}$/.test(code)) {
+    return { kind: "order-number", value: code };
+  }
+  return undefined;
+}
+
+export async function resolveOrderScanAction(
+  code: string
+): Promise<ActionResult<{ orderId: string; orderNumber: string }>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const parsed = parseOrderScanCode(code);
+  if (!parsed) return { success: false, error: "Order not found" };
+
+  const order =
+    parsed.kind === "scan-token"
+      ? await findOrderByScanToken(supabase, parsed.value)
+      : await findOrderByOrderNumber(supabase, parsed.value);
+
+  if (!order) return { success: false, error: "Order not found" };
+  return { success: true, data: { orderId: order.id, orderNumber: order.orderNumber } };
+}
+
 export async function getOrdersForCustomerAction(customerId: string): Promise<Order[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");
@@ -207,6 +245,7 @@ export interface HistoricalMeasurementSnapshot {
   orderDate: string;
   itemId?: string;
   serialNo: number;
+  garmentName: string;
   measurements: Record<string, string>;
 }
 
@@ -236,6 +275,7 @@ export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
           orderDate: order.orderDate,
           itemId: item.id,
           serialNo: item.serialNo,
+          garmentName: item.particular,
           measurements: item.measurements ?? {},
         }))
     )

@@ -29,6 +29,7 @@ import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { GlobalSearchButton } from "@/components/layout/global-search";
+import { OrderScanButton } from "@/components/layout/order-scan";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
@@ -426,6 +427,7 @@ export function DesktopTopNav() {
         </nav>
 
         <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <OrderScanButton />
           <div className="w-10 min-[1536px]:w-[180px] 2xl:w-[280px]">
             <GlobalSearchButton enableShortcut />
           </div>
@@ -445,6 +447,7 @@ export function MobileNav() {
       <div className="flex items-center justify-between gap-3">
         <BrandMark />
         <div className="flex items-center gap-2">
+          <OrderScanButton compact />
           <GlobalSearchButton compact />
           <button
             type="button"

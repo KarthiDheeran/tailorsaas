@@ -1,7 +1,8 @@
 ﻿"use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Pencil, Trash2, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown, Pencil, Trash2, X } from "lucide-react";
 import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
 import {
   getRecentMeasurementSnapshotsForCustomerGarmentAction,
@@ -181,6 +182,21 @@ function formatOrderDate(date: string): string {
 
 type ItemModalMode = "add" | "edit";
 
+type PreviousMeasurementOption = {
+  id: string;
+  label: string;
+  values: Record<string, string>;
+  notes?: string;
+};
+
+type FloatingMenuPosition = {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+  placement: "top" | "bottom";
+};
+
 function configuredDraftItems(items: DraftItem[]): Array<{ item: DraftItem; index: number }> {
   return items
     .map((item, index) => ({ item, index }))
@@ -218,6 +234,16 @@ function ConfigureItemModal({
 }) {
   const firstMeasurementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const footerRef = useRef<HTMLDivElement | null>(null);
+  const measurementInputRefs = useRef<Array<HTMLInputElement | HTMLTextAreaElement | null>>([]);
+  const previousMeasurementsRef = useRef<HTMLDivElement | null>(null);
+  const addOnsComboboxRef = useRef<HTMLDivElement | null>(null);
+  const addOnsInputRef = useRef<HTMLInputElement | null>(null);
+  const addOnsDropdownRef = useRef<HTMLDivElement | null>(null);
+  const addOnOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const previousMeasurementsListId = useId();
+  const addOnsListId = useId();
   const fields = garmentMeasurementFields(garment);
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(draft.addOnIds);
   const [measurement, setMeasurement] = useState<GarmentMeasurementDraft>(
@@ -237,6 +263,15 @@ function ConfigureItemModal({
     notes: string;
   } | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedPreviousMeasurement, setSelectedPreviousMeasurement] = useState(
+    draft.measurement ? "current-item" : ""
+  );
+  const [previousMeasurementsOpen, setPreviousMeasurementsOpen] = useState(false);
+  const [activePreviousMeasurementIndex, setActivePreviousMeasurementIndex] = useState(0);
+  const [addOnSearch, setAddOnSearch] = useState("");
+  const [addOnsOpen, setAddOnsOpen] = useState(false);
+  const [activeAddOnIndex, setActiveAddOnIndex] = useState(0);
+  const [addOnsPosition, setAddOnsPosition] = useState<FloatingMenuPosition | null>(null);
 
   const addOnOptions = getAddOnsForGarment(garment, addOns).filter(
     (addOn) => addOn.isActive
@@ -248,10 +283,170 @@ function ConfigureItemModal({
   const selectedAddOnsForModal = addOnOptions.filter((addOn) =>
     selectedAddOnIds.includes(addOn.id)
   );
+  const selectedAddOnsTotal = selectedAddOnsForModal.reduce(
+    (sum, addOn) => sum + addOn.defaultPrice,
+    0
+  );
+  const filteredAddOnOptions = useMemo(() => {
+    const query = addOnSearch.trim().toLowerCase();
+    if (!query) return addOnOptions;
+    return addOnOptions.filter((addOn) =>
+      addOn.name.toLowerCase().includes(query)
+    );
+  }, [addOnOptions, addOnSearch]);
+  const previousMeasurementOptions = useMemo<PreviousMeasurementOption[]>(() => {
+    const options: PreviousMeasurementOption[] = [];
+    if (draft.measurement) {
+      options.push({
+        id: "current-item",
+        label: "Current item measurements",
+        values: draft.measurement.values,
+        notes: draft.measurement.notes,
+      });
+    }
+    if (defaultSeed && defaultHasMeasurements) {
+      options.push({
+        id: "customer-default",
+        label: "Customer default",
+        values: defaultSeed.values,
+        notes: defaultSeed.notes,
+      });
+    }
+    history.forEach((snapshot) => {
+      const id = snapshot.itemId ?? `${snapshot.orderId}-${snapshot.serialNo}`;
+      options.push({
+        id: `history:${id}`,
+        label: `${snapshot.orderNumber} · ${formatOrderDate(snapshot.orderDate)}`,
+        values: snapshot.measurements,
+      });
+    });
+    return options;
+  }, [defaultHasMeasurements, defaultSeed, draft.measurement, history]);
+  const selectedPreviousMeasurementLabel =
+    previousMeasurementOptions.find(
+      (option) => option.id === selectedPreviousMeasurement
+    )?.label ?? "Select previous measurements";
 
   useEffect(() => {
     firstMeasurementRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    function handleDocumentKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
+      const isSaveShortcut =
+        (event.altKey && event.key.toLowerCase() === "s") ||
+        (event.ctrlKey && event.key === "Enter");
+      if (!isSaveShortcut) return;
+      if (previousMeasurementsOpen || addOnsOpen) return;
+      event.preventDefault();
+      event.stopPropagation();
+      formRef.current?.requestSubmit();
+    }
+    document.addEventListener("keydown", handleDocumentKeyDown, true);
+    return () => document.removeEventListener("keydown", handleDocumentKeyDown, true);
+  }, [addOnsOpen, previousMeasurementsOpen]);
+
+  useEffect(() => {
+    if (!previousMeasurementsOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        previousMeasurementsRef.current &&
+        !previousMeasurementsRef.current.contains(event.target as Node)
+      ) {
+        setPreviousMeasurementsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [previousMeasurementsOpen]);
+
+  useEffect(() => {
+    if (!addOnsOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      const insideCombobox = addOnsComboboxRef.current?.contains(target) ?? false;
+      const insideDropdown = addOnsDropdownRef.current?.contains(target) ?? false;
+      if (!insideCombobox && !insideDropdown) {
+        setAddOnsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [addOnsOpen]);
+
+  useEffect(() => {
+    if (!addOnsOpen) return;
+    function updatePosition() {
+      const anchor = addOnsInputRef.current ?? addOnsComboboxRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const preferredHeight = 256;
+      const minimumUsefulHeight = 160;
+      const estimatedOptionHeight = 40;
+      const estimatedContentHeight =
+        filteredAddOnOptions.length === 0
+          ? 42
+          : filteredAddOnOptions.length * estimatedOptionHeight + 8;
+      const contentHeight =
+        addOnsDropdownRef.current?.scrollHeight ?? estimatedContentHeight;
+      const estimatedPanelHeight = Math.min(preferredHeight, contentHeight);
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const footerTop = footerRef.current?.getBoundingClientRect().top ?? viewportHeight;
+      const lowerBoundary = Math.min(viewportHeight - margin, footerTop - gap);
+      const spaceBelow = lowerBoundary - rect.bottom - gap;
+      const spaceAbove = rect.top - margin;
+      const openUp = spaceBelow < minimumUsefulHeight && spaceAbove > spaceBelow;
+      const availableSpace = openUp ? spaceAbove - gap : spaceBelow;
+      const maxHeight = Math.max(
+        42,
+        Math.min(estimatedPanelHeight, Math.max(0, availableSpace))
+      );
+      const left = Math.min(
+        Math.max(margin, rect.left),
+        Math.max(margin, viewportWidth - rect.width - margin)
+      );
+      const top = openUp ? rect.top - gap : rect.bottom + gap;
+      setAddOnsPosition({
+        left,
+        top,
+        width: rect.width,
+        maxHeight,
+        placement: openUp ? "top" : "bottom",
+      });
+    }
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [addOnsOpen, addOnSearch, filteredAddOnOptions.length]);
+
+  useEffect(() => {
+    if (activePreviousMeasurementIndex >= previousMeasurementOptions.length) {
+      setActivePreviousMeasurementIndex(0);
+    }
+  }, [activePreviousMeasurementIndex, previousMeasurementOptions.length]);
+
+  useEffect(() => {
+    if (activeAddOnIndex >= filteredAddOnOptions.length) {
+      setActiveAddOnIndex(0);
+    }
+  }, [activeAddOnIndex, filteredAddOnOptions.length]);
+
+  useEffect(() => {
+    if (!addOnsOpen) return;
+    addOnOptionRefs.current[activeAddOnIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [activeAddOnIndex, addOnsOpen, filteredAddOnOptions.length]);
 
   useEffect(() => {
     if (!customerId) {
@@ -274,17 +469,21 @@ function ConfigureItemModal({
       setHistory(snapshots);
       setLoadingHistory(false);
       if (!draft.measurement && autoSnapshotDefaultMeasurements) {
+        const seedHasMeasurements =
+          Object.values(seed.values).some((value) => value.trim() !== "") ||
+          seed.notes.trim() !== "";
         const seededDraft: GarmentMeasurementDraft = {
           garmentType: garment.name,
           values: seed.values,
           fitNotes: seed.fitNotes,
           notes: seed.notes,
           updateCustomerMeasurements: false,
-          hasCustomerDefaultMeasurements:
-            Object.values(seed.values).some((value) => value.trim() !== "") ||
-            seed.notes.trim() !== "",
+          hasCustomerDefaultMeasurements: seedHasMeasurements,
         };
-        setMeasurement(seededDraft);
+        if (seedHasMeasurements) {
+          setMeasurement(seededDraft);
+          setSelectedPreviousMeasurement("customer-default");
+        }
       }
     });
     return () => {
@@ -311,6 +510,112 @@ function ConfigureItemModal({
       values: measurementValuesOnly(values),
       notes: measurementNotesFromValues(values) || notes || "",
     }));
+    window.setTimeout(() => firstMeasurementRef.current?.focus(), 0);
+  }
+
+  function handlePreviousMeasurementSelect(option: PreviousMeasurementOption) {
+    setSelectedPreviousMeasurement(option.id);
+    loadMeasurementValues(option.values, option.notes);
+    setPreviousMeasurementsOpen(false);
+  }
+
+  function focusMeasurementAt(index: number) {
+    measurementInputRefs.current[index]?.focus();
+  }
+
+  function handleMeasurementInputKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement>,
+    index: number
+  ) {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    focusMeasurementAt(index + 1);
+  }
+
+  function handleAddOnsInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setAddOnsOpen(true);
+      setActiveAddOnIndex((current) =>
+        Math.min(current + 1, Math.max(filteredAddOnOptions.length - 1, 0))
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setAddOnsOpen(true);
+      setActiveAddOnIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      if (!addOnsOpen || filteredAddOnOptions.length === 0) return;
+      event.preventDefault();
+      toggleAddOn(filteredAddOnOptions[activeAddOnIndex].id);
+      return;
+    }
+    if (event.key === " " && addOnsOpen && addOnSearch.trim() === "") {
+      if (filteredAddOnOptions.length === 0) return;
+      event.preventDefault();
+      toggleAddOn(filteredAddOnOptions[activeAddOnIndex].id);
+      return;
+    }
+    if (event.key === "Escape" && addOnsOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setAddOnsOpen(false);
+      return;
+    }
+    if (event.key === "Tab") {
+      setAddOnsOpen(false);
+    }
+  }
+
+  function handlePreviousMeasurementsKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>
+  ) {
+    if (previousMeasurementOptions.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviousMeasurementsOpen(true);
+      setActivePreviousMeasurementIndex((current) =>
+        Math.min(current + 1, previousMeasurementOptions.length - 1)
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviousMeasurementsOpen(true);
+      setActivePreviousMeasurementIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (previousMeasurementsOpen) {
+        const option =
+          previousMeasurementOptions[
+            Math.min(
+              activePreviousMeasurementIndex,
+              previousMeasurementOptions.length - 1
+            )
+          ];
+        if (option) handlePreviousMeasurementSelect(option);
+      } else {
+        setPreviousMeasurementsOpen(true);
+      }
+      return;
+    }
+    if (event.key === "Tab") {
+      setPreviousMeasurementsOpen(false);
+      return;
+    }
+    if (event.key === "Escape" && previousMeasurementsOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviousMeasurementsOpen(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -339,7 +644,21 @@ function ConfigureItemModal({
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
+      if (previousMeasurementsOpen) {
+        setPreviousMeasurementsOpen(false);
+        return;
+      }
+      if (addOnsOpen) {
+        setAddOnsOpen(false);
+        return;
+      }
       onCancel();
+      return;
+    }
+    if ((e.ctrlKey && e.key === "Enter") || (e.altKey && e.key.toLowerCase() === "s")) {
+      if (previousMeasurementsOpen || addOnsOpen) return;
+      e.preventDefault();
+      formRef.current?.requestSubmit();
       return;
     }
     if (e.key !== "Tab") return;
@@ -370,91 +689,116 @@ function ConfigureItemModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="configure-item-title"
-          className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft"
+          className="flex max-h-[calc(100vh-32px)] w-full max-w-[940px] flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft"
         >
-          <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
-            <div>
-              <p className="text-[13px] font-medium text-ink-muted">
-                {formatGarmentCodeName(garment)}
-              </p>
-              <h3 id="configure-item-title" className="text-[18px] font-semibold text-ink">
-                Configure {garment.name}
-              </h3>
+          <div className="border-b border-border-soft px-5">
+            <div className="flex min-h-14 items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h3 id="configure-item-title" className="truncate text-[18px] font-semibold text-ink">
+                  Configure {garment.name}
+                </h3>
+                <span className="shrink-0 rounded-full border border-border-soft bg-surface px-2 py-0.5 text-xs font-semibold text-ink-muted">
+                  Code {garmentCodeLabel(garment)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-              <section>
-                <h4 className="mb-3 text-[15px] font-semibold text-ink">Previous measurements</h4>
-                <div className="space-y-2 rounded-lg border border-border-soft bg-surface p-3">
-                  {defaultSeed && defaultHasMeasurements && (
-                      <button
-                        type="button"
-                        onClick={() => loadMeasurementValues(defaultSeed.values, defaultSeed.notes)}
-                        className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left text-sm font-medium text-ink transition-colors hover:bg-primary-tint"
+          <form ref={formRef} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+                <span className="w-20 shrink-0 text-sm font-medium text-ink-muted">
+                  Load from:
+                </span>
+                {loadingHistory ? (
+                  <p className="text-sm text-ink-muted sm:w-[340px]">
+                    Loading previous measurements...
+                  </p>
+                ) : history.length === 0 && !defaultHasMeasurements ? (
+                  <p className="text-sm text-ink-muted sm:w-[340px]">
+                    No previous measurements available
+                  </p>
+                ) : (
+                  <div
+                    ref={previousMeasurementsRef}
+                    className="relative min-w-0 sm:w-[340px]"
+                  >
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={previousMeasurementsOpen}
+                      aria-controls={previousMeasurementsListId}
+                      onClick={() =>
+                        setPreviousMeasurementsOpen((isOpen) => !isOpen)
+                      }
+                      onKeyDown={handlePreviousMeasurementsKeyDown}
+                      title="Selecting a source copies its values into this item only."
+                      className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-2.5 text-sm font-medium text-ink shadow-sm outline-none transition-colors hover:bg-surface focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    >
+                      <span className="truncate">{selectedPreviousMeasurementLabel}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" />
+                    </button>
+                    {previousMeasurementsOpen && (
+                      <div
+                        id={previousMeasurementsListId}
+                        role="listbox"
+                        className="absolute left-0 top-full z-[90] mt-1 max-h-56 w-full min-w-[280px] overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-soft"
                       >
-                        <span>Customer default measurements</span>
-                        <span className="text-xs text-ink-muted">
-                          {Object.values(defaultSeed.values).filter((value) => value.trim()).length} fields
-                        </span>
-                      </button>
+                        {previousMeasurementOptions.map((option, index) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={option.id === selectedPreviousMeasurement}
+                            onMouseEnter={() => setActivePreviousMeasurementIndex(index)}
+                            onClick={() => handlePreviousMeasurementSelect(option)}
+                            className={`block w-full px-3 py-2 text-left text-sm transition-colors ${
+                              index === activePreviousMeasurementIndex
+                                ? "bg-primary-tint text-primary-strong"
+                                : "text-ink hover:bg-surface"
+                            }`}
+                          >
+                            <span className="block truncate">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     )}
-                  {loadingHistory ? (
-                    <p className="text-sm text-ink-muted">Loading previous measurements...</p>
-                  ) : history.length === 0 && !defaultHasMeasurements ? (
-                    <p className="text-sm text-ink-muted">
-                      No previous measurements found for this customer and garment.
-                    </p>
-                  ) : (
-                    history.map((snapshot) => (
-                      <button
-                        key={`${snapshot.orderId}-${snapshot.serialNo}`}
-                        type="button"
-                        onClick={() => loadMeasurementValues(snapshot.measurements)}
-                        className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left text-sm font-medium text-ink transition-colors hover:bg-primary-tint"
-                      >
-                        <span>
-                          {snapshot.orderNumber} - {formatOrderDate(snapshot.orderDate)}
-                        </span>
-                        <span className="text-xs text-ink-muted">
-                          {Object.values(measurementValuesOnly(snapshot.measurements)).filter((value) => value.trim()).length} fields
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </section>
+                  </div>
+                )}
+              </div>
 
               <section>
-                <h4 className="mb-3 text-[15px] font-semibold text-ink">Measurements</h4>
+                <h4 className="mb-2 text-[15px] font-semibold text-ink">Measurements</h4>
                 {fields.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-3 lg:grid-cols-4">
                     {fields.map(({ key, label }, index) => (
-                      <label key={key} className="flex flex-col gap-1.5">
+                      <label key={key} className="flex flex-col gap-1">
                         <span className="text-[13px] font-medium text-ink-muted">{label}</span>
                         <input
                           ref={(node) => {
                             if (index === 0) firstMeasurementRef.current = node;
+                            measurementInputRefs.current[index] = node;
                           }}
                           type="text"
                           inputMode="decimal"
                           value={measurement.values[key] ?? ""}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onKeyDown={(event) => handleMeasurementInputKeyDown(event, index)}
                           onChange={(event) =>
                             setMeasurement((current) => ({
                               ...current,
                               values: { ...current.values, [key]: event.target.value },
                             }))
                           }
-                          className={inputClass}
+                          className="h-9 w-full min-w-0 rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                         />
                       </label>
                     ))}
@@ -464,85 +808,131 @@ function ConfigureItemModal({
                     No standard measurement fields for this garment.
                   </p>
                 )}
-                <label className="mt-3 flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">Measurement Notes</span>
-                  <textarea
-                    ref={(node) => {
-                      if (fields.length === 0) firstMeasurementRef.current = node;
-                    }}
-                    value={measurement.notes}
-                    onChange={(event) =>
-                      setMeasurement((current) => ({ ...current, notes: event.target.value }))
-                    }
-                    rows={3}
-                    className="rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                  />
-                </label>
-                <label className="mt-3 flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    checked={measurement.updateCustomerMeasurements ?? false}
-                    onChange={(event) =>
-                      setMeasurement((current) => ({
-                        ...current,
-                        updateCustomerMeasurements: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
-                  />
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    Save as customer&apos;s default {garment.name} measurements
-                  </span>
-                </label>
               </section>
 
-              <section>
-                <h4 className="mb-3 text-[15px] font-semibold text-ink">Add-ons</h4>
-                {addOnOptions.length === 0 ? (
-                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
-                    No add-ons configured for this garment.
-                  </p>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {addOnOptions.map((addOn) => (
-                      <label
-                        key={addOn.id}
-                        className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-soft bg-white px-3 py-2 text-sm transition-colors hover:bg-surface"
-                      >
-                        <span className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedAddOnIds.includes(addOn.id)}
-                            onChange={() => toggleAddOn(addOn.id)}
-                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
-                          />
-                          <span className="font-medium text-ink">{addOn.name}</span>
+              <div className="grid gap-3 md:grid-cols-2">
+                <section>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[13px] font-medium text-ink-muted">Notes</span>
+                    <textarea
+                      ref={(node) => {
+                        if (fields.length === 0) firstMeasurementRef.current = node;
+                      }}
+                      value={measurement.notes}
+                      onChange={(event) =>
+                        setMeasurement((current) => ({ ...current, notes: event.target.value }))
+                      }
+                      rows={2}
+                      className="h-[60px] resize-none rounded-md border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    />
+                  </label>
+                  <label className="mt-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={measurement.updateCustomerMeasurements ?? false}
+                      onChange={(event) =>
+                        setMeasurement((current) => ({
+                          ...current,
+                          updateCustomerMeasurements: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
+                    />
+                    <span className="truncate text-[13px] font-medium text-ink-muted">
+                      Save as customer&apos;s default {garment.name} measurements
+                    </span>
+                  </label>
+                </section>
+
+                <section>
+                  <h4 className="mb-1 text-[13px] font-medium text-ink-muted">Add-ons</h4>
+                  {addOnOptions.length === 0 ? (
+                    <p className="rounded-md bg-surface px-3 py-2 text-sm text-ink-muted">
+                      No add-ons configured for this garment.
+                    </p>
+                  ) : (
+                    <div ref={addOnsComboboxRef} className="relative">
+                      <input
+                        ref={addOnsInputRef}
+                        type="text"
+                        role="combobox"
+                        aria-expanded={addOnsOpen}
+                        aria-controls={addOnsListId}
+                        aria-autocomplete="list"
+                        placeholder="Search or select add-ons"
+                        value={addOnSearch}
+                        onFocus={() => setAddOnsOpen(true)}
+                        onChange={(event) => {
+                          setAddOnSearch(event.target.value);
+                          setAddOnsOpen(true);
+                          setActiveAddOnIndex(0);
+                        }}
+                        onKeyDown={handleAddOnsInputKeyDown}
+                        className="h-9 w-full rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      />
+                    </div>
+                  )}
+                  <div className="mt-1.5 min-h-7">
+                    {selectedAddOnsForModal.length === 0 ? (
+                      <p className="text-sm text-ink-muted">Selected: None</p>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {selectedAddOnsForModal.slice(0, 3).map((addOn) => (
+                          <button
+                            key={addOn.id}
+                            type="button"
+                            onClick={() => toggleAddOn(addOn.id)}
+                            className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-primary/20 bg-primary-tint px-2 py-0.5 text-xs font-medium text-primary-strong"
+                            title={`Remove ${addOn.name}`}
+                          >
+                            <span className="truncate">
+                              {addOn.name} · +{formatCurrency(addOn.defaultPrice)}
+                            </span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        ))}
+                        {selectedAddOnsForModal.length > 3 && (
+                          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-muted">
+                            +{selectedAddOnsForModal.length - 3} more
+                          </span>
+                        )}
+                        <span className="text-sm text-ink-muted">
+                          {selectedAddOnsForModal.length} add-ons · +{formatCurrency(selectedAddOnsTotal)}
                         </span>
-                        <span className="text-ink-muted">+{formatCurrency(addOn.defaultPrice)}</span>
-                      </label>
-                    ))}
+                      </div>
+                    )}
+                    {selectedAddOnsForModal.length > 0 && selectedAddOnsForModal.length <= 3 && (
+                      <p className="sr-only">
+                        Selected: {selectedAddOnsForModal.length} add-ons, +
+                        {formatCurrency(selectedAddOnsTotal)}
+                      </p>
+                    )}
+                    {selectedAddOnsForModal.length > 0 && selectedAddOnsForModal.length > 3 && (
+                      <p className="sr-only">
+                        Selected: {selectedAddOnsForModal.length} add-ons, +
+                        {formatCurrency(selectedAddOnsTotal)}
+                      </p>
+                    )}
                   </div>
-                )}
-                <p className="mt-2 text-sm text-ink-muted">
-                  {selectedAddOnsForModal.length > 0
-                    ? `Selected add-ons: ${selectedAddOnsForModal.map((addOn) => addOn.name).join(", ")}`
-                    : "No add-ons selected"}
-                </p>
-              </section>
+                </section>
+              </div>
 
             </div>
 
-            <div className="flex items-center gap-2 border-t border-border-soft bg-white px-5 py-4">
+            <div ref={footerRef} className="flex items-center gap-2 border-t border-border-soft bg-white px-5 py-3">
               <button
                 type="submit"
-                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
                 {mode === "add" ? "Save Item Details" : "Update Item Details"}
+                <span className="ml-2 rounded border border-white/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/90">
+                  Alt+S
+                </span>
               </button>
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="flex-1 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
                 Cancel
               </button>
@@ -550,6 +940,71 @@ function ConfigureItemModal({
           </form>
         </div>
       </div>
+      {addOnsOpen &&
+        addOnsPosition &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={addOnsDropdownRef}
+            id={addOnsListId}
+            role="listbox"
+            className="fixed z-[120] overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-soft"
+            style={{
+              left: addOnsPosition.left,
+              top: addOnsPosition.top,
+              width: addOnsPosition.width,
+              maxHeight: addOnsPosition.maxHeight,
+              transform:
+                addOnsPosition.placement === "top"
+                  ? "translateY(-100%)"
+                  : undefined,
+            }}
+          >
+            {filteredAddOnOptions.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-ink-muted">No add-ons found</p>
+            ) : (
+              filteredAddOnOptions.map((addOn, index) => {
+                const selected = selectedAddOnIds.includes(addOn.id);
+                return (
+                  <button
+                    ref={(node) => {
+                      addOnOptionRefs.current[index] = node;
+                    }}
+                    key={addOn.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onMouseEnter={() => setActiveAddOnIndex(index)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => toggleAddOn(addOn.id)}
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm transition-colors ${
+                      index === activeAddOnIndex
+                        ? "bg-primary-tint text-primary-strong"
+                        : "text-ink hover:bg-surface"
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${
+                          selected
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-white text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <span className="truncate font-medium">{addOn.name}</span>
+                    </span>
+                    <span className="shrink-0 text-ink-muted">
+                      +{formatCurrency(addOn.defaultPrice)}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
@@ -560,6 +1015,7 @@ export function NewOrderItemsCard({
   onItemsChange,
   garmentTypes,
   addOns,
+  paymentStrip,
   autoSnapshotDefaultMeasurements = false,
   focusFirstGarmentRequest = 0,
   excludeOrderId,
@@ -569,6 +1025,7 @@ export function NewOrderItemsCard({
   onItemsChange: (items: DraftItem[]) => void;
   garmentTypes: CatalogGarmentType[];
   addOns: CatalogAddOn[];
+  paymentStrip?: ReactNode;
   previousOrders?: Order[];
   autoSnapshotDefaultMeasurements?: boolean;
   focusFirstGarmentRequest?: number;
@@ -627,9 +1084,8 @@ export function NewOrderItemsCard({
   return (
     <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-[17px] font-semibold text-ink">Order Items</h3>
-          <p className="text-sm text-ink-muted">Select a garment code to configure an item.</p>
         </div>
         <div className="w-full max-w-sm">
           <label className="flex flex-col gap-1.5">
@@ -648,7 +1104,7 @@ export function NewOrderItemsCard({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-soft bg-surface px-4 py-8 text-center text-sm text-ink-muted">
+        <div className="flex min-h-12 items-center justify-center rounded-lg border border-dashed border-border-soft bg-surface px-4 py-3 text-center text-sm text-ink-muted">
           No items added yet.
         </div>
       ) : (
@@ -656,27 +1112,25 @@ export function NewOrderItemsCard({
           <table className="w-full text-left text-sm">
             <thead className="bg-surface text-[13px] font-semibold text-ink-muted">
               <tr>
-                <th className="whitespace-nowrap px-4 py-3">Garment</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Qty</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Rate</th>
-                <th className="whitespace-nowrap px-4 py-3">Add-ons</th>
-                <th className="whitespace-nowrap px-4 py-3">Measurements</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Amount</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Garment</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-right">Qty</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-right">Rate</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Add-ons</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-right">Amount</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ item, index }) => {
                 const garment = findGarmentById(garmentTypes, item.garmentTypeId);
                 const selected = selectedAddOns(item, garmentTypes, addOns);
-                const measurementCount = item.measurement ? countFilledFields(item.measurement) : 0;
                 const amount = computeAmount(item, garmentTypes, addOns);
                 return (
                   <tr key={item.draftKey} className="border-t border-border-soft">
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink">
+                    <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-ink">
                       {garment ? formatGarmentCodeName(garment) : "Unknown garment"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-ink">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-ink">
                       <input
                         ref={(node) => {
                           qtyInputRefs.current[item.draftKey] = node;
@@ -696,7 +1150,7 @@ export function NewOrderItemsCard({
                         className="h-9 w-20 rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                       />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-ink">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-ink">
                       <input
                         ref={(node) => {
                           rateInputRefs.current[item.draftKey] = node;
@@ -713,16 +1167,13 @@ export function NewOrderItemsCard({
                         className="h-9 w-28 rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                       />
                     </td>
-                    <td className="px-4 py-3 text-ink-muted">
+                    <td className="px-4 py-2.5 text-ink-muted">
                       {selected.length > 0 ? selected.map((addOn) => addOn.name).join(", ") : "None"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
-                      {measurementCount > 0 ? `${measurementCount} fields` : "Not entered"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold text-ink">
                       {formatCurrency(amount)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-2.5">
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
@@ -755,6 +1206,12 @@ export function NewOrderItemsCard({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {paymentStrip && (
+        <div className="mt-4 border-t border-border-soft pt-3">
+          {paymentStrip}
         </div>
       )}
 

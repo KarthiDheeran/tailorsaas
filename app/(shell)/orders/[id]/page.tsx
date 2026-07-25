@@ -42,6 +42,10 @@ import {
 } from "@/components/orders/orders-table";
 import { PaymentHistoryList } from "@/components/orders/payment-history-list";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
+import {
+  StageJobCardPrintModal,
+  type StageJobCardPrintTarget,
+} from "@/components/orders/stage-job-card-print-modal";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -72,17 +76,6 @@ const LONG_MEASUREMENT_FIELD_COUNT = 9;
 
 function money(value: number) {
   return formatCurrency(value);
-}
-
-function jobCardPrintUrl(orderId: string, card: JobCard) {
-  const params = new URLSearchParams();
-  if (card.persisted) {
-    params.set("jobCardId", card.id);
-  } else {
-    params.set("orderItemSerialNo", String(card.item.serialNo));
-    params.set("unitNo", String(card.unitNo));
-  }
-  return `/orders/${orderId}/job-cards/print?${params.toString()}`;
 }
 
 function customerFabricsForJobCards(cards: JobCard[], fabrics: CustomerFabric[]) {
@@ -123,14 +116,6 @@ function orderDetailsTaxSplit(
     sgstRate: halfRate,
     pricesIncludeTax: false,
   };
-}
-
-function unitJobCardPrintUrl(orderId: string, serialNo: number, unitNo: number) {
-  const params = new URLSearchParams({
-    orderItemSerialNo: String(serialNo),
-    unitNo: String(unitNo),
-  });
-  return `/orders/${orderId}/job-cards/print?${params.toString()}`;
 }
 
 function Section({
@@ -378,6 +363,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [returningToOrders, setReturningToOrders] = useState(false);
   const [openingEdit, setOpeningEdit] = useState(false);
   const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
+  const [stagePrintTarget, setStagePrintTarget] = useState<StageJobCardPrintTarget | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
@@ -586,24 +572,14 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
               </Link>
             )}
             {canPrintJobCard && (
-              <Link
-                href={`/orders/${order.id}/job-cards/print`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => {
-                  setOpeningPrint("job-card");
-                  window.setTimeout(() => setOpeningPrint(null), 900);
-                }}
-                aria-busy={openingPrint === "job-card"}
+              <button
+                type="button"
+                onClick={() => setStagePrintTarget({ serialNo: order.items[0]?.serialNo ?? 1 })}
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                {openingPrint === "job-card" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <FileText className="h-3.5 w-3.5" />
-                )}
-                {openingPrint === "job-card" ? "Opening..." : "Print All Job Cards"}
-              </Link>
+                <FileText className="h-3.5 w-3.5" />
+                Print Stage Job Card
+              </button>
             )}
           </div>
         </div>
@@ -692,18 +668,19 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                       {canPrintJobCard && itemJobCards.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {itemJobCards.map((card) => (
-                            <Link
+                            <button
                               key={card.id}
-                              href={jobCardPrintUrl(order.id, card)}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              type="button"
+                              onClick={() =>
+                                setStagePrintTarget({
+                                  serialNo: card.item.serialNo,
+                                })
+                              }
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                             >
                               <FileText className="h-3.5 w-3.5" />
-                              {itemJobCards.length === 1
-                                ? "Print Job Card"
-                                : `Print Unit ${card.unitNo}`}
-                            </Link>
+                              Print Stage Card
+                            </button>
                           ))}
                         </div>
                       )}
@@ -712,16 +689,19 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                           {Array.from({ length: Math.max(1, item.qty) }, (_, unitIndex) => {
                             const unitNo = unitIndex + 1;
                             return (
-                              <Link
+                              <button
                                 key={unitNo}
-                                href={unitJobCardPrintUrl(order.id, item.serialNo, unitNo)}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                type="button"
+                                onClick={() =>
+                                  setStagePrintTarget({
+                                    serialNo: item.serialNo,
+                                  })
+                                }
                                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                               >
                                 <FileText className="h-3.5 w-3.5" />
-                                {item.qty <= 1 ? "Print Job Card" : `Print Unit ${unitNo}`}
-                              </Link>
+                                Print Stage Card
+                              </button>
                             );
                           })}
                         </div>
@@ -1008,6 +988,14 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
             handleAdjustmentChanged(result);
             setShowAdjustmentModal(false);
           }}
+        />
+      )}
+
+      {stagePrintTarget && (
+        <StageJobCardPrintModal
+          order={order}
+          target={stagePrintTarget}
+          onClose={() => setStagePrintTarget(null)}
         />
       )}
     </div>

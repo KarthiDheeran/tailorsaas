@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronLeft, Printer, X } from "lucide-react";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { cn } from "@/lib/utils";
 
 // Shared shell for the two print routes (Customer Receipt / Tailor Job
 // Card). Deliberately lives outside the app/(shell) route group so it never
@@ -14,11 +15,13 @@ export function PrintPageFrame({
   backHref,
   backLabel,
   showClose = false,
+  contentClassName,
   children,
 }: {
   backHref?: string;
   backLabel?: string;
   showClose?: boolean;
+  contentClassName?: string;
   children: React.ReactNode;
 }) {
   const { t } = useLanguage();
@@ -57,7 +60,12 @@ export function PrintPageFrame({
           </button>
         </div>
       </div>
-      <div className="mx-auto my-6 max-w-[210mm] bg-white p-10 text-black shadow print:my-0 print:max-w-none print:p-0 print:shadow-none">
+      <div
+        className={cn(
+          "mx-auto my-6 max-w-[210mm] bg-white p-10 text-black shadow print:my-0 print:max-w-none print:p-0 print:shadow-none",
+          contentClassName
+        )}
+      >
         {children}
       </div>
     </div>

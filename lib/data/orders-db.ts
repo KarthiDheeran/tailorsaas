@@ -81,7 +81,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 }
 
 const ORDER_COLUMNS = `
-  id, order_number, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+  id, order_number, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
   delivery_date, delivery_promise_note, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
@@ -97,6 +97,7 @@ const LEGACY_ORDER_COLUMNS = `
 interface OrderRow {
   id: string;
   order_number: string;
+  scan_token?: string | null;
   invoice_number?: string | null;
   customer_id: string;
   customer_snapshot: CustomerSnapshot | null;
@@ -119,6 +120,7 @@ function mapOrder(row: OrderRow): Order {
   return {
     id: row.id,
     orderNumber: row.order_number,
+    scanToken: row.scan_token ?? undefined,
     invoiceNumber: row.invoice_number ?? undefined,
     customerId: row.customer_id,
     customerSnapshot: row.customer_snapshot ?? undefined,
@@ -147,9 +149,48 @@ function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
   return (
     candidate.code === "PGRST204" ||
+    message.includes("scan_token") ||
     message.includes("invoice_number") ||
     message.includes("delivery_promise_note")
   );
+}
+
+export interface OrderScanLookupResult {
+  id: string;
+  orderNumber: string;
+}
+
+export async function findOrderByScanToken(
+  supabase: SupabaseClient,
+  scanToken: string
+): Promise<OrderScanLookupResult | undefined> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .eq("scan_token", scanToken)
+    .maybeSingle();
+  if (error) {
+    const candidate = error as { code?: string; message?: string; details?: string };
+    const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+    if (candidate.code === "PGRST204" || message.includes("scan_token")) return undefined;
+    throw error;
+  }
+  const row = data as { id: string; order_number: string } | null;
+  return row ? { id: row.id, orderNumber: row.order_number } : undefined;
+}
+
+export async function findOrderByOrderNumber(
+  supabase: SupabaseClient,
+  orderNumber: string
+): Promise<OrderScanLookupResult | undefined> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .eq("order_number", orderNumber)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { id: string; order_number: string } | null;
+  return row ? { id: row.id, orderNumber: row.order_number } : undefined;
 }
 
 export async function getAllOrders(supabase: SupabaseClient): Promise<Order[]> {

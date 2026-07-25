@@ -503,6 +503,7 @@ export type PaymentStatus = "Not calculated" | "Paid" | "Due" | "Overdue";
 export interface Order {
   id: string;
   orderNumber: string;
+  scanToken?: string;
   invoiceNumber?: string;
   customerId: string;
   // Denormalized copy of the customer's name/phone/area as of order

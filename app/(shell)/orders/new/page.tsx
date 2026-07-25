@@ -9,14 +9,12 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
   getCustomerByPhoneAction,
   getCustomerDetailAction,
-  getCustomerMeasurementsAction,
-  getGarmentMeasurementsForCustomerAction,
   saveGarmentMeasurementAction,
   searchCustomersAction,
 } from "@/app/(shell)/customers/actions";
@@ -33,8 +31,6 @@ import type { CustomerDetail } from "@/lib/customers-db";
 import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
 import type {
   Customer,
-  CustomerMeasurements,
-  GarmentMeasurement,
   Gender,
   Order,
   PaymentMode,
@@ -59,6 +55,7 @@ import {
   type QueuedOrderAttachment,
 } from "@/components/orders/order-attachment-draft-card";
 import { NewOrderSummaryPanel } from "@/components/orders/new-order-summary-panel";
+import { StageJobCardPrintModal } from "@/components/orders/stage-job-card-print-modal";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -134,9 +131,9 @@ function NewOrderPageContent() {
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
 
   const [orderDate, setOrderDate] = useState(todayIso());
-  const [trialDate, setTrialDate] = useState("");
+  const trialDate = "";
   const [deliveryDate, setDeliveryDate] = useState("");
-  const [deliveryPromiseNote, setDeliveryPromiseNote] = useState("");
+  const deliveryPromiseNote = "";
 
   const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
   const [queuedAttachments, setQueuedAttachments] = useState<QueuedOrderAttachment[]>([]);
@@ -150,6 +147,7 @@ function NewOrderPageContent() {
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
+  const [showStagePrintModal, setShowStagePrintModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
   const [attachmentUploadFailures, setAttachmentUploadFailures] = useState<
@@ -202,12 +200,6 @@ function NewOrderPageContent() {
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | undefined>(
     undefined
   );
-  const [customerMeasurements, setCustomerMeasurements] = useState<
-    CustomerMeasurements | undefined
-  >(undefined);
-  const [customerGarmentMeasurements, setCustomerGarmentMeasurements] = useState<
-    GarmentMeasurement[]
-  >([]);
 
   useEffect(() => {
     if (prefillCustomerId) return;
@@ -343,25 +335,17 @@ function NewOrderPageContent() {
     };
   }, [customerMode, newCustomer.name]);
 
-  // Previous Orders / saved-measurements summary panel data - re-fetched
-  // whenever the matched customer changes.
+  // Previous Orders / customer summary panel data - re-fetched whenever the
+  // matched customer changes.
   useEffect(() => {
     if (!matchedCustomer) {
       setCustomerDetail(undefined);
-      setCustomerMeasurements(undefined);
-      setCustomerGarmentMeasurements([]);
       return;
     }
     let cancelled = false;
-    Promise.all([
-      getCustomerDetailAction(matchedCustomer.id),
-      getCustomerMeasurementsAction(matchedCustomer.id),
-      getGarmentMeasurementsForCustomerAction(matchedCustomer.id),
-    ]).then(([detail, measurements, garmentMeasurements]) => {
+    getCustomerDetailAction(matchedCustomer.id).then((detail) => {
       if (cancelled) return;
       setCustomerDetail(detail);
-      setCustomerMeasurements(measurements);
-      setCustomerGarmentMeasurements(garmentMeasurements);
     });
     return () => {
       cancelled = true;
@@ -435,12 +419,6 @@ function NewOrderPageContent() {
     : deliveryDate < orderDate
       ? "Delivery date cannot be before order date."
       : undefined;
-  const trialDateError =
-    trialDate && orderDate && trialDate < orderDate
-      ? "Trial date cannot be before order date."
-      : trialDate && deliveryDate && trialDate > deliveryDate
-        ? "Trial date cannot be after delivery date."
-        : undefined;
   const errors = {
     customer:
       !hasSelectedCustomer && !isCreatingNewCustomer
@@ -462,7 +440,6 @@ function NewOrderPageContent() {
         ? t("validation.customerNameRequired")
         : undefined,
     deliveryDate: deliveryDateError,
-    trialDate: trialDateError,
     items: itemsError,
     attachments: attachmentValidationError,
     advancePaid:
@@ -628,8 +605,6 @@ function NewOrderPageContent() {
     newCustomer.address !== "" ||
     newCustomer.gender !== "Male" ||
     deliveryDate !== "" ||
-    deliveryPromiseNote.trim() !== "" ||
-    trialDate !== "" ||
     advancePaid !== 0 ||
     queuedAttachments.length > 0 ||
     items.some(
@@ -857,38 +832,17 @@ function NewOrderPageContent() {
 
   return (
     <div className="pb-28">
-      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        <button
-          type="button"
-          onClick={handleCancel}
-          disabled={leavingToOrders}
-          aria-busy={leavingToOrders}
-          className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink disabled:cursor-wait disabled:opacity-70"
-        >
-          {leavingToOrders ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-          {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
-        </button>
-
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-[26px] font-semibold text-ink">{t("orders.newOrder")}</h1>
-            <p className="text-sm text-ink-muted">
-              Order number will be assigned on save.
-            </p>
-          </div>
-        </div>
-
+      <div className="mx-auto max-w-7xl p-4 sm:px-6 sm:py-4 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
           <div className="min-w-0 space-y-5">
-            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-[17px] font-semibold text-ink">
-                  {t("orders.customerDetails")}
-                </h3>
+            <div
+              className={cn(
+                "rounded-xl border border-border-soft bg-white shadow-soft",
+                customerMode === "selected" && matchedCustomer ? "px-4 py-3" : "p-4"
+              )}
+            >
+              {customerMode !== "selected" && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 {customerMode === "new" && (
                   <button
                     type="button"
@@ -899,29 +853,30 @@ function NewOrderPageContent() {
                   </button>
                 )}
               </div>
-              <div className="space-y-3">
+              )}
+              <div className={cn(customerMode !== "selected" && "space-y-3")}>
                 {customerMode === "selected" && matchedCustomer && (
-                  <div className="rounded-lg border border-primary/20 bg-primary-tint px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase text-primary">
-                          Selected Customer
-                        </div>
-                        <div className="truncate text-sm font-semibold text-ink">
+                  <div className="flex min-h-[56px] flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="text-[13px] font-medium text-ink-muted">
+                          Customer:
+                        </span>
+                        <span className="truncate text-base font-semibold text-ink">
                           {matchedCustomer.name}
-                        </div>
-                        <div className="mt-0.5 text-sm text-ink-muted">
-                          {matchedCustomer.phone} Â· {matchedCustomer.area || "-"}
-                        </div>
+                        </span>
+                        <span className="text-sm text-ink-muted">
+                          {matchedCustomer.phone} - {matchedCustomer.area || "-"}
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleChangeCustomer}
-                        className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
-                      >
-                        {t("orders.changeCustomer")}
-                      </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleChangeCustomer}
+                      className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                    >
+                      Change
+                    </button>
                   </div>
                 )}
                 <div
@@ -929,113 +884,113 @@ function NewOrderPageContent() {
                   className={cn("relative", customerMode !== "search" && "hidden")}
                 >
                   <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">Customer</span>
-                  <input
-                    ref={customerSearchInputRef}
-                    value={customerSearchQuery}
-                    onChange={(e) => {
-                      setCustomerSearchQuery(e.target.value);
-                      setActiveCustomerResultIndex(0);
-                      setCustomerResultsOpen(true);
-                    }}
-                    onFocus={() => {
-                      if (customerSearchResults.length > 0) setCustomerResultsOpen(true);
-                    }}
-                    onKeyDown={handleCustomerSearchKeyDown}
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={customerResultsOpen}
-                    aria-controls="customer-search-results"
-                    aria-activedescendant={
-                      customerResultsOpen && customerSearchResults[activeCustomerResultIndex]
-                        ? `customer-search-result-${customerSearchResults[activeCustomerResultIndex].id}`
-                        : undefined
-                    }
-                    placeholder="Search by phone number or customer name"
-                    className={cn(
-                      inputClass,
-                      (customerSearchLoading ||
-                        (customerResultsOpen && customerSearchResults.length > 0)) &&
-                        "rounded-b-none",
-                      submitAttempted && errors.customer && "border-chip-red-fg"
-                    )}
-                  />
-                  </label>
-                  {customerSearchLoading && (
-                    <div className="-mt-px h-0.5 overflow-hidden bg-primary-tint">
-                      <div className="h-full w-1/2 animate-pulse bg-primary" />
-                    </div>
-                  )}
-                  {customerSearchLoading && customerSearchResults.length === 0 && (
-                    <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
-                      Searching...
-                    </div>
-                  )}
-                  {customerResultsOpen &&
-                    customerSearchCompleted &&
-                    !customerSearchLoading &&
-                    customerSearchResults.length === 0 && (
-                      <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
-                        No customers found.
-                      </div>
-                  )}
-                  {customerResultsOpen && customerSearchResults.length > 0 && (
-                    <ul
-                      id="customer-search-results"
-                      role="listbox"
-                      className="-mt-px max-h-56 overflow-y-auto rounded-b-lg border border-border border-t-0 bg-primary-tint/15 shadow-soft"
-                    >
-                      {customerSearchResults.map((c, index) => (
-                        <li key={c.id} className="border-b border-border-soft last:border-b-0">
-                          <button
-                            id={`customer-search-result-${c.id}`}
-                            ref={(node) => {
-                              customerResultButtonRefs.current[index] = node;
-                            }}
-                            role="option"
-                            aria-selected={index === activeCustomerResultIndex}
-                            type="button"
-                            onClick={() => handleSelectCustomer(c)}
-                            onFocus={() => setActiveCustomerResultIndex(index)}
-                            onKeyDown={(event) => handleCustomerResultKeyDown(event, index)}
-                            onMouseEnter={() => setActiveCustomerResultIndex(index)}
-                            className={cn(
-                              "block w-full cursor-pointer px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-white/70 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-primary",
-                              index === activeCustomerResultIndex && "bg-white ring-2 ring-inset ring-primary"
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="truncate font-semibold text-ink">
-                                  {c.name}
+                        <span className="text-[13px] font-medium text-ink-muted">Customer</span>
+                        <input
+                          ref={customerSearchInputRef}
+                          value={customerSearchQuery}
+                          onChange={(e) => {
+                            setCustomerSearchQuery(e.target.value);
+                            setActiveCustomerResultIndex(0);
+                            setCustomerResultsOpen(true);
+                          }}
+                          onFocus={() => {
+                            if (customerSearchResults.length > 0) setCustomerResultsOpen(true);
+                          }}
+                          onKeyDown={handleCustomerSearchKeyDown}
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded={customerResultsOpen}
+                          aria-controls="customer-search-results"
+                          aria-activedescendant={
+                            customerResultsOpen && customerSearchResults[activeCustomerResultIndex]
+                              ? `customer-search-result-${customerSearchResults[activeCustomerResultIndex].id}`
+                              : undefined
+                          }
+                          placeholder="Search by phone number or customer name"
+                          className={cn(
+                            inputClass,
+                            (customerSearchLoading ||
+                              (customerResultsOpen && customerSearchResults.length > 0)) &&
+                              "rounded-b-none",
+                            submitAttempted && errors.customer && "border-chip-red-fg"
+                          )}
+                        />
+                      </label>
+                      {customerSearchLoading && (
+                        <div className="-mt-px h-0.5 overflow-hidden bg-primary-tint">
+                          <div className="h-full w-1/2 animate-pulse bg-primary" />
+                        </div>
+                      )}
+                      {customerSearchLoading && customerSearchResults.length === 0 && (
+                        <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
+                          Searching...
+                        </div>
+                      )}
+                      {customerResultsOpen &&
+                        customerSearchCompleted &&
+                        !customerSearchLoading &&
+                        customerSearchResults.length === 0 && (
+                          <div className="-mt-px rounded-b-lg border border-border border-t-0 bg-white px-4 py-3 text-sm text-ink-muted shadow-soft">
+                            No customers found.
+                          </div>
+                      )}
+                      {customerResultsOpen && customerSearchResults.length > 0 && (
+                        <ul
+                          id="customer-search-results"
+                          role="listbox"
+                          className="-mt-px max-h-56 overflow-y-auto rounded-b-lg border border-border border-t-0 bg-primary-tint/15 shadow-soft"
+                        >
+                          {customerSearchResults.map((c, index) => (
+                            <li key={c.id} className="border-b border-border-soft last:border-b-0">
+                              <button
+                                id={`customer-search-result-${c.id}`}
+                                ref={(node) => {
+                                  customerResultButtonRefs.current[index] = node;
+                                }}
+                                role="option"
+                                aria-selected={index === activeCustomerResultIndex}
+                                type="button"
+                                onClick={() => handleSelectCustomer(c)}
+                                onFocus={() => setActiveCustomerResultIndex(index)}
+                                onKeyDown={(event) => handleCustomerResultKeyDown(event, index)}
+                                onMouseEnter={() => setActiveCustomerResultIndex(index)}
+                                className={cn(
+                                  "block w-full cursor-pointer px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-white/70 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-primary",
+                                  index === activeCustomerResultIndex && "bg-white ring-2 ring-inset ring-primary"
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="truncate font-semibold text-ink">
+                                      {c.name}
+                                    </div>
+                                    <div className="text-ink-muted">
+                                      {c.phone} - {c.area || "-"}
+                                    </div>
+                                  </div>
+                                  <span className="shrink-0 text-xs font-semibold text-primary">
+                                    Select
+                                  </span>
                                 </div>
-                                <div className="text-ink-muted">
-                                  {c.phone} Â· {c.area || "-"}
-                                </div>
-                              </div>
-                              <span className="shrink-0 text-xs font-semibold text-primary">
-                                Select
-                              </span>
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {submitAttempted && errors.customer && (
-                    <p className="text-xs text-chip-red-fg">{errors.customer}</p>
-                  )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {submitAttempted && errors.customer && (
+                        <p className="text-xs text-chip-red-fg">{errors.customer}</p>
+                      )}
                 </div>
                 {customerMode === "search" &&
                   !customerResultsOpen &&
                   !customerSearchLoading && (
-                  <button
-                    type="button"
-                    onClick={handleCreateNewCustomer}
-                    className="text-left text-sm font-semibold text-primary hover:underline"
-                  >
-                    + Create New Customer
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateNewCustomer}
+                      className="text-left text-sm font-semibold text-primary hover:underline"
+                    >
+                      + Create New Customer
+                    </button>
                 )}
                 {customerMode === "new" && (
                   <>
@@ -1217,195 +1172,141 @@ function NewOrderPageContent() {
               garmentTypes={garmentTypes}
               addOns={addOns}
               previousOrders={customerDetail?.orders ?? []}
+              paymentStrip={
+                canViewPayments ? (
+                  <div className="grid gap-3 text-sm md:grid-cols-3 xl:grid-cols-[0.8fr_1.1fr_0.8fr_1.2fr_1.1fr]">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="block text-[12px] font-medium text-ink-muted">
+                        {taxBreakdown && !taxBreakdown.pricesIncludeTax ? "Total" : "Subtotal"}
+                      </span>
+                      <span className="flex h-9 items-center font-semibold text-ink">
+                        {formatCurrency(totalAmount)}
+                      </span>
+                    </div>
+                    <label className="flex min-w-0 flex-col gap-1">
+                      <span className="block text-[12px] font-medium text-ink-muted">
+                        {t("orders.paidAdvance")}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={totalAmount}
+                        value={advancePaid}
+                        onChange={(e) => setAdvancePaid(Number(e.target.value))}
+                        className={cn(
+                          "h-9 w-full rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+                          submitAttempted &&
+                            errors.advancePaid &&
+                            "border-chip-red-fg"
+                        )}
+                      />
+                    </label>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="block text-[12px] font-medium text-ink-muted">
+                        {t("common.balance")}
+                      </span>
+                      <span className="flex h-9 items-center font-semibold text-ink">
+                        {formatCurrency(balance)}
+                      </span>
+                    </div>
+                    <label className="flex min-w-0 flex-col gap-1">
+                      <span className="block text-[12px] font-medium text-ink-muted">
+                        {t("orders.paymentMode")}
+                      </span>
+                      <Select
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
+                        className="h-9 rounded-lg py-0 text-sm"
+                      >
+                        {paymentModes.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="block text-[12px] font-medium text-ink-muted">
+                        {t("orders.paymentStatus")}
+                      </span>
+                      <div className="flex h-9 items-center">
+                        {totalAmount === 0 ? (
+                          <span className="inline-block rounded-full bg-chip-info px-3 py-1 text-xs font-semibold text-chip-info-fg">
+                            {t("orders.notCalculated")}
+                          </span>
+                        ) : (
+                          <BalanceBadge order={draftOrderForBadge} todayIso={todayIso()} />
+                        )}
+                      </div>
+                    </div>
+                    {submitAttempted && errors.advancePaid && (
+                      <p className="text-xs font-medium text-chip-red-fg md:col-span-3 xl:col-span-5">
+                        {errors.advancePaid}
+                      </p>
+                    )}
+                  </div>
+                ) : undefined
+              }
               autoSnapshotDefaultMeasurements
               focusFirstGarmentRequest={garmentFocusRequest}
             />
 
-            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-              <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                {t("orders.orderDates")}
-              </h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.orderDate")}
-                  </span>
-                  <input
-                    type="date"
-                    required
-                    value={orderDate}
-                    onChange={(e) => setOrderDate(e.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
-                  </span>
-                  <input
-                    type="date"
-                    required
-                    value={deliveryDate}
-                    onChange={(e) => setDeliveryDate(e.target.value)}
-                    className={cn(
-                      inputClass,
-                      submitAttempted &&
-                        errors.deliveryDate &&
-                        "border-chip-red-fg"
-                    )}
-                  />
-                  {submitAttempted && errors.deliveryDate && (
-                    <p className="text-xs text-chip-red-fg">
-                      {errors.deliveryDate}
-                    </p>
-                  )}
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-faint">
-                    {t("orders.trialDate")} <span className="font-normal">({t("common.optional")})</span>
-                  </span>
-                  <input
-                    type="date"
-                    value={trialDate}
-                    onChange={(e) => setTrialDate(e.target.value)}
-                    className={cn(
-                      inputClass,
-                      submitAttempted && errors.trialDate && "border-chip-red-fg"
-                    )}
-                  />
-                  {submitAttempted && errors.trialDate && (
-                    <p className="text-xs text-chip-red-fg">
-                      {errors.trialDate}
-                    </p>
-                  )}
-                </label>
-                <label className="flex flex-col gap-1.5 sm:col-span-3">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    Delivery Promise Note
-                  </span>
-                  <textarea
-                    value={deliveryPromiseNote}
-                    onChange={(e) => setDeliveryPromiseNote(e.target.value)}
-                    rows={2}
-                    placeholder="Verbal promise, pickup timing, urgency, customer expectation..."
-                    className="min-h-[44px] rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <OrderAttachmentDraftCard
-              itemOptions={attachmentItemOptions}
-              queued={queuedAttachments}
-              onQueuedChange={setQueuedAttachments}
-              error={(submitAttempted && errors.attachments) || attachmentError}
-            />
-
-            {canViewPayments && (
-            <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-              <h3 className="mb-4 text-[17px] font-semibold text-ink">
-                {t("orders.paymentSummary")}
-              </h3>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {taxBreakdown?.pricesIncludeTax ? "Total" : "Subtotal"}
-                  </span>
-                  <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    {formatCurrency(
-                      taxBreakdown && !taxBreakdown.pricesIncludeTax
-                        ? taxBreakdown.taxableValue
-                        : totalAmount
-                    )}
-                  </div>
-                </div>
-                {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
-                  <div className="flex flex-col gap-1.5">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-stretch">
+              <div className="rounded-xl border border-border-soft bg-white p-3.5 shadow-soft">
+                <h3 className="mb-2.5 text-[17px] font-semibold text-ink">
+                  {t("orders.orderDates")}
+                </h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] font-medium text-ink-muted">
-                      {billingSettings.taxLabel} {billingSettings.taxRatePercent}%
+                      {t("orders.orderDate")}
                     </span>
-                    <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                      {formatCurrency(taxBreakdown.taxAmount)}
-                    </div>
-                  </div>
-                )}
-                {taxBreakdown && !taxBreakdown.pricesIncludeTax && (
-                  <div className="flex flex-col gap-1.5">
+                    <input
+                      type="date"
+                      required
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] font-medium text-ink-muted">
-                      {t("common.total")}
+                      {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
                     </span>
-                    <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                      {formatCurrency(totalAmount)}
-                    </div>
-                  </div>
-                )}
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.paidAdvance")}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={totalAmount}
-                    value={advancePaid}
-                    onChange={(e) => setAdvancePaid(Number(e.target.value))}
-                    className={cn(
-                      inputClass,
-                      submitAttempted &&
-                        errors.advancePaid &&
-                        "border-chip-red-fg"
+                    <input
+                      type="date"
+                      required
+                      value={deliveryDate}
+                      onChange={(e) => setDeliveryDate(e.target.value)}
+                      className={cn(
+                        inputClass,
+                        submitAttempted &&
+                          errors.deliveryDate &&
+                          "border-chip-red-fg"
+                      )}
+                    />
+                    {submitAttempted && errors.deliveryDate && (
+                      <p className="text-xs text-chip-red-fg">
+                        {errors.deliveryDate}
+                      </p>
                     )}
-                  />
-                  {submitAttempted && errors.advancePaid && (
-                    <p className="text-xs text-chip-red-fg">
-                      {errors.advancePaid}
-                    </p>
-                  )}
-                </label>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("common.balance")}
-                  </span>
-                  <div className="flex h-11 items-center text-sm font-semibold text-ink">
-                    {formatCurrency(balance)}
-                  </div>
+                  </label>
                 </div>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">
-                    {t("orders.paymentMode")}
-                  </span>
-                  <Select
-                    value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                  >
-                    {paymentModes.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
               </div>
-              <div className="mt-4 flex items-center justify-between border-t border-border-soft pt-4">
-                <span className="text-sm text-ink-muted">{t("orders.paymentStatus")}</span>
-                {totalAmount === 0 ? (
-                  <span className="inline-block rounded-full bg-chip-info px-3 py-1 text-xs font-semibold text-chip-info-fg">
-                    {t("orders.notCalculated")}
-                  </span>
-                ) : (
-                  <BalanceBadge order={draftOrderForBadge} todayIso={todayIso()} />
-                )}
+              <OrderAttachmentDraftCard
+                inlineSummary
+                queued={queuedAttachments}
+                onQueuedChange={setQueuedAttachments}
+                error={(submitAttempted && errors.attachments) || attachmentError}
+              />
               </div>
-            </div>
-            )}
+
           </div>
 
           <div className="min-w-0">
             <NewOrderSummaryPanel
               customer={matchedCustomer}
               detail={customerDetail}
-              measurements={customerMeasurements}
-              garmentMeasurements={customerGarmentMeasurements}
               onRepeatOrder={handleRepeatOrder}
               repeatCopyMessage={repeatCopyMessage}
               newCustomerPending={customerMode === "new"}
@@ -1414,23 +1315,33 @@ function NewOrderPageContent() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft md:left-[250px]">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E5E7EB] bg-white shadow-soft md:left-[250px]">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-8">
           <div className="flex items-center gap-2 text-sm text-ink-muted">
             {saveError ? (
               <span className="font-medium text-chip-red-fg">{saveError}</span>
             ) : canViewPayments ? (
               <>
-                <span>
-                  {t("common.total")}: <span className="font-semibold text-ink">{formatCurrency(totalAmount)}</span>
+                <span className="whitespace-nowrap">
+                  <span className="text-xs text-ink-muted">{t("common.total")}:</span>{" "}
+                  <span className="font-semibold text-[#111827]">{formatCurrency(totalAmount)}</span>
                 </span>
-                <span className="text-border">|</span>
-                <span>
-                  {t("common.paid")}: <span className="font-semibold text-ink">{formatCurrency(advancePaid)}</span>
+                <span className="text-[#E5E7EB]">|</span>
+                <span className="whitespace-nowrap">
+                  <span className="text-xs text-ink-muted">{t("common.paid")}:</span>{" "}
+                  <span className="font-semibold text-[#111827]">{formatCurrency(advancePaid)}</span>
                 </span>
-                <span className="text-border">|</span>
-                <span>
-                  {t("common.balance")}: <span className="font-semibold text-ink">{formatCurrency(balance)}</span>
+                <span className="text-[#E5E7EB]">|</span>
+                <span className="whitespace-nowrap">
+                  <span className="text-xs text-ink-muted">{t("common.balance")}:</span>{" "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      balance > 0 ? "text-[#B45309]" : "text-[#15803D]"
+                    )}
+                  >
+                    {formatCurrency(balance)}
+                  </span>
                 </span>
               </>
             ) : (
@@ -1443,9 +1354,12 @@ function NewOrderPageContent() {
             <button
               type="button"
               onClick={handleCancel}
-              className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              disabled={leavingToOrders}
+              aria-busy={leavingToOrders}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:cursor-wait disabled:opacity-70"
             >
-              {t("common.cancel")}
+              {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
+              {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
             </button>
             <button
               type="button"
@@ -1542,14 +1456,13 @@ function NewOrderPageContent() {
                   </button>
                 )}
                 {canPrintJobCard && (
-                  <Link
-                    href={`/orders/${savedOrder.id}/job-cards/print`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => setShowStagePrintModal(true)}
                     className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                   >
-                    Print All Job Cards
-                  </Link>
+                    Print Stage Job Card
+                  </button>
                 )}
                 <button
                   type="button"
@@ -1575,6 +1488,13 @@ function NewOrderPageContent() {
             </div>
           </div>
         </>
+      )}
+      {savedOrder && showStagePrintModal && (
+        <StageJobCardPrintModal
+          order={savedOrder}
+          target={{ serialNo: savedOrder.items[0]?.serialNo ?? 1 }}
+          onClose={() => setShowStagePrintModal(false)}
+        />
       )}
     </div>
   );
