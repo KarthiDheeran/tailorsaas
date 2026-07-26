@@ -5,15 +5,20 @@ import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import {
   createAddOn,
   createGarmentType,
+  createWorkStage,
   getActiveAddOns,
   getActiveGarmentTypes,
+  getActiveWorkStages,
   getAllAddOns,
   getAllGarmentTypes,
+  getAllWorkStages,
   getGarmentById,
   setAddOnActive,
   setGarmentTypeActive,
+  setWorkStageActive,
   updateAddOn,
   updateGarmentType,
+  updateWorkStage,
 } from "@/lib/data/catalog-db";
 import {
   customMeasurementFieldLabel,
@@ -22,7 +27,9 @@ import {
   type AddOnInput,
   type CatalogAddOn,
   type CatalogGarmentType,
+  type CatalogWorkStage,
   type GarmentTypeInput,
+  type WorkStageInput,
 } from "@/lib/catalog";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +58,10 @@ type ActionResult<T = undefined> =
 
 const VALID_MEASUREMENT_FIELD_IDS = new Set(measurementFields.map((f) => f.id));
 
+function stageKeys(stages: CatalogWorkStage[]) {
+  return new Set(stages.filter((stage) => stage.isActive).map((stage) => stage.stageKey));
+}
+
 export async function getGarmentTypesAction(): Promise<CatalogGarmentType[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.view");
@@ -77,6 +88,20 @@ export async function getActiveAddOnsAction(): Promise<CatalogAddOn[]> {
   const guard = await requireServerPermission(supabase, "catalog.view");
   if (!guard.ok) return [];
   return getActiveAddOns(supabase);
+}
+
+export async function getWorkStagesAction(): Promise<CatalogWorkStage[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.view");
+  if (!guard.ok) return [];
+  return getAllWorkStages(supabase);
+}
+
+export async function getActiveWorkStagesAction(): Promise<CatalogWorkStage[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.view");
+  if (!guard.ok) return [];
+  return getActiveWorkStages(supabase);
 }
 
 function validateGarmentInput(
@@ -142,10 +167,25 @@ function isMissingShortcutCodeColumn(error: unknown): boolean {
   );
 }
 
-function validateAddOnInput(data: AddOnInput): string | null {
+function validateAddOnInput(data: AddOnInput, validStageKeys: Set<string>): string | null {
   if (!data.name.trim()) return "Add-on name is required.";
   if (!Number.isFinite(data.defaultPrice) || data.defaultPrice < 0) {
     return "Default price must be 0 or greater.";
+  }
+  for (const [stage, amount] of Object.entries(data.workerStageRates ?? {})) {
+    if (!validStageKeys.has(stage)) return `Unknown worker stage: ${stage}.`;
+    if (amount == null) continue;
+    if (!Number.isFinite(amount) || amount < 0) {
+      return `Worker pay for ${stage} must be 0 or greater.`;
+    }
+  }
+  return null;
+}
+
+function validateWorkStageInput(data: WorkStageInput): string | null {
+  if (!data.name.trim()) return "Stage name is required.";
+  if (!Number.isFinite(data.displayOrder) || data.displayOrder < 1) {
+    return "Display order must be 1 or greater.";
   }
   return null;
 }
@@ -266,7 +306,8 @@ export async function createAddOnAction(
   const guard = await requireServerPermission(supabase, "catalog.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validationError = validateAddOnInput(data);
+  const stages = await getAllWorkStages(supabase);
+  const validationError = validateAddOnInput(data, stageKeys(stages));
   if (validationError) return { success: false, error: validationError };
 
   const addOn = await createAddOn(supabase, data);
@@ -281,12 +322,61 @@ export async function updateAddOnAction(
   const guard = await requireServerPermission(supabase, "catalog.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validationError = validateAddOnInput(data);
+  const stages = await getAllWorkStages(supabase);
+  const validationError = validateAddOnInput(data, stageKeys(stages));
   if (validationError) return { success: false, error: validationError };
 
   const addOn = await updateAddOn(supabase, id, data);
   if (!addOn) return { success: false, error: "Add-on not found." };
   return { success: true, data: addOn };
+}
+
+export async function createWorkStageAction(
+  data: WorkStageInput
+): Promise<ActionResult<CatalogWorkStage>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const validationError = validateWorkStageInput(data);
+  if (validationError) return { success: false, error: validationError };
+  try {
+    const stage = await createWorkStage(supabase, data);
+    return { success: true, data: stage };
+  } catch (error) {
+    if (isUniqueViolation(error)) return { success: false, error: "Stage already exists." };
+    throw error;
+  }
+}
+
+export async function updateWorkStageAction(
+  id: string,
+  data: WorkStageInput
+): Promise<ActionResult<CatalogWorkStage>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const validationError = validateWorkStageInput(data);
+  if (validationError) return { success: false, error: validationError };
+  try {
+    const stage = await updateWorkStage(supabase, id, data);
+    if (!stage) return { success: false, error: "Stage not found." };
+    return { success: true, data: stage };
+  } catch (error) {
+    if (isUniqueViolation(error)) return { success: false, error: "Stage already exists." };
+    throw error;
+  }
+}
+
+export async function setWorkStageActiveAction(
+  id: string,
+  isActive: boolean
+): Promise<ActionResult<CatalogWorkStage>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const stage = await setWorkStageActive(supabase, id, isActive);
+  if (!stage) return { success: false, error: "Stage not found." };
+  return { success: true, data: stage };
 }
 
 export async function setAddOnActiveAction(

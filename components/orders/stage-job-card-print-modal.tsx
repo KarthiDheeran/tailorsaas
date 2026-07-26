@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Loader2, X } from "lucide-react";
+import { ChevronDown, FileText, Loader2, X } from "lucide-react";
+import { getActiveWorkStagesAction } from "@/app/(shell)/catalog/actions";
 import { createJobCardStageSlipAction } from "@/app/(shell)/job-cards/actions";
 import { getStaffAction } from "@/app/(shell)/staff/actions";
+import type { CatalogWorkStage } from "@/lib/catalog";
+import { staffGarmentStageRate } from "@/lib/staff-rates";
 import type { Order, Staff, TaskType } from "@/lib/types";
-
-const TASK_TYPES: TaskType[] = [
-  "Measurement",
-  "Cutting",
-  "Stitching",
-  "Embroidery",
-  "Finishing",
-  "Alteration",
-  "Ironing/Packing",
-  "Delivery",
-];
 
 export interface StageJobCardPrintTarget {
   serialNo: number;
@@ -31,6 +23,7 @@ export function StageJobCardPrintModal({
   onClose: () => void;
 }) {
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
   const selectedItem = order.items.find((item) => item.serialNo === target.serialNo);
   const [stage, setStage] = useState<TaskType>("Cutting");
   const activeStaff = useMemo(
@@ -43,14 +36,31 @@ export function StageJobCardPrintModal({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const stageAddOns = useMemo(
+    () =>
+      (selectedItem?.addOns ?? [])
+        .map((addOn) => {
+          const amount = Number(addOn.workerStageRates?.[stage] ?? 0);
+          return Number.isFinite(amount) && amount > 0
+            ? { label: addOn.label, amount }
+            : null;
+        })
+        .filter((addOn): addOn is { label: string; amount: number } => addOn !== null),
+    [selectedItem, stage]
+  );
+  const stageAddOnTotal = stageAddOns.reduce((sum, addOn) => sum + addOn.amount, 0);
 
   useEffect(() => {
     let cancelled = false;
-    getStaffAction().then((result) => {
+    Promise.all([getStaffAction(), getActiveWorkStagesAction()]).then(([staffResult, stages]) => {
       if (cancelled) return;
-      setStaff(result);
-      const firstActive = result.find((member) => member.status === "Active");
-      if (firstActive) setStaffId((current) => current || firstActive.id);
+      setStaff(staffResult);
+      setWorkStages(stages);
+      setStage((current) =>
+        stages.length > 0 && !stages.some((candidate) => candidate.stageKey === current)
+          ? (stages[0].stageKey as TaskType)
+          : current
+      );
     });
     return () => {
       cancelled = true;
@@ -62,9 +72,9 @@ export function StageJobCardPrintModal({
       setRate(0);
       return;
     }
-    const defaultRate = Number(selectedStaff.pieceRates?.[stage] ?? 0);
+    const defaultRate = staffGarmentStageRate(selectedStaff, selectedItem?.garmentTypeId, stage);
     setRate(Number.isFinite(defaultRate) && defaultRate > 0 ? defaultRate : 0);
-  }, [selectedStaff, stage]);
+  }, [selectedItem?.garmentTypeId, selectedStaff, stage]);
 
   async function createPrintout() {
     if (!selectedItem) return;
@@ -127,33 +137,45 @@ export function StageJobCardPrintModal({
         <div className="grid gap-4 px-5 py-5 sm:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-medium text-ink">
             Stage
-            <select
-              value={stage}
-              onChange={(event) => setStage(event.target.value as TaskType)}
-              className="h-10 rounded-lg border border-border px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              {TASK_TYPES.map((task) => (
-                <option key={task} value={task}>
-                  {task}
-                </option>
-              ))}
-            </select>
+            <span className="relative block">
+              <select
+                value={stage}
+                onChange={(event) => setStage(event.target.value as TaskType)}
+                className="h-10 w-full appearance-none rounded-lg border border-border bg-white px-3 pr-10 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                {workStages.map((task) => (
+                  <option key={task.id} value={task.stageKey}>
+                    {task.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+                aria-hidden="true"
+              />
+            </span>
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Labourer / Worker
-            <select
-              value={staffId}
-              onChange={(event) => setStaffId(event.target.value)}
-              className="h-10 rounded-lg border border-border px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">Select worker</option>
-              {activeStaff.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name} - {member.role}
-                </option>
-              ))}
-            </select>
+            Assign to
+            <span className="relative block">
+              <select
+                value={staffId}
+                onChange={(event) => setStaffId(event.target.value)}
+                className="h-10 w-full appearance-none rounded-lg border border-border bg-white px-3 pr-10 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">Select worker</option>
+                {activeStaff.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name} - {member.role}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+                aria-hidden="true"
+              />
+            </span>
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink sm:col-span-2">
@@ -165,6 +187,22 @@ export function StageJobCardPrintModal({
               placeholder="Optional"
             />
           </label>
+
+          <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-sm sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-ink">Worker add-ons for {stage}</p>
+              <p className="font-bold text-primary">+₹{stageAddOnTotal}</p>
+            </div>
+            {stageAddOns.length === 0 ? (
+              <p className="mt-1 text-xs text-ink-muted">
+                No selected order add-ons have worker pay for this stage.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-ink-muted">
+                {stageAddOns.map((addOn) => `${addOn.label} +₹${addOn.amount}`).join(", ")}
+              </p>
+            )}
+          </div>
         </div>
 
         {error && <p className="px-5 pb-2 text-sm font-semibold text-red-700">{error}</p>}
@@ -180,7 +218,7 @@ export function StageJobCardPrintModal({
           <button
             type="button"
             onClick={createPrintout}
-            disabled={saving || !selectedItem || !staffId}
+            disabled={saving || !selectedItem}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}

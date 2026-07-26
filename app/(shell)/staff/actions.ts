@@ -25,6 +25,8 @@ import {
   getJobCards,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
+import { getTalliedJobCardStageSlips } from "@/lib/data/job-card-stage-slips-db";
+import { getActiveWorkStages, getAllGarmentTypes } from "@/lib/data/catalog-db";
 import {
   createExpense,
   isMissingExpensesSchemaError,
@@ -35,7 +37,6 @@ import {
   computeTaskStatus,
   getStaffListRows,
   getWorkQueueRows,
-  TASK_TYPES,
   type StaffListRow,
   type WorkQueueRow,
 } from "@/lib/staff";
@@ -54,6 +55,7 @@ import type {
   TaskType,
   WorkAssignment,
 } from "@/lib/types";
+import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 
 // ---------------------------------------------------------------------------
 // Phase 6D: Staff HR, Work Assignments, and Staff Payments are now real,
@@ -94,10 +96,35 @@ const VALID_ROLES = new Set<StaffRole>([
 ]);
 const VALID_STATUSES = new Set<StaffStatus>(["Active", "Inactive", "On Leave"]);
 const VALID_PAYMENT_TYPES = new Set<StaffPaymentType>(["Salary", "Per Piece"]);
-const VALID_TASK_TYPES = new Set<TaskType>(TASK_TYPES);
 const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function tallyDateKey(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function buildStageSlipWorkEarnings(slips: JobCardStageSlip[]): StaffWorkEarning[] {
+  return slips
+    .filter((slip) => slip.staffId && slip.talliedAt)
+    .map((slip) => ({
+      id: `stage-slip:${slip.id}`,
+      staffId: slip.staffId!,
+      jobCardId: slip.id,
+      orderId: slip.orderId,
+      jobCardNumber: `${slip.orderNumber} - ${slip.garmentType} Unit ${slip.unitNo}`,
+      taskType: slip.stage,
+      completedDate: tallyDateKey(slip.talliedAt),
+      wageRate: slip.wageRate,
+      wageAmount: slip.wageAmount,
+      createdAt: slip.talliedAt ?? slip.createdAt,
+    }));
+}
 
 export interface StaffFormInput {
   name: string;
@@ -110,7 +137,8 @@ export interface StaffFormInput {
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
-  pieceRates?: Partial<Record<TaskType, number>>;
+  pieceRates?: Partial<Record<string, number>>;
+  garmentStageRates?: Record<string, Partial<Record<string, number>>>;
 }
 
 export interface StaffPageData {
@@ -121,7 +149,15 @@ export interface StaffPageData {
   staffWorkEarnings: StaffWorkEarning[];
 }
 
-function validateStaffInput(data: StaffFormInput): string | null {
+function validStageKeys(stages: { stageKey: string }[]) {
+  return new Set(stages.map((stage) => stage.stageKey));
+}
+
+function validateStaffInput(
+  data: StaffFormInput,
+  validStages: Set<string>,
+  validGarments: Set<string>
+): string | null {
   if (!data.name.trim()) return "Name is required.";
   if (!data.phone.trim()) return "Phone is required.";
   if (!VALID_ROLES.has(data.role)) return "Invalid role.";
@@ -137,11 +173,23 @@ function validateStaffInput(data: StaffFormInput): string | null {
   }
   if (data.paymentType === "Per Piece" && data.pieceRates) {
     for (const [task, rate] of Object.entries(data.pieceRates)) {
-      if (!VALID_TASK_TYPES.has(task as TaskType)) {
+      if (!validStages.has(task)) {
         return `Unknown task type: ${task}.`;
       }
       if (rate != null && (!Number.isFinite(rate) || rate < 0)) {
         return `Rate for ${task} must be 0 or greater.`;
+      }
+    }
+  }
+  if (data.paymentType === "Per Piece" && data.garmentStageRates) {
+    for (const [garmentId, stageRates] of Object.entries(data.garmentStageRates)) {
+      if (!garmentId.trim()) return "Invalid garment rate mapping.";
+      if (!validGarments.has(garmentId)) return "Unknown garment type in staff rate mapping.";
+      for (const [stage, rate] of Object.entries(stageRates ?? {})) {
+        if (!validStages.has(stage)) return `Unknown task type: ${stage}.`;
+        if (rate != null && (!Number.isFinite(rate) || rate < 0)) {
+          return `Rate for ${stage} must be 0 or greater.`;
+        }
       }
     }
   }
@@ -179,12 +227,20 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
 
   const canManage = hasPermission(context.permissions, "staff.manage");
   const dataClient = createAdminClient();
-  const [staffList, assignments, orders, staffPayments, staffWorkEarnings] = await Promise.all([
+  const [
+    staffList,
+    assignments,
+    orders,
+    staffPayments,
+    staffWorkEarnings,
+    talliedStageSlips,
+  ] = await Promise.all([
     getStaff(dataClient),
     getWorkAssignments(dataClient),
     getAllOrders(dataClient),
     getStaffPayments(dataClient),
     getStaffWorkEarnings(dataClient),
+    getTalliedJobCardStageSlips(dataClient),
   ]);
 
   let jobCardQueueRows: JobCard[] | null = null;
@@ -203,7 +259,7 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
     workQueueRows: buildWorkQueueRows(staffList, assignments, orders, todayIso),
     jobCardQueueRows,
     staffPayments,
-    staffWorkEarnings,
+    staffWorkEarnings: [...staffWorkEarnings, ...buildStageSlipWorkEarnings(talliedStageSlips)],
   };
 }
 
@@ -228,7 +284,15 @@ export async function createStaffAction(
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validationError = validateStaffInput(data);
+  const [stages, garments] = await Promise.all([
+    getActiveWorkStages(supabase),
+    getAllGarmentTypes(supabase),
+  ]);
+  const validationError = validateStaffInput(
+    data,
+    validStageKeys(stages),
+    new Set(garments.map((garment) => garment.id))
+  );
   if (validationError) return { success: false, error: validationError };
 
   const member = await createStaff(supabase, data);
@@ -243,7 +307,15 @@ export async function updateStaffAction(
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validationError = validateStaffInput(data);
+  const [stages, garments] = await Promise.all([
+    getActiveWorkStages(supabase),
+    getAllGarmentTypes(supabase),
+  ]);
+  const validationError = validateStaffInput(
+    data,
+    validStageKeys(stages),
+    new Set(garments.map((garment) => garment.id))
+  );
   if (validationError) return { success: false, error: validationError };
 
   const member = await updateStaff(supabase, id, data);
@@ -282,7 +354,8 @@ export async function createWorkAssignmentAction(
   if (!order.items.some((i) => i.serialNo === data.orderItemSerialNo)) {
     return { success: false, error: "Order item not found on this order." };
   }
-  if (!VALID_TASK_TYPES.has(data.taskType)) return { success: false, error: "Invalid task type." };
+  const stages = await getActiveWorkStages(supabase);
+  if (!validStageKeys(stages).has(data.taskType)) return { success: false, error: "Invalid task type." };
   if (!VALID_PRIORITIES.has(data.priority)) return { success: false, error: "Invalid priority." };
   if (
     !ISO_DATE.test(data.assignedDate) ||

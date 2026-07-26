@@ -67,6 +67,7 @@ function paymentModeLabel(summary: PaymentModeSummary) {
 
 function receiptRows(order: Order): ReceiptRow[] {
   return order.items.flatMap((item) => {
+    const baseTotal = item.qty * item.rate;
     const rows: ReceiptRow[] = [
       {
         type: "item",
@@ -74,7 +75,7 @@ function receiptRows(order: Order): ReceiptRow[] {
         particular: item.particular,
         qty: item.qty,
         rate: item.rate,
-        total: item.amount,
+        total: baseTotal,
       },
     ];
     (item.addOns ?? []).forEach((addOn, index) => {

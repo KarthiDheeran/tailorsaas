@@ -29,6 +29,7 @@ import {
   getJobCardStageSlipById,
   getJobCardStageSlipByScanCode,
   getTalliedJobCardStageSlips,
+  isMissingJobCardStageSlipsSchemaError,
   markJobCardStageSlipTallied,
   type CreateJobCardStageSlipInput,
   type JobCardStageSlip,
@@ -49,6 +50,7 @@ import {
   type CustomerFabricInput,
   type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
+import { getActiveWorkStages } from "@/lib/data/catalog-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type {
@@ -71,16 +73,15 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
-const VALID_TASK_TYPES = new Set<TaskType>([
-  "Measurement",
-  "Cutting",
-  "Stitching",
-  "Embroidery",
-  "Finishing",
-  "Alteration",
-  "Ironing/Packing",
-  "Delivery",
-]);
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message?: unknown }).message ?? "").trim();
+    if (message) return message;
+  }
+  return fallback;
+}
+
 const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
 const VALID_FABRIC_SOURCES = new Set<JobCardFabricSource>([
   "Not specified",
@@ -100,6 +101,12 @@ const VALID_STAGES = new Set<JobCardStage>([
   "Ready",
 ]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+async function isConfiguredWorkStage(stage: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const stages = await getActiveWorkStages(supabase);
+  return stages.some((candidate) => candidate.stageKey === stage);
+}
 
 export interface JobCardsPageData {
   jobCards: JobCard[] | null;
@@ -179,7 +186,7 @@ export async function getJobCardsPageDataAction(
         ? getWorkAssignmentsForStaff(supabase, assignedStaffId)
         : getWorkAssignments(supabase)
       : Promise.resolve([]),
-    canViewInventory
+    canViewInventory && options.includeInventoryItems
       ? getJobCardsInventoryData(supabase, Boolean(options.includeInventoryItems))
       : Promise.resolve({ customerFabrics: [], inventoryItems: [], inventoryMovements: [] }),
   ]);
@@ -223,8 +230,9 @@ export async function createJobCardStageSlipAction(
   if (!Number.isInteger(data.unitNo) || data.unitNo < 1) {
     return { success: false, error: "Unit is required." };
   }
-  if (!VALID_TASK_TYPES.has(data.stage)) return { success: false, error: "Stage is required." };
-  if (!data.staffId) return { success: false, error: "Worker is required." };
+  if (!(await isConfiguredWorkStage(data.stage))) {
+    return { success: false, error: "Stage is required." };
+  }
   if (
     data.wageRate !== undefined &&
     (!Number.isFinite(data.wageRate) || data.wageRate < 0)
@@ -236,9 +244,15 @@ export async function createJobCardStageSlipAction(
     const slip = await createJobCardStageSlip(supabase, data);
     return { success: true, data: slip };
   } catch (error) {
+    if (isMissingJobCardStageSlipsSchemaError(error)) {
+      return {
+        success: false,
+        error: "Job card slip schema is missing. Run Supabase migrations 0044, 0045 and 0046.",
+      };
+    }
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to create job card slip.",
+      error: errorMessage(error, "Failed to create job card slip."),
     };
   }
 }
@@ -268,6 +282,33 @@ export async function scanJobCardStageSlipAction(
     : { success: false, error: "Job card not found." };
 }
 
+export async function previewJobCardStageSlipAction(
+  code: string
+): Promise<ActionResult<JobCardStageSlip>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const slip = await getJobCardStageSlipByScanCode(supabase, code);
+  return slip ? { success: true, data: slip } : { success: false, error: "Job card not found." };
+}
+
+export async function confirmJobCardStageSlipTallyAction(
+  id: string
+): Promise<ActionResult<JobCardStageSlip>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  const slip = await getJobCardStageSlipById(supabase, id);
+  if (!slip) return { success: false, error: "Job card not found." };
+  if (slip.talliedAt) return { success: true, data: slip };
+  const tallied = await markJobCardStageSlipTallied(supabase, slip.id);
+  return tallied
+    ? { success: true, data: tallied }
+    : { success: false, error: "Job card not found." };
+}
+
 export async function getTalliedJobCardStageSlipsAction(): Promise<JobCardStageSlip[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
@@ -283,7 +324,7 @@ export async function assignJobCardAction(
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
 
-  const validationError = validateAssignment(data);
+  const validationError = await validateAssignment(data);
   if (validationError) return { success: false, error: validationError };
 
   try {
@@ -727,8 +768,8 @@ export async function syncMissingJobCardsAction(): Promise<ActionResult<{ synced
   }
 }
 
-function validateAssignment(data: JobCardAssignmentInput): string | null {
-  if (!VALID_TASK_TYPES.has(data.taskType)) return "Invalid task type.";
+async function validateAssignment(data: JobCardAssignmentInput): Promise<string | null> {
+  if (!(await isConfiguredWorkStage(data.taskType))) return "Invalid task type.";
   if (!data.assignedStaffId.trim()) return "Assigned staff member is required.";
   if (!ISO_DATE.test(data.dueDate)) return "A valid due date is required.";
   if (data.startedDate && !ISO_DATE.test(data.startedDate)) return "A valid start date is required.";

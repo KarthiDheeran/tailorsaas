@@ -7,6 +7,7 @@ import type { TranslationKey } from "@/lib/i18n/translations";
 const TABS = [
   { key: "garment-types", labelKey: "catalog.garmentTypes" },
   { key: "addons", labelKey: "catalog.addOnsExtras" },
+  { key: "work-stages", labelKey: "catalog.workStages" },
 ] as const satisfies { key: string; labelKey: TranslationKey }[];
 
 export type CatalogTab = (typeof TABS)[number]["key"];

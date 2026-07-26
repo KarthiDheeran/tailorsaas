@@ -32,7 +32,10 @@ import {
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
-import { StageJobCardPrintModal } from "@/components/orders/stage-job-card-print-modal";
+import {
+  StageJobCardPrintModal,
+  type StageJobCardPrintTarget,
+} from "@/components/orders/stage-job-card-print-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
@@ -44,13 +47,11 @@ import { formatCurrency } from "@/lib/currency";
 function PrintMenu({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
-  const [showStagePrint, setShowStagePrint] = useState(false);
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
-  const canPrintJobCard = hasPermission("orders.printJobCard");
 
-  if (!canPrintReceipt && !canPrintJobCard) return null;
+  if (!canPrintReceipt) return null;
 
   return (
     <div className="relative">
@@ -93,31 +94,8 @@ function PrintMenu({ order }: { order: Order }) {
                 </Link>
               </li>
             )}
-            {canPrintJobCard && (
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowStagePrint(true);
-                    setOpen(false);
-                  }}
-                  className="block w-full px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
-                >
-                  <span className="flex items-center gap-1.5">
-                    Print Stage Job Card
-                  </span>
-                </button>
-              </li>
-            )}
           </ul>
         </>
-      )}
-      {showStagePrint && (
-        <StageJobCardPrintModal
-          order={order}
-          target={{ serialNo: order.items[0]?.serialNo ?? 1 }}
-          onClose={() => setShowStagePrint(false)}
-        />
       )}
     </div>
   );
@@ -229,6 +207,7 @@ export function OrderDetailsDrawer({
   const canViewPayments = hasPermission("orders.viewPayments");
   const canRecordPayment = hasPermission("orders.recordPayment");
   const canEdit = hasPermission("orders.edit");
+  const canPrintJobCard = hasPermission("orders.printJobCard");
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
@@ -236,6 +215,7 @@ export function OrderDetailsDrawer({
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [openingEdit, setOpeningEdit] = useState(false);
   const [openingFullOrder, setOpeningFullOrder] = useState(false);
+  const [stagePrintTarget, setStagePrintTarget] = useState<StageJobCardPrintTarget | null>(null);
   const orderId = order?.id;
 
   useEffect(() => {
@@ -383,6 +363,9 @@ export function OrderDetailsDrawer({
                             <th className="px-3 py-2 text-right">{t("common.amount")}</th>
                           </>
                         )}
+                        {canPrintJobCard && (
+                          <th className="px-3 py-2 text-right">Print</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -418,6 +401,19 @@ export function OrderDetailsDrawer({
                                 {formatCurrency(item.amount)}
                               </td>
                             </>
+                          )}
+                          {canPrintJobCard && (
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setStagePrintTarget({ serialNo: item.serialNo })}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                                aria-label={`Print stage job card for ${item.particular}`}
+                                title={`Print stage job card for ${item.particular}`}
+                              >
+                                <Printer className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
                           )}
                         </tr>
                       ))}
@@ -561,6 +557,13 @@ export function OrderDetailsDrawer({
             handlePaymentChanged(result);
             setShowRecordModal(false);
           }}
+        />
+      )}
+      {order && stagePrintTarget && (
+        <StageJobCardPrintModal
+          order={order}
+          target={stagePrintTarget}
+          onClose={() => setStagePrintTarget(null)}
         />
       )}
     </>

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronsUpDown,
@@ -22,7 +21,6 @@ import {
   Users,
   Users2,
   Wallet,
-  Workflow,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -48,10 +46,8 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-  { href: "/calendar", labelKey: "nav.calendar", icon: CalendarDays, permission: "calendar.view" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
   { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
-  { href: "/production", labelKey: "nav.production", icon: Workflow, anyOf: ["orders.view", "staff.view"] },
   { href: "/delivery", labelKey: "nav.delivery", icon: Truck, permission: "orders.view" },
   { href: "/customers", labelKey: "nav.customers", icon: Users, permission: "customers.view" },
   { href: "/payments", labelKey: "nav.payments", icon: Wallet, anyOf: ["orders.viewPayments", "expenses.view"] },

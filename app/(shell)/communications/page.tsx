@@ -71,7 +71,7 @@ function contextHref(message: WhatsAppMessage): string | null {
 
 function reminderHref(event: CalendarEvent): string {
   if (event.jobCardId) return `/job-cards?view=${event.jobCardId}`;
-  return event.orderId ? `/orders?view=${event.orderId}` : "/calendar";
+  return event.orderId ? `/orders?view=${event.orderId}` : "/orders";
 }
 
 function ReminderInbox({

@@ -8,36 +8,107 @@ import {
   createJobCardStageSlipAction,
   getJobCardStageSlipAction,
 } from "@/app/(shell)/job-cards/actions";
+import { getActiveWorkStagesAction } from "@/app/(shell)/catalog/actions";
 import { getOrderByIdAction } from "@/app/(shell)/orders/actions";
 import { getStaffAction } from "@/app/(shell)/staff/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
-import { RequirePermission } from "@/components/auth/require-permission";
 import { formatDate } from "@/components/orders/orders-table";
+import { useLanguage } from "@/components/i18n/language-provider";
 import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
 import { barcodeSvgDataUri } from "@/lib/barcode-code128";
+import { staffGarmentStageRate } from "@/lib/staff-rates";
 import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
+import type { CatalogWorkStage } from "@/lib/catalog";
 import type { Customer, Order, Staff, TaskType } from "@/lib/types";
-
-const TASK_TYPES: TaskType[] = [
-  "Measurement",
-  "Cutting",
-  "Stitching",
-  "Embroidery",
-  "Finishing",
-  "Alteration",
-  "Ironing/Packing",
-  "Delivery",
-];
 
 const FIELD_LABELS: Record<string, string> = Object.fromEntries(
   measurementFields.map((field) => [field.id, field.label])
 );
+
+const TAMIL_STAGE_LABELS: Partial<Record<TaskType, string>> = {
+  Measurement: "அளவீடு",
+  Cutting: "வெட்டுதல்",
+  Stitching: "தையல்",
+  Embroidery: "எம்பிராய்டரி",
+  Finishing: "முடித்தல்",
+  Alteration: "திருத்தம்",
+  "Ironing/Packing": "இஸ்திரி/பேக்கிங்",
+  Delivery: "டெலிவரி",
+};
+
+const TAMIL_MEASUREMENT_LABELS: Record<string, string> = {
+  chest: "மார்பு",
+  bust: "பஸ்ட்",
+  waist: "இடுப்பு",
+  hip: "ஹிப்",
+  shoulder: "தோள்",
+  crossFront: "முன் குறுக்கு",
+  crossBack: "பின் குறுக்கு",
+  sleeveLength: "கை நீளம்",
+  sleeveRound: "கை சுற்று",
+  armhole: "ஆர்ம்ஹோல்",
+  neck: "கழுத்து",
+  collar: "காலர்",
+  shirtLength: "சட்டை நீளம்",
+  blouseLength: "பிளவுஸ் நீளம்",
+  kurtaLength: "குர்தா நீளம்",
+  kameezLength: "கமீஸ் நீளம்",
+  salwarLength: "சல்வார் நீளம்",
+  dressLength: "டிரஸ் நீளம்",
+  lehengaLength: "லெஹங்கா நீளம்",
+  gownLength: "கவுன் நீளம்",
+  coatLength: "கோட் நீளம்",
+  waistcoatLength: "வேஸ்ட்கோட் நீளம்",
+  sherwaniLength: "ஷெர்வானி நீளம்",
+  petticoatLength: "பெட்டிகோட் நீளம்",
+  sareeFallLength: "சாரி ஃபால் நீளம்",
+  pantLength: "பேண்ட் நீளம்",
+  inseam: "இன்சீம்",
+  thigh: "தொடை",
+  knee: "முழங்கால்",
+  bottom: "பாட்டம்",
+  rise: "ரைஸ்",
+  cuff: "கஃப்",
+  neckDepthFront: "முன் கழுத்து ஆழம்",
+  neckDepthBack: "பின் கழுத்து ஆழம்",
+  neckWidth: "கழுத்து அகலம்",
+  dartPoint: "டார்ட் பாயிண்ட்",
+  princessCut: "பிரின்சஸ் கட்",
+  yokeLength: "யோக் நீளம்",
+  slitLength: "ஸ்லிட் நீளம்",
+  flare: "ஃப்ளேர்",
+  seat: "சீட்",
+  calf: "கால்ஃப்",
+  fitNotes: "ஃபிட் குறிப்புகள்",
+  notes: "குறிப்புகள்",
+};
+
+const SLIP_LABELS = {
+  en: {
+    qty: "Q",
+    addOns: "Add-ons",
+    assignTo: "Assign to",
+    notes: "Notes",
+    workerSign: "Worker sign",
+    remark: "Remark",
+    noMeasurements: "No measurements recorded.",
+  },
+  ta: {
+    qty: "எண்",
+    addOns: "கூடுதல்",
+    assignTo: "ஒதுக்கீடு",
+    notes: "குறிப்பு",
+    workerSign: "தொழிலாளர் கையொப்பம்",
+    remark: "குறிப்பு",
+    noMeasurements: "அளவீடுகள் இல்லை.",
+  },
+} as const;
 
 function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -58,14 +129,40 @@ function measurementEntries(measurements?: Record<string, string>) {
   }));
 }
 
+function localizedMeasurementLabel(key: string, fallback: string, locale: "en" | "ta") {
+  if (locale === "ta") return TAMIL_MEASUREMENT_LABELS[key] ?? fallback;
+  return fallback;
+}
+
+function localizedStage(stage: TaskType, locale: "en" | "ta") {
+  if (locale === "ta") return TAMIL_STAGE_LABELS[stage] ?? stage;
+  return stage;
+}
+
+function formatSlipDate(value: string, locale: "en" | "ta") {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return formatDate(value);
+  return new Intl.DateTimeFormat(locale === "ta" ? "ta-IN" : "en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function chunkEntries<T>(entries: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < entries.length; index += size) {
+    chunks.push(entries.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function activeStaff(staff: Staff[]) {
   return staff.filter((member) => member.status === "Active");
 }
 
-function defaultRateFor(staff: Staff | undefined, stage: TaskType) {
-  if (!staff || staff.paymentType !== "Per Piece") return 0;
-  const rate = Number(staff.pieceRates?.[stage] ?? 0);
-  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+function defaultRateFor(staff: Staff | undefined, garmentTypeId: string | undefined, stage: TaskType) {
+  return staffGarmentStageRate(staff, garmentTypeId, stage);
 }
 
 function PrintSetup({
@@ -91,8 +188,9 @@ function PrintSetup({
     initialUnitNo && initialUnitNo >= 1 && initialUnitNo <= maxUnit ? initialUnitNo : 1
   );
   const [stage, setStage] = useState<TaskType>("Cutting");
+  const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
   const visibleStaff = useMemo(() => activeStaff(staff), [staff]);
-  const [staffId, setStaffId] = useState(visibleStaff[0]?.id ?? "");
+  const [staffId, setStaffId] = useState("");
   const selectedStaff = visibleStaff.find((member) => member.id === staffId);
   const [rate, setRate] = useState("0");
   const [notes, setNotes] = useState("");
@@ -104,8 +202,24 @@ function PrintSetup({
   }, [maxUnit]);
 
   useEffect(() => {
-    setRate(String(defaultRateFor(selectedStaff, stage)));
-  }, [selectedStaff, stage]);
+    setRate(String(defaultRateFor(selectedStaff, selectedItem?.garmentTypeId, stage)));
+  }, [selectedItem?.garmentTypeId, selectedStaff, stage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActiveWorkStagesAction().then((stages) => {
+      if (cancelled) return;
+      setWorkStages(stages);
+      setStage((current) =>
+        stages.length > 0 && !stages.some((candidate) => candidate.stageKey === current)
+          ? (stages[0].stageKey as TaskType)
+          : current
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit() {
     if (!selectedItem) return;
@@ -134,7 +248,7 @@ function PrintSetup({
         <div className="mb-5">
           <h1 className="text-2xl font-semibold text-ink">Print Stage Job Card</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            {order.orderNumber} - choose the stage and worker for this printout.
+            {order.orderNumber} - choose the stage for this printout.
           </p>
         </div>
 
@@ -176,16 +290,16 @@ function PrintSetup({
               onChange={(event) => setStage(event.target.value as TaskType)}
               className="h-11 rounded-lg border border-border px-3 font-normal"
             >
-              {TASK_TYPES.map((task) => (
-                <option key={task} value={task}>
-                  {task}
+              {workStages.map((task) => (
+                <option key={task.id} value={task.stageKey}>
+                  {task.name}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Worker
+            Assign to
             <select
               value={staffId}
               onChange={(event) => setStaffId(event.target.value)}
@@ -227,7 +341,7 @@ function PrintSetup({
           <button
             type="button"
             onClick={submit}
-            disabled={saving || !selectedItem || !staffId}
+            disabled={saving || !selectedItem}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -248,106 +362,245 @@ function StageSlipPrint({
   customer: Customer | undefined;
   billingSettings: ShopBillingSettings;
 }) {
-  const measurements = measurementEntries(slip.measurementsSnapshot);
-  const barcodeValue = `TS|JOB|${slip.scanToken}`;
-
   return (
-    <PrintPageFrame showClose>
-      <section className="break-after-page bg-white p-8 text-ink print:p-6">
-        <div className="border-b-2 border-black pb-4">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <h1 className="text-2xl font-bold">{billingSettings.shopName || "NewLook"}</h1>
-              {billingSettings.tagline && (
-                <p className="text-sm text-gray-600">{billingSettings.tagline}</p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">
-                Stage Job Card
-              </p>
-              <p className="mt-1 text-2xl font-bold">{slip.stage}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
-          <Info label="Order No" value={slip.orderNumber} />
-          <Info label="Worker" value={slip.staffName} />
-          <Info label="Customer" value={customer?.name ?? slip.customerSnapshot?.name ?? "-"} />
-          <Info label="Mobile" value={customer?.phone ?? slip.customerSnapshot?.phone ?? "-"} />
-          <Info label="Garment" value={`${slip.garmentType} - Unit ${slip.unitNo}`} />
-          <Info label="Labour" value={`₹${slip.wageAmount}`} />
-          <Info label="Printed" value={formatDate(slip.printedAt.slice(0, 10))} />
-          <Info label="Qty" value={String(slip.quantity)} />
-        </div>
-
-        {slip.addOnsSnapshot && slip.addOnsSnapshot.length > 0 && (
-          <div className="mt-4 rounded border border-gray-300 p-3 text-sm">
-            <p className="font-semibold text-gray-600">Add-ons</p>
-            <p className="mt-1">{slip.addOnsSnapshot.map((addOn) => addOn.label).join(", ")}</p>
-          </div>
-        )}
-
-        <div className="mt-4">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Measurements
-          </p>
-          {measurements.length > 0 ? (
-            <div className="grid grid-cols-4 gap-x-4 gap-y-1.5 text-sm">
-              {measurements.map((entry) => (
-                <div key={entry.key} className="flex justify-between border-b border-dotted border-gray-300">
-                  <span className="text-gray-600">{entry.label}</span>
-                  <span className="font-semibold">{entry.value}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm italic text-gray-500">No measurements recorded.</p>
-          )}
-        </div>
-
-        {slip.notes && (
-          <p className="mt-4 text-sm">
-            <span className="font-semibold text-gray-500">Work Notes: </span>
-            {slip.notes}
-          </p>
-        )}
-
-        <div className="mt-8 grid grid-cols-[1fr_auto] items-end gap-6 border-t border-black pt-5">
-          <div className="grid grid-cols-2 gap-8 text-sm">
-            <div>
-              <p className="mb-8 text-gray-500">Worker Signature:</p>
-              <div className="border-t border-gray-400" />
-            </div>
-            <div>
-              <p className="mb-8 text-gray-500">Checked By:</p>
-              <div className="border-t border-gray-400" />
-            </div>
-          </div>
-          <div className="grid justify-items-end gap-1">
-            <Image
-              src={barcodeSvgDataUri(barcodeValue)}
-              alt=""
-              width={230}
-              height={44}
-              unoptimized
-              className="h-11 w-[230px]"
-            />
-            <p className="text-xs font-semibold">{slip.orderNumber}</p>
-          </div>
-        </div>
-      </section>
-    </PrintPageFrame>
+    <StageSlipPrintV2
+      slip={slip}
+      customer={customer}
+      billingSettings={billingSettings}
+    />
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+
+function StageSlipPrintV2({
+  slip,
+  customer,
+  billingSettings,
+}: {
+  slip: JobCardStageSlip;
+  customer: Customer | undefined;
+  billingSettings: ShopBillingSettings;
+}) {
+  const { locale } = useLanguage();
+  const labels = SLIP_LABELS[locale];
+  const measurements = measurementEntries(slip.measurementsSnapshot);
+  const measurementRows = chunkEntries(measurements, 4);
+  const barcodeValue = `TS|JOB|${slip.scanToken}`;
+  const customerName = customer?.name ?? slip.customerSnapshot?.name ?? "-";
+  const customerPhone = customer?.phone ?? slip.customerSnapshot?.phone ?? "-";
+  const assignedWorker = slip.staffId ? slip.staffName : "";
+  const addOns =
+    slip.labourAddOnsSnapshot?.map((addOn) => addOn.label).filter(Boolean) ??
+    slip.addOnsSnapshot?.map((addOn) => addOn.label).filter(Boolean) ??
+    [];
+
   return (
-    <div>
-      <p className="text-gray-500">{label}</p>
-      <p className="font-semibold">{value}</p>
-    </div>
+    <PrintPageFrame showClose contentClassName="stage-slip-preview">
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: 8in 3in;
+            margin: 0;
+          }
+
+          .stage-slip-preview {
+            width: 8in !important;
+            height: 3in !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+        }
+      `}</style>
+      <section className="stage-slip-paper bg-white text-black">
+        <table className="stage-slip-table">
+          <tbody>
+            <tr>
+              <td className="stage-slip-shop">
+                {billingSettings.shopName || "NewLook"}
+              </td>
+              <td className="stage-slip-name" colSpan={2}>
+                {customerName}
+              </td>
+              <td className="stage-slip-strong" colSpan={2}>
+                {customerPhone}
+              </td>
+              <td className="stage-slip-strong" colSpan={2}>
+                {formatSlipDate(slip.printedAt.slice(0, 10), locale)} | {slip.garmentType}:{slip.unitNo} | {localizedStage(slip.stage, locale)} | {labels.qty}:{slip.quantity}
+              </td>
+            </tr>
+            {measurementRows.length > 0 ? (
+              measurementRows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {Array.from({ length: 4 }, (_, columnIndex) => {
+                    const entry = row[columnIndex];
+                    return (
+                      <td
+                        key={entry?.key ?? columnIndex}
+                        className="stage-slip-measure"
+                        colSpan={columnIndex === 3 ? 1 : 2}
+                      >
+                        {entry ? (
+                          <>
+                            <span>{localizedMeasurementLabel(entry.key, entry.label, locale)}</span>
+                            <strong>{entry.value}</strong>
+                          </>
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="stage-slip-empty" colSpan={7}>
+                  {labels.noMeasurements}
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td className="stage-slip-note" colSpan={3}>
+                {labels.addOns}: {addOns.length ? addOns.join(", ") : "-"}
+              </td>
+              <td className="stage-slip-note" colSpan={2}>
+                {labels.assignTo}: {assignedWorker}
+              </td>
+              <td className="stage-slip-note" colSpan={2}>
+                {labels.notes}: {slip.notes || "-"}
+              </td>
+            </tr>
+            <tr>
+              <td className="stage-slip-footer" colSpan={3}>
+                {labels.workerSign}:
+              </td>
+              <td className="stage-slip-remark" colSpan={2}>
+                {labels.remark}:
+              </td>
+              <td className="stage-slip-barcode" colSpan={2}>
+                <Image
+                  src={barcodeSvgDataUri(barcodeValue, 34)}
+                  alt=""
+                  width={230}
+                  height={34}
+                  unoptimized
+                  className="h-[34px] w-[230px]"
+                />
+                <span>{slip.orderNumber}</span>
+                <span className="stage-slip-code">{slip.slipCode}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <style jsx global>{`
+        .stage-slip-paper {
+          width: 8in;
+          height: 3in;
+          box-sizing: border-box;
+          overflow: hidden;
+          padding: 0.08in;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .stage-slip-preview {
+          width: min(8in, calc(100vw - 32px));
+          max-width: none;
+          margin: 24px auto;
+          padding: 0;
+          background: transparent;
+          box-shadow: none;
+        }
+
+        .stage-slip-table {
+          width: 100%;
+          height: 100%;
+          table-layout: fixed;
+          border-collapse: collapse;
+          font-size: 10.5px;
+          line-height: 1.15;
+        }
+
+        .stage-slip-table td {
+          border: 1px solid #222;
+          padding: 4px 6px;
+          vertical-align: middle;
+        }
+
+        .stage-slip-remark {
+          color: #444;
+        }
+
+        .stage-slip-shop,
+        .stage-slip-name {
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
+
+        .stage-slip-strong {
+          font-weight: 800;
+        }
+
+        .stage-slip-measure {
+          height: 0.34in;
+        }
+
+        .stage-slip-measure span {
+          display: block;
+          color: #444;
+          font-size: 8.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+
+        .stage-slip-measure strong {
+          display: block;
+          margin-top: 2px;
+          font-size: 14px;
+          font-weight: 800;
+        }
+
+        .stage-slip-empty,
+        .stage-slip-note,
+        .stage-slip-footer {
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .stage-slip-barcode {
+          text-align: center;
+        }
+
+        .stage-slip-barcode img {
+          display: block;
+          margin: 0 auto 1px;
+        }
+
+        .stage-slip-barcode span {
+          display: block;
+          font-size: 8.5px;
+          font-weight: 800;
+        }
+
+        .stage-slip-barcode .stage-slip-code {
+          font-size: 8px;
+          letter-spacing: 0;
+        }
+
+        @media screen {
+          .stage-slip-paper {
+            margin: 0 auto;
+            box-shadow: 0 12px 28px rgb(0 0 0 / 0.18);
+          }
+        }
+
+        @media print {
+          .stage-slip-paper {
+            box-shadow: none;
+            break-after: page;
+          }
+        }
+      `}</style>
+    </PrintPageFrame>
   );
 }
 
@@ -429,9 +682,5 @@ export default function TailorJobCardPrintPage({
   params: { id: string };
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  return (
-    <RequirePermission permission="orders.printJobCard">
-      <TailorJobCardPrintPageContent params={params} searchParams={searchParams} />
-    </RequirePermission>
-  );
+  return <TailorJobCardPrintPageContent params={params} searchParams={searchParams} />;
 }

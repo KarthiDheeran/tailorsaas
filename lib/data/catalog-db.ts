@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { initialShortcutCodeForGarmentName } from "@/lib/catalog";
+import { DEFAULT_WORK_STAGES, initialShortcutCodeForGarmentName } from "@/lib/catalog";
 import type {
   AddOnInput,
   CatalogAddOn,
   CatalogGarmentType,
+  CatalogWorkStage,
   GarmentTypeInput,
+  WorkStageInput,
 } from "@/lib/catalog";
 
 // ---------------------------------------------------------------------------
@@ -22,12 +24,14 @@ import type {
 // each function maps explicitly at the boundary.
 // ---------------------------------------------------------------------------
 
-const ADDON_COLUMNS = "id, name, default_price, is_active";
+const ADDON_COLUMNS = "id, name, default_price, worker_stage_rates, is_active";
+const WORK_STAGE_COLUMNS = "id, name, stage_key, display_order, is_active";
 
 interface AddOnRow {
   id: string;
   name: string;
   default_price: number;
+  worker_stage_rates: Record<string, number> | null;
   is_active: boolean;
 }
 
@@ -36,8 +40,110 @@ function mapAddOn(row: AddOnRow): CatalogAddOn {
     id: row.id,
     name: row.name,
     defaultPrice: row.default_price,
+    workerStageRates: row.worker_stage_rates ?? undefined,
     isActive: row.is_active,
   };
+}
+
+interface WorkStageRow {
+  id: string;
+  name: string;
+  stage_key: string;
+  display_order: number;
+  is_active: boolean;
+}
+
+function normalizeStageKey(name: string) {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function mapWorkStage(row: WorkStageRow): CatalogWorkStage {
+  return {
+    id: row.id,
+    name: row.name,
+    stageKey: row.stage_key,
+    displayOrder: Number(row.display_order),
+    isActive: row.is_active,
+  };
+}
+
+function isMissingWorkStagesSchemaError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const code = candidate.code ?? "";
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return code === "42P01" || code === "PGRST205" || message.includes("catalog_work_stages");
+}
+
+export async function getAllWorkStages(supabase: SupabaseClient): Promise<CatalogWorkStage[]> {
+  const { data, error } = await supabase
+    .from("catalog_work_stages")
+    .select(WORK_STAGE_COLUMNS)
+    .order("display_order", { ascending: true })
+    .order("name");
+  if (error) {
+    if (isMissingWorkStagesSchemaError(error)) return DEFAULT_WORK_STAGES;
+    throw error;
+  }
+  return ((data as WorkStageRow[]) ?? []).map(mapWorkStage);
+}
+
+export async function getActiveWorkStages(supabase: SupabaseClient): Promise<CatalogWorkStage[]> {
+  const stages = await getAllWorkStages(supabase);
+  return stages.filter((stage) => stage.isActive);
+}
+
+export async function createWorkStage(
+  supabase: SupabaseClient,
+  data: WorkStageInput
+): Promise<CatalogWorkStage> {
+  const { data: row, error } = await supabase
+    .from("catalog_work_stages")
+    .insert({
+      name: data.name,
+      stage_key: normalizeStageKey(data.name),
+      display_order: data.displayOrder,
+      is_active: data.isActive,
+    })
+    .select(WORK_STAGE_COLUMNS)
+    .single();
+  if (error) throw error;
+  return mapWorkStage(row as WorkStageRow);
+}
+
+export async function updateWorkStage(
+  supabase: SupabaseClient,
+  id: string,
+  data: WorkStageInput
+): Promise<CatalogWorkStage | undefined> {
+  const { data: row, error } = await supabase
+    .from("catalog_work_stages")
+    .update({
+      name: data.name,
+      stage_key: normalizeStageKey(data.name),
+      display_order: data.displayOrder,
+      is_active: data.isActive,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select(WORK_STAGE_COLUMNS)
+    .maybeSingle();
+  if (error) throw error;
+  return row ? mapWorkStage(row as WorkStageRow) : undefined;
+}
+
+export async function setWorkStageActive(
+  supabase: SupabaseClient,
+  id: string,
+  isActive: boolean
+): Promise<CatalogWorkStage | undefined> {
+  const { data: row, error } = await supabase
+    .from("catalog_work_stages")
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(WORK_STAGE_COLUMNS)
+    .maybeSingle();
+  if (error) throw error;
+  return row ? mapWorkStage(row as WorkStageRow) : undefined;
 }
 
 export async function getAllAddOns(supabase: SupabaseClient): Promise<CatalogAddOn[]> {
@@ -81,6 +187,7 @@ export async function createAddOn(
     .insert({
       name: data.name,
       default_price: data.defaultPrice,
+      worker_stage_rates: data.workerStageRates ?? {},
       is_active: data.isActive,
     })
     .select(ADDON_COLUMNS)
@@ -99,6 +206,7 @@ export async function updateAddOn(
     .update({
       name: data.name,
       default_price: data.defaultPrice,
+      worker_stage_rates: data.workerStageRates ?? {},
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     })

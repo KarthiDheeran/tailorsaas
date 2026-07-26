@@ -124,6 +124,7 @@ export interface OrderItemAddOn {
   key: string;
   label: string;
   amount: number;
+  workerStageRates?: Partial<Record<string, number>>;
 }
 
 export type OrderItemFabricSource =
@@ -442,7 +443,8 @@ export interface Staff {
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
-  pieceRates?: Partial<Record<TaskType, number>>;
+  pieceRates?: Partial<Record<string, number>>;
+  garmentStageRates?: Record<string, Partial<Record<string, number>>>;
 }
 
 // A WorkAssignment references a garment line via orderId + orderItemSerialNo

@@ -1271,6 +1271,7 @@ export function computeOrderItems(
       key: a.id,
       label: a.name,
       amount: a.defaultPrice,
+      workerStageRates: a.workerStageRates,
     }));
     const addOnsTotal = itemAddOns.reduce((sum, a) => sum + a.amount, 0);
     const finalRate = it.rate + addOnsTotal;

@@ -8,31 +8,40 @@ import type {
   AddOnInput,
   CatalogAddOn,
   CatalogGarmentType,
+  CatalogWorkStage,
   GarmentTypeInput,
+  WorkStageInput,
 } from "@/lib/catalog";
 import {
   createAddOnAction,
   createGarmentTypeAction,
+  createWorkStageAction,
   getActiveAddOnsAction,
+  getActiveWorkStagesAction,
   getAddOnsAction,
   getGarmentTypesAction,
+  getWorkStagesAction,
   setAddOnActiveAction,
   setGarmentTypeActiveAction,
+  setWorkStageActiveAction,
   updateAddOnAction,
   updateGarmentTypeAction,
+  updateWorkStageAction,
 } from "@/app/(shell)/catalog/actions";
 import { CatalogTabs, type CatalogTab } from "@/components/catalog/catalog-tabs";
 import { CatalogTable } from "@/components/catalog/catalog-table";
 import { GarmentTypeDrawer } from "@/components/catalog/garment-type-drawer";
 import { AddOnTable } from "@/components/catalog/addon-table";
 import { AddOnDrawer } from "@/components/catalog/addon-drawer";
+import { WorkStageTable } from "@/components/catalog/work-stage-table";
+import { WorkStageDrawer } from "@/components/catalog/work-stage-drawer";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 
 function isCatalogTab(value: string | null): value is CatalogTab {
-  return value === "garment-types" || value === "addons";
+  return value === "garment-types" || value === "addons" || value === "work-stages";
 }
 
 function CatalogPageContent() {
@@ -54,6 +63,8 @@ function CatalogPageContent() {
 
   const [editingAddOn, setEditingAddOn] = useState<CatalogAddOn | null>(null);
   const [isAddingAddOn, setIsAddingAddOn] = useState(false);
+  const [editingWorkStage, setEditingWorkStage] = useState<CatalogWorkStage | null>(null);
+  const [isAddingWorkStage, setIsAddingWorkStage] = useState(false);
 
   // Phase 5B: reads now go through Server Actions (app/(shell)/catalog/
   // actions.ts) against the same server-side copy of the mock catalog arrays
@@ -63,6 +74,8 @@ function CatalogPageContent() {
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [activeAddOns, setActiveAddOns] = useState<CatalogAddOn[]>([]);
+  const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
+  const [activeWorkStages, setActiveWorkStages] = useState<CatalogWorkStage[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
   useEffect(() => {
@@ -78,11 +91,15 @@ function CatalogPageContent() {
       getGarmentTypesAction(),
       getAddOnsAction(),
       getActiveAddOnsAction(),
-    ]).then(([garments, allAddOns, active]) => {
+      getWorkStagesAction(),
+      getActiveWorkStagesAction(),
+    ]).then(([garments, allAddOns, active, stages, activeStages]) => {
       if (cancelled) return;
       setGarmentTypes(garments);
       setAddOns(allAddOns);
       setActiveAddOns(active);
+      setWorkStages(stages);
+      setActiveWorkStages(activeStages);
     }).finally(() => {
       if (!cancelled) setIsLoadingCatalog(false);
     });
@@ -124,6 +141,27 @@ function CatalogPageContent() {
     return result;
   }
 
+  async function handleSaveWorkStage(data: WorkStageInput) {
+    const result = editingWorkStage
+      ? await updateWorkStageAction(editingWorkStage.id, data)
+      : await createWorkStageAction(data);
+    if (result.success) {
+      setEditingWorkStage(null);
+      setIsAddingWorkStage(false);
+      setRefreshKey((k) => k + 1);
+    }
+    return result;
+  }
+
+  async function handleToggleWorkStageActive(stage: CatalogWorkStage) {
+    const result = await setWorkStageActiveAction(stage.id, !stage.isActive);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
   async function handleToggleAddOnActive(addOn: CatalogAddOn) {
     const result = await setAddOnActiveAction(addOn.id, !addOn.isActive);
     if (!result.success) {
@@ -135,6 +173,7 @@ function CatalogPageContent() {
 
   const garmentDrawerOpen = isAddingGarment || editingGarment !== null;
   const addOnDrawerOpen = isAddingAddOn || editingAddOn !== null;
+  const workStageDrawerOpen = isAddingWorkStage || editingWorkStage !== null;
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -163,7 +202,7 @@ function CatalogPageContent() {
               <Plus className="h-4 w-4" />
               {t("catalog.addGarmentType")}
             </button>
-          ) : (
+          ) : tab === "addons" ? (
             <button
               type="button"
               onClick={() => setIsAddingAddOn(true)}
@@ -171,6 +210,15 @@ function CatalogPageContent() {
             >
               <Plus className="h-4 w-4" />
               {t("catalog.addAddOn")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsAddingWorkStage(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            >
+              <Plus className="h-4 w-4" />
+              Add Work Stage
             </button>
           ))}
       </div>
@@ -192,12 +240,19 @@ function CatalogPageContent() {
           onEdit={setEditingGarment}
           onToggleActive={handleToggleGarmentActive}
         />
-      ) : (
+      ) : tab === "addons" ? (
         <AddOnTable
           addOns={addOns}
           canManage={canManage}
           onEdit={setEditingAddOn}
           onToggleActive={handleToggleAddOnActive}
+        />
+      ) : (
+        <WorkStageTable
+          stages={workStages}
+          canManage={canManage}
+          onEdit={setEditingWorkStage}
+          onToggleActive={handleToggleWorkStageActive}
         />
       )}
 
@@ -216,11 +271,23 @@ function CatalogPageContent() {
       {canManage && addOnDrawerOpen && (
         <AddOnDrawer
           addOn={editingAddOn}
+          workStages={activeWorkStages}
           onCancel={() => {
             setEditingAddOn(null);
             setIsAddingAddOn(false);
           }}
           onSaved={handleSaveAddOn}
+        />
+      )}
+
+      {canManage && workStageDrawerOpen && (
+        <WorkStageDrawer
+          stage={editingWorkStage}
+          onCancel={() => {
+            setEditingWorkStage(null);
+            setIsAddingWorkStage(false);
+          }}
+          onSaved={handleSaveWorkStage}
         />
       )}
     </div>

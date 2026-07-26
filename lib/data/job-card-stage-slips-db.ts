@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrderById } from "@/lib/data/orders-db";
 import { getStaffById } from "@/lib/data/staff-db";
-import type { CustomerSnapshot, OrderItemAddOn, Staff, TaskType } from "@/lib/types";
+import { staffGarmentStageRate } from "@/lib/staff-rates";
+import type { CustomerSnapshot, OrderItemAddOn, TaskType } from "@/lib/types";
 
 export interface JobCardStageSlip {
   id: string;
   scanToken: string;
+  slipCode: string;
   orderId: string;
   orderItemSerialNo: number;
   unitNo: number;
@@ -15,12 +17,13 @@ export interface JobCardStageSlip {
   garmentType: string;
   quantity: number;
   stage: TaskType;
-  staffId: string;
+  staffId?: string;
   staffName: string;
   wageRate: number;
   wageAmount: number;
   measurementsSnapshot?: Record<string, string>;
   addOnsSnapshot?: OrderItemAddOn[];
+  labourAddOnsSnapshot?: OrderItemAddOn[];
   notes?: string;
   printedAt: string;
   talliedAt?: string;
@@ -32,21 +35,22 @@ export interface CreateJobCardStageSlipInput {
   orderItemSerialNo: number;
   unitNo: number;
   stage: TaskType;
-  staffId: string;
+  staffId?: string;
   wageRate?: number;
   notes?: string;
 }
 
 const JOB_CARD_STAGE_SLIP_COLUMNS = `
-  id, scan_token, order_id, order_item_serial_no, unit_no, order_number, customer_id,
+  id, scan_token, slip_code, order_id, order_item_serial_no, unit_no, order_number, customer_id,
   customer_snapshot, garment_type, quantity, stage, staff_id, staff_name, wage_rate,
-  wage_amount, measurements_snapshot, add_ons_snapshot, notes, printed_at, tallied_at,
-  created_at
+  wage_amount, measurements_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
+  printed_at, tallied_at, created_at
 `;
 
 interface JobCardStageSlipRow {
   id: string;
   scan_token: string;
+  slip_code: string | null;
   order_id: string;
   order_item_serial_no: number;
   unit_no: number;
@@ -56,12 +60,13 @@ interface JobCardStageSlipRow {
   garment_type: string;
   quantity: number;
   stage: TaskType;
-  staff_id: string;
+  staff_id: string | null;
   staff_name: string;
   wage_rate: number;
   wage_amount: number;
   measurements_snapshot: Record<string, string> | null;
   add_ons_snapshot: OrderItemAddOn[] | null;
+  labour_add_ons_snapshot: OrderItemAddOn[] | null;
   notes: string | null;
   printed_at: string;
   tallied_at: string | null;
@@ -72,6 +77,7 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
   return {
     id: row.id,
     scanToken: row.scan_token,
+    slipCode: row.slip_code ?? row.scan_token.slice(0, 10),
     orderId: row.order_id,
     orderItemSerialNo: row.order_item_serial_no,
     unitNo: row.unit_no,
@@ -81,12 +87,13 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
     garmentType: row.garment_type,
     quantity: Number(row.quantity),
     stage: row.stage,
-    staffId: row.staff_id,
+    staffId: row.staff_id ?? undefined,
     staffName: row.staff_name,
     wageRate: Number(row.wage_rate),
     wageAmount: Number(row.wage_amount),
     measurementsSnapshot: row.measurements_snapshot ?? undefined,
     addOnsSnapshot: row.add_ons_snapshot ?? undefined,
+    labourAddOnsSnapshot: row.labour_add_ons_snapshot ?? undefined,
     notes: row.notes?.trim() ? row.notes : undefined,
     printedAt: row.printed_at,
     talliedAt: row.tallied_at ?? undefined,
@@ -109,10 +116,15 @@ function meaningfulMeasurements(value: unknown): Record<string, string> | null {
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
-function staffRate(staff: Staff | undefined, stage: TaskType) {
-  if (!staff || staff.paymentType !== "Per Piece") return 0;
-  const rate = Number(staff.pieceRates?.[stage] ?? 0);
-  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+function labourAddOnsForStage(addOns: OrderItemAddOn[] | undefined, stage: TaskType): OrderItemAddOn[] {
+  return (addOns ?? [])
+    .map((addOn) => {
+      const amount = Number(addOn.workerStageRates?.[stage] ?? 0);
+      return Number.isFinite(amount) && amount > 0
+        ? { key: addOn.key, label: addOn.label, amount }
+        : null;
+    })
+    .filter((addOn): addOn is OrderItemAddOn => addOn !== null);
 }
 
 export async function createJobCardStageSlip(
@@ -121,17 +133,19 @@ export async function createJobCardStageSlip(
 ): Promise<JobCardStageSlip> {
   const [order, staff] = await Promise.all([
     getOrderById(supabase, input.orderId),
-    getStaffById(supabase, input.staffId),
+    input.staffId ? getStaffById(supabase, input.staffId) : Promise.resolve(undefined),
   ]);
   if (!order) throw new Error("Order not found.");
-  if (!staff) throw new Error("Worker not found.");
+  if (input.staffId && !staff) throw new Error("Worker not found.");
 
   const item = order.items.find((candidate) => candidate.serialNo === input.orderItemSerialNo);
   if (!item) throw new Error("Order item not found.");
   const unitNo = Math.max(1, Math.min(input.unitNo, Math.max(1, item.qty)));
-  const rate = input.wageRate ?? staffRate(staff, input.stage);
+  const rate = input.wageRate ?? staffGarmentStageRate(staff, item.garmentTypeId, input.stage);
   const wageRate = Number.isFinite(rate) && rate > 0 ? rate : 0;
   const quantity = 1;
+  const labourAddOns = labourAddOnsForStage(item.addOns, input.stage);
+  const labourAddOnsTotal = labourAddOns.reduce((sum, addOn) => sum + addOn.amount, 0);
 
   const { data, error } = await supabase
     .from("job_card_stage_slips")
@@ -145,12 +159,13 @@ export async function createJobCardStageSlip(
       garment_type: item.particular,
       quantity,
       stage: input.stage,
-      staff_id: staff.id,
-      staff_name: staff.name,
+      staff_id: staff?.id ?? null,
+      staff_name: staff?.name ?? "Unassigned",
       wage_rate: wageRate,
-      wage_amount: wageRate * quantity,
+      wage_amount: wageRate * quantity + labourAddOnsTotal,
       measurements_snapshot: meaningfulMeasurements(item.measurements),
       add_ons_snapshot: item.addOns ?? null,
+      labour_add_ons_snapshot: labourAddOns.length > 0 ? labourAddOns : null,
       notes: input.notes?.trim() || null,
     })
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
@@ -184,16 +199,29 @@ export async function getJobCardStageSlipByScanCode(
     ? normalized.slice("TS|JOB|".length)
     : normalized;
   if (!token) return undefined;
+  const lookupColumn = normalized.startsWith("JCS-") ? "slip_code" : "scan_token";
   const { data, error } = await supabase
     .from("job_card_stage_slips")
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
-    .eq("scan_token", token)
+    .eq(lookupColumn, token)
     .maybeSingle();
   if (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
     throw error;
   }
-  return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+  if (data) return mapSlip(data as unknown as JobCardStageSlipRow);
+  if (lookupColumn === "slip_code") return undefined;
+
+  const { data: slipCodeData, error: slipCodeError } = await supabase
+    .from("job_card_stage_slips")
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .eq("slip_code", normalized)
+    .maybeSingle();
+  if (slipCodeError) {
+    if (isMissingJobCardStageSlipsSchemaError(slipCodeError)) return undefined;
+    throw slipCodeError;
+  }
+  return slipCodeData ? mapSlip(slipCodeData as unknown as JobCardStageSlipRow) : undefined;
 }
 
 export async function markJobCardStageSlipTallied(

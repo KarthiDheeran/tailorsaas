@@ -36,6 +36,7 @@ export function AddOnTable({
             <th className="whitespace-nowrap px-5 py-3 text-right">
               {t("catalog.defaultPrice")}
             </th>
+            <th className="whitespace-nowrap px-5 py-3">Worker Pay</th>
             <th className="whitespace-nowrap px-5 py-3">{t("common.status")}</th>
             {canManage && (
               <th className="whitespace-nowrap px-5 py-3 text-right">
@@ -55,6 +56,9 @@ export function AddOnTable({
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
                 {formatCurrency(addOn.defaultPrice)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {workerPaySummary(addOn)}
               </td>
               <td className="whitespace-nowrap px-5 py-3">
                 <span
@@ -103,4 +107,14 @@ export function AddOnTable({
       </table>
     </div>
   );
+}
+
+function workerPaySummary(addOn: CatalogAddOn) {
+  const entries = Object.entries(addOn.workerStageRates ?? {}).filter(
+    ([, amount]) => Number(amount) > 0
+  );
+  if (entries.length === 0) return "-";
+  return entries
+    .map(([stage, amount]) => `${stage}: ${formatCurrency(Number(amount))}`)
+    .join(", ");
 }

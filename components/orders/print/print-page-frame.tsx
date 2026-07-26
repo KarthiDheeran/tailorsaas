@@ -47,7 +47,7 @@ export function PrintPageFrame({
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
             >
               <X className="h-4 w-4" />
-              Close
+              {t("common.close")}
             </button>
           )}
           <button

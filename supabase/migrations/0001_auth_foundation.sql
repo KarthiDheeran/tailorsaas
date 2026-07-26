@@ -44,6 +44,7 @@ create table staff (
   payment_type text not null check (payment_type in ('Salary', 'Per Piece')),
   base_salary numeric,
   piece_rates jsonb,
+  garment_stage_rates jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

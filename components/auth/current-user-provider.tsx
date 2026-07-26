@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import type { Permission } from "@/lib/permissions";
 import {
   hasAllPermissions as checkAllPermissions,
@@ -86,6 +87,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [profileResolved, setProfileResolved] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const pathname = usePathname();
+  const needsUsersAccessData = pathname?.startsWith("/users-access") ?? false;
 
   // Tracks the real Supabase auth session — fires once on mount with the
   // current session, then again on every sign-in/sign-out/token refresh.
@@ -128,20 +131,38 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       setProfileResolved(false);
       const supabase = createClient();
       try {
-        const { data, error } = await supabase
+        type ProfileWithRole = AppUser & { role?: Role | Role[] | null };
+        let profileRow: ProfileWithRole | null = null;
+        const joined = await supabase
           .from("profiles")
-          .select("id, full_name, phone, role_id, active, must_change_password, staff_id")
+          .select(
+            "id, full_name, phone, role_id, active, must_change_password, staff_id, role:roles(id,name,description,type,permissions)"
+          )
           .eq("id", authUserId)
           .maybeSingle();
+        let error = joined.error;
+        profileRow = joined.data as ProfileWithRole | null;
+        if (error) {
+          const fallback = await supabase
+            .from("profiles")
+            .select("id, full_name, phone, role_id, active, must_change_password, staff_id")
+            .eq("id", authUserId)
+            .maybeSingle();
+          profileRow = fallback.data as ProfileWithRole | null;
+          error = fallback.error;
+        }
         if (error) throw error;
         if (cancelled) return;
 
-        setProfile((data as AppUser) ?? undefined);
-        const roleId = data?.role_id;
-        const resolvedRole = roleId ? await getRoleById(supabase, roleId) : undefined;
-        if (!cancelled) {
-          setRole(resolvedRole);
-        }
+        setProfile(profileRow ?? undefined);
+        const joinedRole = Array.isArray(profileRow?.role) ? profileRow.role[0] : profileRow?.role;
+        const roleId = profileRow?.role_id;
+        const resolvedRole = joinedRole
+          ? (joinedRole as Role)
+          : roleId
+            ? await getRoleById(supabase, roleId)
+            : undefined;
+        if (!cancelled) setRole(resolvedRole);
       } catch (error) {
         console.error("Failed to load workspace profile.", error);
         if (!cancelled) {
@@ -164,7 +185,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   // Full roles list — Users & Access Roles tab, and the Users tab's role
   // dropdown/name lookup.
   useEffect(() => {
-    if (!authUserId) {
+    if (!authUserId || !needsUsersAccessData) {
       setRoles([]);
       return;
     }
@@ -180,14 +201,17 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authUserId, refreshTick]);
+  }, [authUserId, needsUsersAccessData, refreshTick]);
 
   // Full users list — Users & Access Users tab, and the last-Admin check's
   // client-side immediate feedback (the server action re-checks this
   // authoritatively with its own fresh fetch, never trusting this copy).
   useEffect(() => {
     const canLoadUsers =
-      !!authUserId && !!profile?.active && !!role?.permissions.includes("settings.manageUsers");
+      needsUsersAccessData &&
+      !!authUserId &&
+      !!profile?.active &&
+      !!role?.permissions.includes("settings.manageUsers");
 
     if (!canLoadUsers) {
       setUsers([]);
@@ -205,7 +229,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authUserId, profile?.active, role?.permissions, refreshTick]);
+  }, [authUserId, needsUsersAccessData, profile?.active, role?.permissions, refreshTick]);
 
   const createRole = useCallback(async (input: RoleInput): Promise<ActionResult> => {
     const result = await createRoleAction(input);

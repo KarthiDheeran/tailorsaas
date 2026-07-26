@@ -12,7 +12,6 @@ export default function Home() {
 
   const landingPath =
     (hasPermission("dashboard.view") && "/dashboard") ||
-    (hasPermission("calendar.view") && "/calendar") ||
     (hasPermission("orders.view") && "/orders") ||
     (hasPermission("staff.view") && "/staff") ||
     (hasPermission("customers.view") && "/customers") ||

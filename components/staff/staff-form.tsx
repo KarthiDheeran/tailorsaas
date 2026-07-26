@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  getActiveGarmentTypesAction,
+  getActiveWorkStagesAction,
+} from "@/app/(shell)/catalog/actions";
+import type { CatalogGarmentType, CatalogWorkStage } from "@/lib/catalog";
 import type {
   StaffPaymentType,
   StaffRole,
   StaffStatus,
-  TaskType,
 } from "@/lib/types";
-import { TASK_TYPES } from "@/lib/staff";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { Select } from "@/components/ui/select";
@@ -23,7 +26,8 @@ export interface StaffFormValues {
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
-  pieceRates?: Partial<Record<TaskType, number>>;
+  pieceRates?: Partial<Record<string, number>>;
+  garmentStageRates?: Record<string, Partial<Record<string, number>>>;
 }
 
 const ROLES: StaffRole[] = [
@@ -67,21 +71,58 @@ export function StaffForm({
   const [baseSalary, setBaseSalary] = useState(
     initialValues?.baseSalary != null ? String(initialValues.baseSalary) : ""
   );
-  const [pieceRates, setPieceRates] = useState<Partial<Record<TaskType, string>>>(
+  const [pieceRates, setPieceRates] = useState<Partial<Record<string, string>>>(
     Object.fromEntries(
       Object.entries(initialValues?.pieceRates ?? {}).map(([k, v]) => [k, String(v)])
     )
   );
+  const [garmentStageRates, setGarmentStageRates] = useState<
+    Record<string, Partial<Record<string, string>>>
+  >(
+    Object.fromEntries(
+      Object.entries(initialValues?.garmentStageRates ?? {}).map(([garmentId, stageRates]) => [
+        garmentId,
+        Object.fromEntries(Object.entries(stageRates ?? {}).map(([stage, rate]) => [stage, String(rate)])),
+      ])
+    )
+  );
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
   const { t } = useLanguage();
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getActiveWorkStagesAction(), getActiveGarmentTypesAction()]).then(
+      ([stages, garments]) => {
+        if (cancelled) return;
+        setWorkStages(stages);
+        setGarmentTypes(garments);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !phone.trim() || !joiningDate) return;
 
-    const rates: Partial<Record<TaskType, number>> = {};
+    const rates: Partial<Record<string, number>> = {};
     for (const [k, v] of Object.entries(pieceRates)) {
       const n = Number(v);
-      if (v && n > 0) rates[k as TaskType] = n;
+      if (v && n > 0) rates[k] = n;
+    }
+    const garmentRates: Record<string, Partial<Record<string, number>>> = {};
+    for (const [garmentId, stageRates] of Object.entries(garmentStageRates)) {
+      const cleanedStageRates: Partial<Record<string, number>> = {};
+      for (const [stage, value] of Object.entries(stageRates ?? {})) {
+        const n = Number(value);
+        if (value && Number.isFinite(n) && n > 0) cleanedStageRates[stage] = n;
+      }
+      if (Object.keys(cleanedStageRates).length > 0) {
+        garmentRates[garmentId] = cleanedStageRates;
+      }
     }
 
     onSubmit({
@@ -96,6 +137,7 @@ export function StaffForm({
       paymentType,
       baseSalary: paymentType === "Salary" ? Number(baseSalary) || 0 : undefined,
       pieceRates: paymentType === "Per Piece" ? rates : undefined,
+      garmentStageRates: paymentType === "Per Piece" ? garmentRates : undefined,
     });
   }
 
@@ -222,25 +264,93 @@ export function StaffForm({
         </label>
       ) : (
         <div className="mt-4">
-          <span className="text-[13px] font-medium text-ink-muted">
-            {t("staff.perTaskRates")}
-          </span>
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {TASK_TYPES.map((taskType) => (
-              <label key={taskType} className="flex flex-col gap-1.5">
-                <span className="text-xs text-ink-faint">{taskType}</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={pieceRates[taskType] ?? ""}
-                  onChange={(e) =>
-                    setPieceRates((prev) => ({ ...prev, [taskType]: e.target.value }))
-                  }
-                  className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                />
-              </label>
-            ))}
+          <div>
+            <p className="text-[13px] font-semibold text-ink">
+              Garment Stage Rates
+            </p>
+            <p className="text-xs text-ink-muted">
+              Configure what this staff member charges for each garment and work stage.
+            </p>
           </div>
+          <div className="mt-2 overflow-x-auto rounded-lg border border-border-soft">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-surface text-xs font-semibold text-ink-muted">
+                <tr>
+                  <th className="sticky left-0 z-10 min-w-[150px] bg-surface px-3 py-2">
+                    Garment
+                  </th>
+                  {workStages.map((stage) => (
+                    <th key={stage.id} className="min-w-[120px] px-2 py-2">
+                      {stage.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {garmentTypes.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={workStages.length + 1}
+                      className="px-3 py-5 text-center text-sm text-ink-muted"
+                    >
+                      No active garment types found.
+                    </td>
+                  </tr>
+                ) : (
+                  garmentTypes.map((garment) => (
+                    <tr key={garment.id} className="border-t border-border-soft">
+                      <th className="sticky left-0 z-10 bg-white px-3 py-2 text-sm font-semibold text-ink">
+                        {garment.shortcutCode ? `${garment.shortcutCode} - ` : ""}
+                        {garment.name}
+                      </th>
+                      {workStages.map((stage) => (
+                        <td key={stage.id} className="px-2 py-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={garmentStageRates[garment.id]?.[stage.stageKey] ?? ""}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setGarmentStageRates((current) => ({
+                                ...current,
+                                [garment.id]: {
+                                  ...(current[garment.id] ?? {}),
+                                  [stage.stageKey]: value,
+                                },
+                              }));
+                            }}
+                            placeholder="0"
+                            className="h-9 w-full min-w-0 rounded-lg border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <details className="mt-3 rounded-lg border border-border-soft bg-surface px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-ink-muted">
+              Legacy stage-only fallback rates
+            </summary>
+            <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {workStages.map((stage) => (
+                <label key={stage.id} className="flex flex-col gap-1.5">
+                  <span className="text-xs text-ink-faint">{stage.name}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={pieceRates[stage.stageKey] ?? ""}
+                    onChange={(e) =>
+                      setPieceRates((prev) => ({ ...prev, [stage.stageKey]: e.target.value }))
+                    }
+                    className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                  />
+                </label>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 

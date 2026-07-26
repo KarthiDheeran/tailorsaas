@@ -302,6 +302,7 @@ const en = {
   "catalog.subtitle":
     "Manage garment types, pricing, measurements, and add-ons.",
   "catalog.addOnsExtras": "Add-ons / Extras",
+  "catalog.workStages": "Work Stages",
   "catalog.addGarmentType": "Add Garment Type",
   "catalog.addAddOn": "Add Add-on",
   "catalog.noGarmentTypesYet": "No garment types yet.",
@@ -857,6 +858,7 @@ const ta: Record<TranslationKey, string> = {
   "catalog.subtitle":
     "ஆடை வகைகள், விலை நிர்ணயம், அளவீடுகள் மற்றும் கூடுதல் சேர்க்கைகளை நிர்வகிக்கவும்.",
   "catalog.addOnsExtras": "கூடுதல் சேர்க்கைகள் / எக்ஸ்ட்ராக்கள்",
+  "catalog.workStages": "வேலை நிலைகள்",
   "catalog.addGarmentType": "ஆடை வகையைச் சேர்",
   "catalog.addAddOn": "கூடுதல் சேர்க்கையைச் சேர்",
   "catalog.noGarmentTypesYet": "இதுவரை ஆடை வகைகள் இல்லை.",

@@ -25,8 +25,8 @@ export function TrialQueue({ orders }: { orders: Order[] }) {
       {orders.length === 0 ? (
         <div className="flex items-center justify-between gap-3 px-5 py-5 text-sm">
           <p className="text-ink-muted">No trials scheduled this week.</p>
-          <Link href="/calendar" className="font-semibold text-primary hover:underline">
-            View calendar
+          <Link href="/orders" className="font-semibold text-primary hover:underline">
+            View orders
           </Link>
         </div>
       ) : (
@@ -76,8 +76,8 @@ export function TrialQueue({ orders }: { orders: Order[] }) {
                 ? `${remainingCount} more scheduled`
                 : "Showing all trials"}
             </span>
-            <Link href="/calendar" className="font-semibold text-primary hover:underline">
-              View calendar
+            <Link href="/orders" className="font-semibold text-primary hover:underline">
+              View orders
             </Link>
           </div>
         </>

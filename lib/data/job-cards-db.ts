@@ -334,7 +334,7 @@ async function getJobCardWageSnapshot(
   const row = data as
     | {
         payment_type: "Salary" | "Per Piece";
-        piece_rates: Partial<Record<TaskType, number>> | null;
+        piece_rates: Partial<Record<string, number>> | null;
       }
     | null;
   if (!row || row.payment_type !== "Per Piece") return { rate: 0, amount: 0 };

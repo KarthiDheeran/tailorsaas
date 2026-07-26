@@ -27,10 +27,42 @@ export interface CatalogMeasurementField {
 // (addOnIds) rather than each defining their own name/price, so an add-on
 // like "Inner Pocket" is defined once and can be linked to Pant, Shirt, Coat,
 // etc. without duplicating it per garment.
+export type WorkerStageRates = Partial<Record<string, number>>;
+
+export interface CatalogWorkStage {
+  id: string;
+  name: string;
+  stageKey: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export const DEFAULT_WORK_STAGE_NAMES = [
+  "Measurement",
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Alteration",
+  "Ironing/Packing",
+  "Delivery",
+] as const;
+
+export const DEFAULT_WORK_STAGES: CatalogWorkStage[] = DEFAULT_WORK_STAGE_NAMES.map(
+  (name, index) => ({
+    id: `default:${name}`,
+    name,
+    stageKey: name,
+    displayOrder: index + 1,
+    isActive: true,
+  })
+);
+
 export interface CatalogAddOn {
   id: string;
   name: string;
   defaultPrice: number;
+  workerStageRates?: WorkerStageRates;
   isActive: boolean;
 }
 
@@ -243,5 +275,12 @@ export type GarmentTypeInput = {
 export type AddOnInput = {
   name: string;
   defaultPrice: number;
+  workerStageRates?: WorkerStageRates;
+  isActive: boolean;
+};
+
+export type WorkStageInput = {
+  name: string;
+  displayOrder: number;
   isActive: boolean;
 };

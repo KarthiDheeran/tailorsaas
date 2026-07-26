@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrderById } from "@/lib/data/orders-db";
+import { staffGarmentStageRate } from "@/lib/staff-rates";
 import type {
   PaymentMode,
   Staff,
@@ -33,7 +34,7 @@ import type {
 
 const STAFF_COLUMNS = `
   id, staff_number, name, phone, role, joining_date, address,
-  emergency_contact, status, notes, payment_type, base_salary, piece_rates
+  emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 
 interface StaffRow {
@@ -49,7 +50,8 @@ interface StaffRow {
   notes: string | null;
   payment_type: StaffPaymentType;
   base_salary: number | null;
-  piece_rates: Partial<Record<TaskType, number>> | null;
+  piece_rates: Partial<Record<string, number>> | null;
+  garment_stage_rates: Record<string, Partial<Record<string, number>>> | null;
 }
 
 function mapStaff(row: StaffRow): Staff {
@@ -67,6 +69,7 @@ function mapStaff(row: StaffRow): Staff {
     paymentType: row.payment_type,
     baseSalary: row.base_salary ?? undefined,
     pieceRates: row.piece_rates ?? undefined,
+    garmentStageRates: row.garment_stage_rates ?? undefined,
   };
 }
 
@@ -103,7 +106,8 @@ export interface StaffInput {
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
-  pieceRates?: Partial<Record<TaskType, number>>;
+  pieceRates?: Partial<Record<string, number>>;
+  garmentStageRates?: Record<string, Partial<Record<string, number>>>;
 }
 
 export async function createStaff(
@@ -130,6 +134,7 @@ export async function createStaff(
       payment_type: data.paymentType,
       base_salary: data.baseSalary ?? null,
       piece_rates: data.pieceRates ?? null,
+      garment_stage_rates: data.garmentStageRates ?? null,
     })
     .select(STAFF_COLUMNS)
     .single();
@@ -156,6 +161,7 @@ export async function updateStaff(
       payment_type: data.paymentType,
       base_salary: data.baseSalary ?? null,
       piece_rates: data.pieceRates ?? null,
+      garment_stage_rates: data.garmentStageRates ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -275,7 +281,7 @@ export async function createWorkAssignment(
   const order = await getOrderById(supabase, data.orderId);
   const item = order?.items.find((i) => i.serialNo === data.orderItemSerialNo);
   const assignedStaff = await getStaffById(supabase, data.assignedStaffId);
-  const rate = assignedStaff?.pieceRates?.[data.taskType] ?? 0;
+  const rate = staffGarmentStageRate(assignedStaff, item?.garmentTypeId, data.taskType);
   const wageAmount = item ? rate * item.qty : 0;
 
   const { data: row, error } = await supabase

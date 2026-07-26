@@ -63,7 +63,7 @@ const ATTENTION_STAT_LABELS = [
 const STAT_LINKS: Record<string, string> = {
   "Orders Today": "/orders",
   "Deliveries Today": "/delivery",
-  "Pending Trials": "/calendar",
+  "Pending Trials": "/orders",
   "Collected Today": "/payments",
   "Expenses Today": "/payments",
   "Outstanding Balance": "/payments?tab=pending-dues",
