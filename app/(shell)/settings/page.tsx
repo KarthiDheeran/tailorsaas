@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Languages,
   Layers,
+  CalendarDays,
   MessageSquareText,
   Receipt,
   Settings,
@@ -20,6 +21,14 @@ const SETTINGS_SECTIONS = [
     description: "Shop name, GSTIN, contact details, receipt prefix, and print footer.",
     href: "/settings/billing",
     icon: Receipt,
+    status: "Available",
+    permission: "settings.view",
+  },
+  {
+    title: "Order Delivery Defaults",
+    description: "Set the default promised delivery window for new orders.",
+    href: "/settings/order-preferences",
+    icon: CalendarDays,
     status: "Available",
     permission: "settings.view",
   },

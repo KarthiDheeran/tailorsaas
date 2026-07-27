@@ -7,7 +7,10 @@ import {
 } from "@/lib/auth/require-server-permission";
 import {
   assignJobCard,
+  assignJobCardForStageSlip,
+  assertJobCardAvailableForStageSlip,
   completeJobCard,
+  completeJobCardStageSlip,
   getJobCardActivitySnapshot,
   getJobCardAssignedStaffId,
   getJobCards,
@@ -16,6 +19,7 @@ import {
   startJobCard,
   syncOrderStatusFromJobCards,
   syncJobCardsForOrder,
+  transferJobCard,
   type JobCardAssignmentInput,
   type JobCardFabricSource,
 } from "@/lib/data/job-cards-db";
@@ -37,6 +41,7 @@ import {
 import { getAllOrders } from "@/lib/data/orders-db";
 import {
   getStaff,
+  recordStaffPayment,
   getWorkAssignments,
   getWorkAssignmentsForStaff,
 } from "@/lib/data/staff-db";
@@ -50,7 +55,7 @@ import {
   type CustomerFabricInput,
   type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
-import { getActiveWorkStages } from "@/lib/data/catalog-db";
+import { getActiveWorkStages, getFinalWorkStage } from "@/lib/data/catalog-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type {
@@ -61,6 +66,7 @@ import type {
   JobCardActivityLog,
   Order,
   Staff,
+  PaymentMode,
   TaskPriority,
   TaskType,
   WorkAssignment,
@@ -68,6 +74,7 @@ import type {
 import { inventoryUnits } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -89,6 +96,14 @@ const VALID_FABRIC_SOURCES = new Set<JobCardFabricSource>([
   "Shop provided",
 ]);
 const VALID_INVENTORY_UNITS = new Set<InventoryUnit>(inventoryUnits);
+const VALID_PAYMENT_MODES = new Set<PaymentMode>([
+  "Cash",
+  "GPay",
+  "UPI",
+  "Card",
+  "Bank Transfer",
+  "Cheque",
+]);
 const VALID_STAGES = new Set<JobCardStage>([
   "Unassigned",
   "Cutting",
@@ -144,6 +159,7 @@ export async function getJobCardsPageDataAction(
   todayIso: string,
   options: { includeInventoryItems?: boolean } = {}
 ): Promise<JobCardsPageData> {
+  return withPerformanceContext("getJobCardsPageDataAction", async () => {
   const empty: JobCardsPageData = {
     jobCards: [],
     orders: [],
@@ -175,11 +191,11 @@ export async function getJobCardsPageDataAction(
     ? staffForCards.filter((staff) => staff.id === assignedStaffId)
     : staffForCards;
   const [jobCards, orders, staff, assignments, inventory] = await Promise.all([
-    getJobCards(supabase, todayIso, visibleStaff, { assignedStaffId }).catch((error) => {
+    profileDataFunction({ functionName: "getJobCards", tableOrRpc: "job_cards" }, () => getJobCards(supabase, todayIso, visibleStaff, { assignedStaffId })).catch((error) => {
       if (isMissingJobCardsSchemaError(error)) return null;
       throw error;
     }),
-    canViewOrders && !assignedStaffId ? getAllOrders(supabase) : Promise.resolve([]),
+    canViewOrders && !assignedStaffId ? profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)) : Promise.resolve([]),
     canViewStaff ? Promise.resolve(visibleStaff) : Promise.resolve([]),
     canViewStaff
       ? assignedStaffId
@@ -200,6 +216,7 @@ export async function getJobCardsPageDataAction(
     inventoryItems: inventory.inventoryItems,
     inventoryMovements: inventory.inventoryMovements,
   };
+  });
 }
 
 export async function getJobCardActivityLogsAction(
@@ -233,6 +250,9 @@ export async function createJobCardStageSlipAction(
   if (!(await isConfiguredWorkStage(data.stage))) {
     return { success: false, error: "Stage is required." };
   }
+  if (!data.staffId?.trim()) {
+    return { success: false, error: "Assign a worker before printing a stage job card." };
+  }
   if (
     data.wageRate !== undefined &&
     (!Number.isFinite(data.wageRate) || data.wageRate < 0)
@@ -241,7 +261,34 @@ export async function createJobCardStageSlipAction(
   }
 
   try {
+    await assertJobCardAvailableForStageSlip(createAdminClient(), {
+      orderId: data.orderId,
+      orderItemSerialNo: data.orderItemSerialNo,
+      unitNo: data.unitNo,
+      taskType: data.stage,
+      staffId: data.staffId,
+    });
     const slip = await createJobCardStageSlip(supabase, data);
+    const jobCardId = await assignJobCardForStageSlip(createAdminClient(), {
+      orderId: slip.orderId,
+      orderItemSerialNo: slip.orderItemSerialNo,
+      unitNo: slip.unitNo,
+      taskType: slip.stage,
+      staffId: slip.staffId!,
+      wageRate: slip.wageRate,
+      wageAmount: slip.wageAmount,
+      notes: slip.notes,
+    });
+    await logJobCardActivityBestEffort({
+      jobCardId,
+      orderId: slip.orderId,
+      actionType: "Assigned",
+      fromStage: "Unassigned",
+      toStage: taskTypeToStage(slip.stage),
+      assignedStaffId: slip.staffId,
+      notes: `Stage card printed: ${slip.slipCode}`,
+      performedBy: guard.userId,
+    });
     return { success: true, data: slip };
   } catch (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) {
@@ -275,11 +322,7 @@ export async function scanJobCardStageSlipAction(
 
   const slip = await getJobCardStageSlipByScanCode(supabase, code);
   if (!slip) return { success: false, error: "Job card not found." };
-  if (slip.talliedAt) return { success: true, data: slip };
-  const tallied = await markJobCardStageSlipTallied(supabase, slip.id);
-  return tallied
-    ? { success: true, data: tallied }
-    : { success: false, error: "Job card not found." };
+  return confirmStageSlipTally(slip, guard.userId);
 }
 
 export async function previewJobCardStageSlipAction(
@@ -302,18 +345,77 @@ export async function confirmJobCardStageSlipTallyAction(
 
   const slip = await getJobCardStageSlipById(supabase, id);
   if (!slip) return { success: false, error: "Job card not found." };
+  return confirmStageSlipTally(slip, guard.userId);
+}
+
+async function confirmStageSlipTally(
+  slip: JobCardStageSlip,
+  performedBy: string
+): Promise<ActionResult<JobCardStageSlip>> {
   if (slip.talliedAt) return { success: true, data: slip };
-  const tallied = await markJobCardStageSlipTallied(supabase, slip.id);
-  return tallied
-    ? { success: true, data: tallied }
-    : { success: false, error: "Job card not found." };
+  if (!slip.staffId) {
+    return { success: false, error: "This stage card has no worker assigned." };
+  }
+
+  try {
+    const admin = createAdminClient();
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const finalStage = await getFinalWorkStage(admin);
+    if (!finalStage) {
+      return {
+        success: false,
+        error: "Configure one active final production stage in Settings > Work Stages.",
+      };
+    }
+    const completion = await completeJobCardStageSlip(
+      admin,
+      {
+        orderId: slip.orderId,
+        orderItemSerialNo: slip.orderItemSerialNo,
+        unitNo: slip.unitNo,
+        taskType: slip.stage,
+        staffId: slip.staffId,
+        wageRate: slip.wageRate,
+        wageAmount: slip.wageAmount,
+        isFinalStage: finalStage.stageKey === slip.stage,
+      },
+      todayIso
+    );
+    await syncOrderStatusFromJobCards(admin, completion.orderId);
+
+    if (!completion.alreadyCompleted) {
+      await logJobCardActivityBestEffort({
+        jobCardId: completion.jobCardId,
+        orderId: completion.orderId,
+        actionType: completion.toStage === "Ready" ? "Completed" : "Stage Moved",
+        fromStage: completion.fromStage,
+        toStage: completion.toStage,
+        assignedStaffId: slip.staffId,
+        notes: `Completed by tally scan: ${slip.slipCode}`,
+        performedBy,
+      });
+    }
+
+    const tallied = await markJobCardStageSlipTallied(admin, slip.id);
+    return tallied
+      ? { success: true, data: tallied }
+      : { success: false, error: "Job card not found." };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return {
+      success: false,
+      error: errorMessage(error, "Failed to complete the scanned job card stage."),
+    };
+  }
 }
 
 export async function getTalliedJobCardStageSlipsAction(): Promise<JobCardStageSlip[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return [];
-  return getTalliedJobCardStageSlips(supabase);
+  return withPerformanceContext("getTalliedJobCardStageSlipsAction", () => profileDataFunction({ functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" }, () => getTalliedJobCardStageSlips(supabase)));
 }
 
 export async function assignJobCardAction(
@@ -351,6 +453,77 @@ export async function assignJobCardAction(
       success: false,
       error: error instanceof Error ? error.message : "Failed to assign job card.",
     };
+  }
+}
+
+export interface JobCardTransferInput {
+  newStaffId: string;
+  reason: string;
+  recordAdvance: boolean;
+  advanceAmount?: number;
+  advancePaymentMode?: PaymentMode;
+  advanceNotes?: string;
+}
+
+export async function transferJobCardAction(
+  id: string,
+  data: JobCardTransferInput
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!data.newStaffId.trim()) return { success: false, error: "Select the new tailor." };
+  if (!data.reason.trim()) return { success: false, error: "Transfer reason is required." };
+  if (data.recordAdvance) {
+    if (!Number.isFinite(data.advanceAmount) || Number(data.advanceAmount) <= 0) {
+      return { success: false, error: "Enter the advance amount given to the previous tailor." };
+    }
+    if (!data.advancePaymentMode || !VALID_PAYMENT_MODES.has(data.advancePaymentMode)) {
+      return { success: false, error: "Select how the advance was paid." };
+    }
+  }
+
+  try {
+    const admin = createAdminClient();
+    const before = await getJobCardActivitySnapshot(admin, id);
+    if (!before?.assignedStaffId) {
+      return { success: false, error: "This job card has no tailor to transfer." };
+    }
+    const transfer = await transferJobCard(admin, id, data.newStaffId);
+    const staff = await getStaff(admin);
+    const previousStaffName =
+      staff.find((member) => member.id === transfer.previousStaffId)?.name ?? "previous tailor";
+    const newStaffName =
+      staff.find((member) => member.id === transfer.newStaffId)?.name ?? "new tailor";
+    if (data.recordAdvance) {
+      await recordStaffPayment(admin, {
+        staffId: transfer.previousStaffId,
+        date: new Date().toISOString().slice(0, 10),
+        description: `Job card advance before transfer (${id})`,
+        amount: Number(data.advanceAmount),
+        paymentMode: data.advancePaymentMode!,
+        notes: data.advanceNotes?.trim() || `Transferred to another tailor. ${data.reason.trim()}`,
+      });
+    }
+    const advanceNote = data.recordAdvance
+      ? ` Advance of ₹${Number(data.advanceAmount).toFixed(2)} recorded against the previous tailor's payroll.`
+      : "";
+    await logJobCardActivityBestEffort({
+      jobCardId: id,
+      orderId: transfer.orderId,
+      actionType: "Transferred",
+      fromStage: transfer.currentStage,
+      toStage: transfer.currentStage,
+      assignedStaffId: transfer.newStaffId,
+      notes: `Transferred from ${previousStaffName} to ${newStaffName}. Reason: ${data.reason.trim()}.${advanceNote}`,
+      performedBy: guard.userId,
+    });
+    return { success: true, data: undefined };
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) {
+      return { success: false, error: "Job cards are not enabled in this database yet." };
+    }
+    return { success: false, error: errorMessage(error, "Failed to transfer job card.") };
   }
 }
 

@@ -27,7 +27,6 @@ import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { GlobalSearchButton } from "@/components/layout/global-search";
-import { OrderScanButton } from "@/components/layout/order-scan";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
@@ -39,29 +38,31 @@ type NavItem = {
   href: string;
   labelKey: TranslationKey;
   icon: LucideIcon;
+  shortcut?: string;
   permission?: Permission;
   anyOf?: Permission[];
   activePrefixes?: string[];
 };
 
 const primaryNavItems: NavItem[] = [
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "orders.view" },
-  { href: "/job-cards", labelKey: "nav.jobCards", icon: FileText, anyOf: ["orders.view", "staff.view"] },
-  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, permission: "orders.view" },
-  { href: "/customers", labelKey: "nav.customers", icon: Users, permission: "customers.view" },
-  { href: "/payments", labelKey: "nav.payments", icon: Wallet, anyOf: ["orders.viewPayments", "expenses.view"] },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, shortcut: "Alt H", permission: "dashboard.view" },
+  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, shortcut: "Alt O", permission: "orders.view" },
+  { href: "/job-cards/tally", labelKey: "nav.jobCards", icon: FileText, shortcut: "Alt J", anyOf: ["orders.view", "staff.view"] },
+  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "Alt D", permission: "orders.view" },
+  { href: "/customers", labelKey: "nav.customers", icon: Users, shortcut: "Alt C", permission: "customers.view" },
+  { href: "/payments", labelKey: "nav.payments", icon: Wallet, shortcut: "Alt F", anyOf: ["orders.viewPayments", "expenses.view"] },
 ];
 
 const moreNavItems: NavItem[] = [
-  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "inventory.view" },
-  { href: "/staff", labelKey: "nav.staff", icon: Users2, permission: "staff.view" },
-  { href: "/reports", labelKey: "nav.reports", icon: BarChart3, permission: "reports.view" },
-  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, anyOf: ["calendar.view", "orders.view", "customers.view"] },
+  { href: "/inventory", labelKey: "nav.inventory", icon: Package, shortcut: "Alt I", permission: "inventory.view" },
+  { href: "/staff", labelKey: "nav.staff", icon: Users2, shortcut: "Alt W", permission: "staff.view" },
+  { href: "/reports", labelKey: "nav.reports", icon: BarChart3, shortcut: "Alt R", permission: "reports.view" },
+  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, shortcut: "Alt M", anyOf: ["calendar.view", "orders.view", "customers.view"] },
   {
     href: "/settings",
     labelKey: "nav.settings",
     icon: Settings,
+    shortcut: "Alt G",
     permission: "settings.view",
     activePrefixes: ["/settings", "/catalog", "/users-access"],
   },
@@ -144,14 +145,15 @@ function NavLink({
     <Link
       href={item.href}
       onClick={onNavigate}
-      title={variant === "horizontal" ? item.label : undefined}
+      title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
+      aria-label={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg text-sm transition-colors",
+        "flex items-center gap-2.5 rounded-xl text-sm transition-colors",
         variant === "horizontal" && "h-9 shrink-0 border px-2.5 2xl:px-3",
         variant === "vertical" && "border-l-4 px-4 py-2.5",
         variant === "dropdown" && "px-3 py-2.5",
         item.isActive
-          ? "border-primary bg-primary-tint font-semibold text-primary"
+          ? "border-primary bg-primary font-semibold text-white shadow-sm"
           : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
       )}
     >
@@ -159,6 +161,11 @@ function NavLink({
       <span className={cn(variant === "horizontal" ? "whitespace-nowrap" : "break-words")}>
         {item.label}
       </span>
+      {variant !== "horizontal" && item.shortcut && (
+        <kbd className="ml-auto rounded border border-border-soft bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+          {item.shortcut}
+        </kbd>
+      )}
     </Link>
   );
 }
@@ -408,8 +415,8 @@ function ProfileDropdown() {
 
 export function DesktopTopNav() {
   return (
-    <header className="sticky top-0 z-50 hidden border-b border-border-soft bg-white print:hidden lg:block">
-      <div className="flex h-16 min-w-0 items-center gap-3 px-5">
+    <header className="sticky top-0 z-50 hidden px-3 pt-3 print:hidden lg:block">
+      <div className="flex h-14 min-w-0 items-center gap-3 rounded-2xl border border-white/80 bg-white/85 px-4 shadow-[0_12px_32px_rgba(17,24,39,0.08)] backdrop-blur-xl">
         <div className="shrink-0">
           <BrandMark />
         </div>
@@ -423,7 +430,6 @@ export function DesktopTopNav() {
         </nav>
 
         <div className="flex min-w-0 shrink-0 items-center gap-2">
-          <OrderScanButton />
           <div className="w-10 min-[1536px]:w-[180px] 2xl:w-[280px]">
             <GlobalSearchButton enableShortcut />
           </div>
@@ -443,7 +449,6 @@ export function MobileNav() {
       <div className="flex items-center justify-between gap-3">
         <BrandMark />
         <div className="flex items-center gap-2">
-          <OrderScanButton compact />
           <GlobalSearchButton compact />
           <button
             type="button"

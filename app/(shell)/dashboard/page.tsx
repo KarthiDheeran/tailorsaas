@@ -6,21 +6,19 @@ import {
   ShoppingBag,
   Truck,
   AlertTriangle,
-  CalendarClock,
   Wallet,
   IndianRupee,
   Plus,
   ClipboardList,
   Scissors,
-  Package,
 } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodaysDeliveries } from "@/components/dashboard/todays-deliveries";
 import { OverdueOrdersList } from "@/components/dashboard/overdue-orders-list";
-import { TrialQueue } from "@/components/dashboard/trial-queue";
 import { PaymentPending } from "@/components/dashboard/payment-pending";
+import { ProductionQueue } from "@/components/dashboard/production-queue";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
@@ -30,12 +28,10 @@ const STAT_ICONS = {
   "Orders Today": ShoppingBag,
   "Deliveries Today": Truck,
   "Overdue Orders": AlertTriangle,
-  "Pending Trials": CalendarClock,
   "Outstanding Balance": Wallet,
   "Collected Today": IndianRupee,
   "Unassigned Job Cards": ClipboardList,
   "Delayed Job Cards": Scissors,
-  "Low Stock Items": Package,
   "Expenses Today": IndianRupee,
 } as const;
 
@@ -47,7 +43,6 @@ const MONEY_STAT_LABELS = new Set(["Outstanding Balance", "Collected Today"]);
 const TODAY_STAT_LABELS = [
   "Orders Today",
   "Deliveries Today",
-  "Pending Trials",
   "Collected Today",
   "Expenses Today",
 ];
@@ -57,20 +52,17 @@ const ATTENTION_STAT_LABELS = [
   "Unassigned Job Cards",
   "Delayed Job Cards",
   "Outstanding Balance",
-  "Low Stock Items",
 ];
 
 const STAT_LINKS: Record<string, string> = {
   "Orders Today": "/orders",
   "Deliveries Today": "/delivery",
-  "Pending Trials": "/orders",
   "Collected Today": "/payments",
   "Expenses Today": "/payments",
   "Outstanding Balance": "/payments?tab=pending-dues",
   "Overdue Orders": "/orders?balance=overdue",
   "Unassigned Job Cards": "/job-cards?filter=Unassigned",
   "Delayed Job Cards": "/job-cards?filter=delayed",
-  "Low Stock Items": "/inventory?stock=low",
 };
 
 function DashboardContent() {
@@ -137,18 +129,18 @@ function DashboardContent() {
   ) as NonNullable<ReturnType<typeof getStat>>[];
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]">
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-primary-tint via-white to-amber-100/70 px-5 py-4 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Dashboard</h1>
-          <p className="text-sm text-ink-muted">
+          <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Dashboard</h1>
+          <p className="mt-0.5 text-sm font-medium text-slate-600">
             What needs attention today
           </p>
         </div>
         {hasPermission("orders.create") && (
           <Link
             href="/orders/new"
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             <Plus className="h-4 w-4" />
             <span>New Order</span>
@@ -170,11 +162,11 @@ function DashboardContent() {
           <div>
             <h2 className="text-base font-semibold text-ink">Today</h2>
             <p className="text-[13px] text-ink-muted">
-              Orders, collections, delivery, and trial pulse.
+              Orders, collections, and delivery pulse.
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {todayStats.map((stat) => (
             <StatCard
               key={stat.label}
@@ -191,11 +183,11 @@ function DashboardContent() {
           <div>
             <h2 className="text-base font-semibold text-ink">Needs Attention</h2>
             <p className="text-[13px] text-ink-muted">
-              Work that should be assigned, chased, or replenished.
+              Work that should be assigned or chased.
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {attentionStats.map((stat) => (
             <StatCard
               key={stat.label}
@@ -208,13 +200,13 @@ function DashboardContent() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)] lg:items-start">
         <div className="space-y-6 lg:col-span-2">
           <TodaysDeliveries orders={data.todaysDeliveries} />
           <OverdueOrdersList orders={data.overdueOrders} />
         </div>
         <div className="space-y-6">
-          <TrialQueue orders={data.trialQueue} />
+          <ProductionQueue stages={data.productionQueue} />
           {canViewPayments && <PaymentPending orders={data.paymentPending} />}
         </div>
       </div>

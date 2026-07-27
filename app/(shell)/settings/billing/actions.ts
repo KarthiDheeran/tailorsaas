@@ -15,6 +15,7 @@ import { recomputeAllOrderTotals } from "@/lib/data/order-totals-db";
 import { hasAnyPermission } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -100,7 +101,12 @@ export async function saveBillingSettingsAction(
 
   try {
     const settings = await upsertShopBillingSettings(supabase, input);
-    await recomputeAllOrderTotals(createAdminClient());
+    await withPerformanceContext("saveBillingSettingsAction", () =>
+      profileDataFunction(
+        { functionName: "recomputeAllOrderTotals", tableOrRpc: "orders,order_items,payments,order_financial_adjustments,shop_billing_settings" },
+        () => recomputeAllOrderTotals(createAdminClient())
+      )
+    );
     return { success: true, data: settings };
   } catch (error) {
     if (isMissingShopBillingSettingsSchemaError(error)) {

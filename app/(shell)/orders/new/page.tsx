@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, CheckCircle2, Loader2, UserRound } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
@@ -23,6 +23,7 @@ import {
   createOrderForNewCustomerAction,
 } from "@/app/(shell)/orders/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
+import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
 import {
   getActiveGarmentTypesAction,
   getAddOnsAction,
@@ -75,6 +76,12 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addDaysToIso(dateIso: string, days: number) {
+  const [year, month, day] = dateIso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
 const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
@@ -121,6 +128,7 @@ function NewOrderPageContent() {
   const customerSearchRef = useRef<HTMLDivElement>(null);
   const customerSearchInputRef = useRef<HTMLInputElement>(null);
   const customerResultButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const deliveryDateWasEditedRef = useRef(false);
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -133,12 +141,15 @@ function NewOrderPageContent() {
   const [customerResultsOpen, setCustomerResultsOpen] = useState(false);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [customerSearchCompleted, setCustomerSearchCompleted] = useState(false);
+  const [garmentSelectorTarget, setGarmentSelectorTarget] =
+    useState<HTMLDivElement | null>(null);
   const [newCustomer, setNewCustomer] = useState(emptyCustomerDraft);
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
 
   const [orderDate, setOrderDate] = useState(todayIso());
   const trialDate = "";
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [defaultDeliveryLeadDays, setDefaultDeliveryLeadDays] = useState<number | null>(null);
   const deliveryPromiseNote = "";
 
   const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
@@ -298,6 +309,21 @@ function NewOrderPageContent() {
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNewOrderPreferencesAction().then((preferences) => {
+      if (!cancelled) setDefaultDeliveryLeadDays(preferences.defaultDeliveryLeadDays);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (defaultDeliveryLeadDays === null || deliveryDateWasEditedRef.current) return;
+    setDeliveryDate(addDaysToIso(orderDate, defaultDeliveryLeadDays));
+  }, [defaultDeliveryLeadDays, orderDate]);
 
   useEffect(() => {
     const phone = newCustomer.phone.trim();
@@ -842,14 +868,20 @@ function NewOrderPageContent() {
   };
 
   return (
-    <div className="pb-28">
-      <div className="mx-auto max-w-7xl p-4 sm:px-6 sm:py-4 lg:px-8">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-          <div className="min-w-0 space-y-5">
+    <div className="pb-24">
+      <div className="mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-6 lg:items-start",
+            matchedCustomer || customerMode === "new"
+              ? "lg:grid-cols-[minmax(0,1fr)_360px]"
+              : "lg:grid-cols-1"
+          )}
+        >
+          <div className="min-w-0 space-y-3">
             <div
               className={cn(
-                "rounded-xl border border-border-soft bg-white shadow-soft",
-                customerMode === "selected" && matchedCustomer ? "px-4 py-3" : "p-4"
+                "min-h-[110px] rounded-2xl border border-[#DCE5EA] bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6"
               )}
             >
               {customerMode !== "selected" && (
@@ -865,28 +897,32 @@ function NewOrderPageContent() {
                 )}
               </div>
               )}
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-[11fr_9fr] lg:items-center lg:gap-6">
               <div className={cn(customerMode !== "selected" && "space-y-3")}>
                 {customerMode === "selected" && matchedCustomer && (
-                  <div className="flex min-h-[56px] flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-[13px] font-medium text-ink-muted">
-                          Customer:
-                        </span>
-                        <span className="truncate text-base font-semibold text-ink">
+                  <div className="flex min-h-[62px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3.5">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+                        <UserRound className="h-6 w-6" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#64748B]">Customer</p>
+                        <p className="truncate text-xl font-bold tracking-tight text-[#111827]">
                           {matchedCustomer.name}
-                        </span>
-                        <span className="text-sm text-ink-muted">
-                          {matchedCustomer.phone} - {matchedCustomer.area || "-"}
-                        </span>
+                        </p>
+                        <p className="truncate text-[15px] text-[#64748B]">
+                          {matchedCustomer.phone} <span aria-hidden="true">•</span> {matchedCustomer.area || "-"}
+                        </p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={handleChangeCustomer}
-                      className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                      aria-label="Change customer"
+                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[#0F766E] bg-white px-4 text-[15px] font-semibold text-[#0F766E] transition-colors hover:bg-[#ECFDF5] focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/30"
                     >
-                      Change
+                      <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />
+                      Change Customer
                     </button>
                   </div>
                 )}
@@ -1169,6 +1205,8 @@ function NewOrderPageContent() {
                 </>
                 )}
               </div>
+              <div ref={setGarmentSelectorTarget} className="min-w-0 border-t border-[#DCE5EA] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0" />
+              </div>
             </div>
 
             {submitAttempted && errors.items && (
@@ -1185,17 +1223,17 @@ function NewOrderPageContent() {
               previousOrders={customerDetail?.orders ?? []}
               paymentStrip={
                 canViewPayments ? (
-                  <div className="grid gap-3 text-sm md:grid-cols-3 xl:grid-cols-[0.8fr_1.1fr_0.8fr_1.2fr_1.1fr]">
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="block text-[12px] font-medium text-ink-muted">
+                  <div className="grid gap-3 rounded-xl bg-[#F8FAFC] p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]">
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <span className="block text-sm font-medium text-[#64748B]">
                         {taxBreakdown && !taxBreakdown.pricesIncludeTax ? "Total" : "Subtotal"}
                       </span>
-                      <span className="flex h-9 items-center font-semibold text-ink">
+                      <span className="flex h-11 items-center text-[21px] font-bold text-[#111827]">
                         {formatCurrency(totalAmount)}
                       </span>
                     </div>
-                    <label className="flex min-w-0 flex-col gap-1">
-                      <span className="block text-[12px] font-medium text-ink-muted">
+                    <label className="flex min-w-0 flex-col gap-1.5">
+                      <span className="block text-sm font-medium text-[#64748B]">
                         {t("orders.paidAdvance")}
                       </span>
                       <input
@@ -1205,29 +1243,32 @@ function NewOrderPageContent() {
                         value={advancePaid}
                         onChange={(e) => setAdvancePaid(Number(e.target.value))}
                         className={cn(
-                          "h-9 w-full rounded-lg border border-border bg-white px-2.5 text-right text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+                          "h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3 text-right text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
                           submitAttempted &&
                             errors.advancePaid &&
                             "border-chip-red-fg"
                         )}
                       />
                     </label>
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="block text-[12px] font-medium text-ink-muted">
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <span className="block text-sm font-medium text-[#64748B]">
                         {t("common.balance")}
                       </span>
-                      <span className="flex h-9 items-center font-semibold text-ink">
+                      <span className={cn(
+                        "flex h-11 items-center text-[22px] font-extrabold",
+                        balance > 0 ? "text-[#C2410C]" : "text-[#15803D]"
+                      )}>
                         {formatCurrency(balance)}
                       </span>
                     </div>
-                    <label className="flex min-w-0 flex-col gap-1">
-                      <span className="block text-[12px] font-medium text-ink-muted">
+                    <label className="flex min-w-0 flex-col gap-1.5">
+                      <span className="block text-sm font-medium text-[#64748B]">
                         {t("orders.paymentMode")}
                       </span>
                       <Select
                         value={paymentMode}
                         onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                        className="h-9 rounded-lg py-0 text-sm"
+                        className="h-11 rounded-[10px] border-[#DCE5EA] py-0 text-base focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
                       >
                         {paymentModes.map((m) => (
                           <option key={m} value={m}>
@@ -1236,13 +1277,13 @@ function NewOrderPageContent() {
                         ))}
                       </Select>
                     </label>
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="block text-[12px] font-medium text-ink-muted">
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <span className="block text-sm font-medium text-[#64748B]">
                         {t("orders.paymentStatus")}
                       </span>
-                      <div className="flex h-9 items-center">
+                      <div className="flex h-11 items-center">
                         {totalAmount === 0 ? (
-                          <span className="inline-block rounded-full bg-chip-info px-3 py-1 text-xs font-semibold text-chip-info-fg">
+                          <span className="inline-block rounded-full border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
                             {t("orders.notCalculated")}
                           </span>
                         ) : (
@@ -1260,16 +1301,20 @@ function NewOrderPageContent() {
               }
               autoSnapshotDefaultMeasurements
               focusFirstGarmentRequest={garmentFocusRequest}
+              garmentSelectorTarget={garmentSelectorTarget}
             />
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-stretch">
-              <div className="rounded-xl border border-border-soft bg-white p-3.5 shadow-soft">
-                <h3 className="mb-2.5 text-[17px] font-semibold text-ink">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-stretch">
+              <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:grid lg:min-h-[96px] lg:grid-cols-[auto_minmax(165px,1fr)_minmax(165px,1fr)] lg:items-center lg:gap-4 lg:p-4">
+                <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-[#111827] lg:mb-0 lg:whitespace-nowrap">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+                    <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                  </span>
                   {t("orders.orderDates")}
                 </h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:contents">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
+                    <span className="text-[15px] font-semibold text-[#334155]">
                       {t("orders.orderDate")}
                     </span>
                     <input
@@ -1277,20 +1322,23 @@ function NewOrderPageContent() {
                       required
                       value={orderDate}
                       onChange={(e) => setOrderDate(e.target.value)}
-                      className={inputClass}
+                      className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-ink-muted">
+                    <span className="text-[15px] font-semibold text-[#334155]">
                       {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
                     </span>
                     <input
                       type="date"
                       required
                       value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
+                      onChange={(e) => {
+                        deliveryDateWasEditedRef.current = true;
+                        setDeliveryDate(e.target.value);
+                      }}
                       className={cn(
-                        inputClass,
+                        "h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
                         submitAttempted &&
                           errors.deliveryDate &&
                           "border-chip-red-fg"
@@ -1326,29 +1374,29 @@ function NewOrderPageContent() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E5E7EB] bg-white shadow-soft md:left-[250px]">
-        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-8">
-          <div className="flex items-center gap-2 text-sm text-ink-muted">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E5E7EB] bg-white shadow-soft">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-7 2xl:max-w-[1760px]">
+          <div className="flex items-center gap-3 text-sm text-ink-muted">
             {saveError ? (
               <span className="font-medium text-chip-red-fg">{saveError}</span>
             ) : canViewPayments ? (
               <>
-                <span className="whitespace-nowrap">
-                  <span className="text-xs text-ink-muted">{t("common.total")}:</span>{" "}
-                  <span className="font-semibold text-[#111827]">{formatCurrency(totalAmount)}</span>
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-[#64748B]">{t("common.total")}</span>
+                  <span className="text-base font-bold text-[#111827]">{formatCurrency(totalAmount)}</span>
                 </span>
-                <span className="text-[#E5E7EB]">|</span>
-                <span className="whitespace-nowrap">
-                  <span className="text-xs text-ink-muted">{t("common.paid")}:</span>{" "}
-                  <span className="font-semibold text-[#111827]">{formatCurrency(advancePaid)}</span>
+                <span aria-hidden="true" className="h-5 w-px bg-[#DCE5EA]" />
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-[#64748B]">{t("common.paid")}</span>
+                  <span className="text-base font-bold text-[#111827]">{formatCurrency(advancePaid)}</span>
                 </span>
-                <span className="text-[#E5E7EB]">|</span>
-                <span className="whitespace-nowrap">
-                  <span className="text-xs text-ink-muted">{t("common.balance")}:</span>{" "}
+                <span aria-hidden="true" className="h-5 w-px bg-[#DCE5EA]" />
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-[#64748B]">{t("common.balance")}</span>
                   <span
                     className={cn(
-                      "font-semibold",
-                      balance > 0 ? "text-[#B45309]" : "text-[#15803D]"
+                      "text-base font-bold",
+                      balance > 0 ? "text-[#C2410C]" : "text-[#15803D]"
                     )}
                   >
                     {formatCurrency(balance)}
@@ -1367,7 +1415,7 @@ function NewOrderPageContent() {
               onClick={handleCancel}
               disabled={leavingToOrders}
               aria-busy={leavingToOrders}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:cursor-wait disabled:opacity-70"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[15px] font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:cursor-wait disabled:opacity-70"
             >
               {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
               {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
@@ -1376,7 +1424,7 @@ function NewOrderPageContent() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
+              className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
               {saving ? "Savingâ€¦" : t("orders.saveOrder")}
             </button>
@@ -1437,7 +1485,7 @@ function NewOrderPageContent() {
                     href={`/orders/${savedOrder.id}/print/customer`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                    className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                   >
                     {t("orders.printCustomerReceipt")}
                   </Link>
@@ -1470,7 +1518,7 @@ function NewOrderPageContent() {
                   <button
                     type="button"
                     onClick={() => setShowStagePrintModal(true)}
-                    className="block rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                    className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                   >
                     Print Stage Job Card
                   </button>

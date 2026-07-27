@@ -127,15 +127,16 @@ export function OrderListFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border-soft bg-white/90 p-3 shadow-soft">
       <div className="relative w-full sm:w-[450px]">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
         <input
           type="text"
+          autoFocus
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={t("orders.searchPlaceholder")}
-          className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+          className="h-11 w-full rounded-lg border border-border bg-input-fill pl-10 pr-3.5 text-sm font-medium text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary-tint"
         />
         {query.trim() && customerSuggestions.length > 0 && (
           <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">

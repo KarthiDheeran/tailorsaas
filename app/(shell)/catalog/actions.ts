@@ -14,6 +14,7 @@ import {
   getAllWorkStages,
   getGarmentById,
   setAddOnActive,
+  setFinalWorkStage,
   setGarmentTypeActive,
   setWorkStageActive,
   updateAddOn,
@@ -374,9 +375,42 @@ export async function setWorkStageActiveAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.manage");
   if (!guard.ok) return { success: false, error: guard.error };
+  if (!isActive) {
+    const stages = await getAllWorkStages(supabase);
+    const stage = stages.find((candidate) => candidate.id === id);
+    if (stage?.isFinalStage) {
+      return {
+        success: false,
+        error: "Choose another final production stage before deactivating this one.",
+      };
+    }
+  }
   const stage = await setWorkStageActive(supabase, id, isActive);
   if (!stage) return { success: false, error: "Stage not found." };
   return { success: true, data: stage };
+}
+
+export async function setFinalWorkStageAction(
+  id: string
+): Promise<ActionResult<CatalogWorkStage>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    const stage = await setFinalWorkStage(supabase, id);
+    if (!stage) return { success: false, error: "Stage not found." };
+    return { success: true, data: stage };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not set the final production stage.";
+    if (message.includes("is_final_stage")) {
+      return {
+        success: false,
+        error: "Run migration 0050_configurable_final_work_stage.sql before changing the final stage.",
+      };
+    }
+    return { success: false, error: message };
+  }
 }
 
 export async function setAddOnActiveAction(

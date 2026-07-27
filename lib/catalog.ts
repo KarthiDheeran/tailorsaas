@@ -35,6 +35,8 @@ export interface CatalogWorkStage {
   stageKey: string;
   displayOrder: number;
   isActive: boolean;
+  /** The scan of this stage completes the garment unit and makes it Ready. */
+  isFinalStage: boolean;
 }
 
 export const DEFAULT_WORK_STAGE_NAMES = [
@@ -55,6 +57,9 @@ export const DEFAULT_WORK_STAGES: CatalogWorkStage[] = DEFAULT_WORK_STAGE_NAMES.
     stageKey: name,
     displayOrder: index + 1,
     isActive: true,
+    // Keeps the existing shop workflow unchanged until a manager selects a
+    // different final production stage in Settings > Work Stages.
+    isFinalStage: name === "Ironing/Packing",
   })
 );
 

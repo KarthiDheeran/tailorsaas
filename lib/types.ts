@@ -388,7 +388,8 @@ export type JobCardActivityAction =
   | "Stage Moved"
   | "Completed"
   | "Delayed"
-  | "Rework";
+  | "Rework"
+  | "Transferred";
 
 export interface JobCardActivityLog {
   id: string;

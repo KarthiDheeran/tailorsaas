@@ -373,8 +373,11 @@ export async function getGarmentMeasurementDraftSeed(
   customerId: string,
   garmentType: string
 ): Promise<{ values: Record<string, string>; fitNotes: string; notes: string }> {
-  const base = (await getCustomerMeasurements(supabase, customerId))?.values ?? {};
-  const persisted = await getGarmentMeasurement(supabase, customerId, garmentType);
+  const [customerMeasurements, persisted] = await Promise.all([
+    getCustomerMeasurements(supabase, customerId),
+    getGarmentMeasurement(supabase, customerId, garmentType),
+  ]);
+  const base = customerMeasurements?.values ?? {};
   return {
     values: { ...base, ...(persisted?.values ?? {}) },
     fitNotes: persisted?.fitNotes ?? "",

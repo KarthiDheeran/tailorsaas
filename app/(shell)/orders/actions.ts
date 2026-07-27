@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   getServerCallerPermissions,
@@ -23,6 +24,7 @@ import {
   deleteCustomer,
   getCustomerByPhone,
   getCustomers,
+  getGarmentMeasurementDraftSeed,
 } from "@/lib/data/customers-db";
 import {
   isMissingJobCardsSchemaError,
@@ -169,10 +171,11 @@ export async function getOrdersAction(): Promise<Order[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
-  return getAllOrders(supabase);
+  return withPerformanceContext("getOrdersAction", () => profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)));
 }
 
 export async function getOrdersPageDataAction(): Promise<OrdersPageData> {
+  return withPerformanceContext("getOrdersPageDataAction", async () => {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
   if (!permissions || !hasPermission(permissions, "orders.view")) {
@@ -181,12 +184,13 @@ export async function getOrdersPageDataAction(): Promise<OrdersPageData> {
 
   const dataClient = createAdminClient();
   const [orders, customers] = await Promise.all([
-    getAllOrders(dataClient),
+    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(dataClient)),
     hasPermission(permissions, "customers.view")
-      ? getCustomers(dataClient)
+      ? profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(dataClient))
       : Promise.resolve([]),
   ]);
   return { orders, customers };
+  });
 }
 
 export async function getOrderByIdAction(id: string): Promise<Order | undefined> {
@@ -236,7 +240,7 @@ export async function getOrdersForCustomerAction(customerId: string): Promise<Or
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
-  return getOrdersForCustomer(supabase, customerId);
+  return withPerformanceContext("getOrdersForCustomerAction", () => profileDataFunction({ functionName: "getOrdersForCustomer", tableOrRpc: "orders,order_items" }, () => getOrdersForCustomer(supabase, customerId)));
 }
 
 export interface HistoricalMeasurementSnapshot {
@@ -247,6 +251,61 @@ export interface HistoricalMeasurementSnapshot {
   serialNo: number;
   garmentName: string;
   measurements: Record<string, string>;
+}
+
+export interface MeasurementPickerData {
+  seed: { values: Record<string, string>; fitNotes: string; notes: string };
+  history: HistoricalMeasurementSnapshot[];
+}
+
+// Combines the two New Order measurement-picker requests into one server
+// action. Permission checks retain the prior independent behaviour: a user
+// may receive whichever portion they are allowed to view.
+export async function getMeasurementPickerDataAction(
+  customerId: string,
+  garmentTypeId: string,
+  garmentTypeName: string,
+  excludeOrderId?: string
+): Promise<MeasurementPickerData> {
+  return withPerformanceContext("getMeasurementPickerDataAction", async () => {
+  const supabase = createServerClient();
+  const [ordersGuard, measurementsGuard] = await Promise.all([
+    requireServerPermission(supabase, "orders.view"),
+    requireServerPermission(supabase, "customers.viewMeasurements"),
+  ]);
+
+  const [seed, orders] = await Promise.all([
+    measurementsGuard.ok
+      ? getGarmentMeasurementDraftSeed(supabase, customerId, garmentTypeName)
+      : Promise.resolve({ values: {}, fitNotes: "", notes: "" }),
+    ordersGuard.ok ? profileDataFunction({ functionName: "getOrdersForCustomer", tableOrRpc: "orders,order_items" }, () => getOrdersForCustomer(supabase, customerId)) : Promise.resolve([]),
+  ]);
+
+  const history = orders
+    .filter((order) => order.id !== excludeOrderId && order.status !== "Cancelled")
+    .flatMap((order) =>
+      order.items
+        .filter(
+          (item) =>
+            item.garmentTypeId === garmentTypeId &&
+            item.measurements &&
+            Object.values(item.measurements).some((value) => value.trim() !== "")
+        )
+        .map((item) => ({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          orderDate: order.orderDate,
+          itemId: item.id,
+          serialNo: item.serialNo,
+          garmentName: item.particular,
+          measurements: item.measurements ?? {},
+        }))
+    )
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
+    .slice(0, 5);
+
+  return { seed, history };
+  });
 }
 
 export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(

@@ -3,7 +3,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertCircle,
   Banknote,
   Calculator,
   ChevronDown,
@@ -11,7 +10,6 @@ import {
   IndianRupee,
   Plus,
   Printer,
-  Smartphone,
   X,
 } from "lucide-react";
 import {
@@ -27,7 +25,6 @@ import { FinancialAdjustmentsTable } from "@/components/payments/financial-adjus
 import { PaymentsTabs, type PaymentsTab } from "@/components/payments/payments-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
-import { ReportStatCard } from "@/components/reports/report-stat-card";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -116,7 +113,6 @@ function PaymentsPageContent() {
   // date range/mode/type/search the table below is currently filtered to,
   // so switching the table to "Yesterday" doesn't make "Today Collected"
   // lie. Fetched in the bundled page payload with its own always-today range.
-  const [todayReport, setTodayReport] = useState<PaymentsReport>(EMPTY_REPORT);
   const [dailyClosing, setDailyClosing] = useState<DailyClosingSummary | null>(null);
   // Pending Dues tab rows. The summary card total is derived from these rows
   // too, so receivables are not fetched twice.
@@ -127,7 +123,6 @@ function PaymentsPageContent() {
   const [adjustmentQuery, setAdjustmentQuery] = useState("");
   const [adjustmentsMigrationMissing, setAdjustmentsMigrationMissing] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [todayExpenses, setTodayExpenses] = useState(0);
   const [expenseSource, setExpenseSource] = useState<ExpenseSource | "">("");
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory | "">("");
   const [expenseMode, setExpenseMode] = useState<PaymentMode | "">("");
@@ -188,14 +183,12 @@ function PaymentsPageContent() {
       .then((result) => {
         if (cancelled) return;
         if (result.report) setReport(result.report);
-        if (result.todayReport) setTodayReport(result.todayReport);
         if (result.dailyClosing) setDailyClosing(result.dailyClosing);
         if (result.pendingDuesOrders) setPendingDuesOrders(result.pendingDuesOrders);
         setAdjustmentsMigrationMissing(canViewPayments && result.adjustments === null);
         setAdjustments(result.adjustments ?? []);
         setExpensesMigrationMissing(canViewExpenses && result.expenses === null);
         setExpenses(result.expenses ?? []);
-        setTodayExpenses(result.todayExpenses ?? 0);
         setLoadError(null);
       })
       .catch((error) => {
@@ -228,14 +221,6 @@ function PaymentsPageContent() {
     refreshTick,
     expenseRefreshKey,
   ]);
-
-  const todayCollected = todayReport.totalCollected;
-  const cashToday = todayReport.byMode.find((b) => b.mode === "Cash")?.amount ?? 0;
-  const upiToday = todayReport.byMode.find((b) => b.mode === "UPI")?.amount ?? 0;
-  const pendingDues = pendingDuesOrders.reduce(
-    (sum, order) => sum + Number(order.balance),
-    0
-  );
 
   const isLoading = !initialLoaded;
 
@@ -356,10 +341,10 @@ function PaymentsPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
-        <h1 className="text-[26px] font-semibold text-ink">{t("payments.title")}</h1>
-        <p className="text-sm text-ink-muted">{t("payments.subtitle")}</p>
+    <div className="mx-auto max-w-7xl p-4 pb-6 sm:p-6 sm:pb-6 lg:p-7 lg:pb-6">
+      <div className="mb-[18px]">
+        <h1 className="text-[30px] font-bold tracking-tight text-[#111827]">{t("payments.title")}</h1>
+        <p className="mt-1 text-[16px] text-[#64748B]">{t("payments.subtitle")}</p>
       </div>
 
       {loadError && (
@@ -378,40 +363,6 @@ function PaymentsPageContent() {
         <LoadingState label="Loading payments..." />
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {canViewPayments && (
-              <>
-                <ReportStatCard
-                  label={t("payments.todayCollected")}
-                  value={money(todayCollected)}
-                  icon={IndianRupee}
-                />
-                <ReportStatCard
-                  label={t("payments.cashToday")}
-                  value={money(cashToday)}
-                  icon={Banknote}
-                />
-                <ReportStatCard
-                  label={t("payments.upiToday")}
-                  value={money(upiToday)}
-                  icon={Smartphone}
-                />
-                <ReportStatCard
-                  label={t("payments.pendingDues")}
-                  value={money(pendingDues)}
-                  icon={AlertCircle}
-                />
-              </>
-            )}
-            {canViewExpenses && (
-              <ReportStatCard
-                label={t("payments.expensesToday")}
-                value={money(todayExpenses)}
-                icon={Banknote}
-              />
-            )}
-          </div>
-
           {canViewPayments && dailyClosing && (
             <DailyClosingPanel summary={dailyClosing} />
           )}
@@ -696,20 +647,20 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
   );
 
   return (
-    <section className="mb-6 border border-border-soft bg-white shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+    <section className="mb-[18px] rounded-2xl border border-[#DCE5EA] bg-white shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCE5EA] px-5 py-4">
         <div>
           <h2 className="text-[17px] font-semibold text-ink">Daily Closing</h2>
           <p className="text-sm text-ink-muted">
             Cash, digital collections, expenses, and net position for today.
           </p>
         </div>
-        <div className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-ink-muted">
+        <div className="rounded-lg border border-[#DCE5EA] bg-[#F8FAFC] px-3 py-2 text-sm font-semibold text-[#475569]">
           {formatDate(summary.date)}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 border-b border-border-soft md:grid-cols-4">
+      <div className="grid grid-cols-1 border-b border-[#DCE5EA] sm:grid-cols-2 xl:grid-cols-5">
         <ClosingMetric
           icon={IndianRupee}
           label="Total Received"
@@ -719,38 +670,37 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
           icon={Banknote}
           label="Cash in Hand"
           value={summary.cashInHand === null ? money(cashCollected) : money(summary.cashInHand)}
-          sublabel={summary.expensesAvailable ? "Cash received minus cash expenses" : "Cash received today"}
         />
         <ClosingMetric
           icon={CreditCard}
           label="Digital Net"
           value={summary.digitalNet === null ? money(digitalCollected) : money(summary.digitalNet)}
-          sublabel="UPI, card, bank, cheque, GPay"
+        />
+        <ClosingMetric
+          icon={Banknote}
+          label="Expenses"
+          value={summary.totalExpenses === null ? "Pending" : money(summary.totalExpenses)}
+          warning={(summary.totalExpenses ?? 0) > 0}
         />
         <ClosingMetric
           icon={Calculator}
           label="Net After Expenses"
           value={summary.netTotal === null ? "Pending" : money(summary.netTotal)}
           warning={summary.netTotal !== null && summary.netTotal < 0}
-          sublabel={
-            summary.expensesAvailable
-              ? `${money(summary.totalExpenses ?? 0)} expenses today`
-              : "Expenses unavailable"
-          }
         />
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="text-[13px] font-semibold text-ink-muted">
-            <tr className="border-b border-border-soft">
-              <th className="whitespace-nowrap px-5 py-3">Mode</th>
-              <th className="whitespace-nowrap px-5 py-3 text-right">Received</th>
-              <th className="whitespace-nowrap px-5 py-3 text-right">Expenses</th>
-              <th className="whitespace-nowrap px-5 py-3 text-right">Net</th>
+          <thead className="bg-[#F8FAFC] text-[14px] font-semibold text-[#475569]">
+            <tr className="border-b border-[#DCE5EA]">
+              <th className="whitespace-nowrap px-5 py-2.5">Mode</th>
+              <th className="whitespace-nowrap px-5 py-2.5 text-right">Received</th>
+              <th className="whitespace-nowrap px-5 py-2.5 text-right">Expenses</th>
+              <th className="whitespace-nowrap px-5 py-2.5 text-right">Net</th>
             </tr>
           </thead>
-          <tbody className="text-[13px]">
+          <tbody className="text-[15px]">
             {visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-5 py-6 text-center text-ink-muted">
@@ -759,19 +709,19 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
               </tr>
             ) : (
               visibleRows.map((row) => (
-                <tr key={row.mode} className="border-t border-border-soft">
-                  <td className="whitespace-nowrap px-5 py-3 font-medium text-ink">
+                <tr key={row.mode} className="border-t border-border-soft transition-colors hover:bg-[#F8FFFD]">
+                  <td className="whitespace-nowrap px-5 py-2.5 font-medium text-ink">
                     {row.mode}
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                  <td className="whitespace-nowrap px-5 py-2.5 text-right text-ink">
                     {money(row.collected)}
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-ink-muted">
+                  <td className="whitespace-nowrap px-5 py-2.5 text-right text-ink-muted">
                     {row.expenses === null ? "-" : money(row.expenses)}
                   </td>
                   <td
                     className={cn(
-                      "whitespace-nowrap px-5 py-3 text-right font-semibold",
+                      "whitespace-nowrap px-5 py-2.5 text-right font-bold",
                       row.net !== null && row.net < 0 ? "text-chip-red-fg" : "text-ink"
                     )}
                   >
@@ -791,17 +741,15 @@ function ClosingMetric({
   icon: Icon,
   label,
   value,
-  sublabel,
   warning,
 }: {
   icon: typeof IndianRupee;
   label: string;
   value: string;
-  sublabel?: string;
   warning?: boolean;
 }) {
   return (
-    <div className="flex gap-3 border-b border-border-soft px-5 py-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
+    <div className="flex gap-2.5 border-b border-border-soft px-4 py-3.5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
       <span
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
@@ -811,16 +759,15 @@ function ClosingMetric({
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <div className="text-xs font-medium text-ink-muted">{label}</div>
+        <div className="text-[13px] font-medium text-ink-muted">{label}</div>
         <div
           className={cn(
-            "text-[22px] font-semibold",
+            "text-[21px] font-bold",
             warning ? "text-chip-red-fg" : "text-ink"
           )}
         >
           {value}
         </div>
-        {sublabel && <div className="mt-0.5 text-xs text-ink-faint">{sublabel}</div>}
       </div>
     </div>
   );

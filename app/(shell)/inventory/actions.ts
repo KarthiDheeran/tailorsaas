@@ -20,6 +20,7 @@ import {
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import {
   customerFabricStatuses,
   inventoryItemTypes,
@@ -92,7 +93,7 @@ export async function getInventoryMovementsAction(): Promise<InventoryMovement[]
   const guard = await requireServerPermission(supabase, "inventory.view");
   if (!guard.ok) return [];
   try {
-    return await getInventoryMovements(supabase);
+    return await withPerformanceContext("getInventoryMovementsAction", () => profileDataFunction({ functionName: "getInventoryMovements", tableOrRpc: "inventory_movements" }, () => getInventoryMovements(supabase)));
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
     throw error;

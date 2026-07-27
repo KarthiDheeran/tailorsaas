@@ -299,7 +299,9 @@ function PrintSetup({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Assign to
+            <span>
+              Assign to <span className="text-red-600">*</span>
+            </span>
             <select
               value={staffId}
               onChange={(event) => setStaffId(event.target.value)}
@@ -341,7 +343,7 @@ function PrintSetup({
           <button
             type="button"
             onClick={submit}
-            disabled={saving || !selectedItem}
+            disabled={saving || !selectedItem || !staffId}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -18,6 +18,7 @@ import {
   isMissingOrderFinancialAdjustmentsSchemaError,
 } from "@/lib/data/order-financial-adjustments-db";
 import { getAllOrders } from "@/lib/data/orders-db";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { expenseCategories, paymentModes } from "@/lib/constants";
 import { isReceivableOrder } from "@/lib/order-finance";
 import { hasPermission } from "@/lib/permissions";
@@ -418,7 +419,9 @@ export async function getExpensesAction(filters: ExpenseFilters): Promise<Expens
   const guard = await requireServerPermission(supabase, "expenses.view");
   if (!guard.ok) return null;
   try {
-    return await getExpenses(supabase, filters);
+    return await withPerformanceContext("getExpensesAction", () =>
+      profileDataFunction({ functionName: "getExpenses", tableOrRpc: "expenses" }, () => getExpenses(supabase, filters))
+    );
   } catch (error) {
     if (isMissingExpensesSchemaError(error)) return null;
     throw error;

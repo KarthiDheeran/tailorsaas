@@ -3,15 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  CalendarDays,
+  ClipboardList,
   MoreVertical,
   Printer,
   Search,
+  Shirt,
+  UserRound,
   X,
 } from "lucide-react";
 import {
   getJobCardActivityLogsAction,
   getJobCardsPageDataAction,
   syncMissingJobCardsAction,
+  transferJobCardAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
   updateCustomerFabricStatusAction,
@@ -28,6 +33,7 @@ import type {
   InventoryMovement,
   JobCardActivityLog,
   Order,
+  PaymentMode,
   Staff,
   WorkAssignment,
 } from "@/lib/types";
@@ -76,20 +82,20 @@ type DueFilter = (typeof DUE_FILTERS)[number];
 
 function StageBadge({ stage }: { stage: JobCardStage }) {
   const styles: Record<JobCardStage, string> = {
-    Unassigned: "bg-chip-info text-chip-info-fg",
-    Cutting: "bg-chip-blue text-chip-blue-fg",
-    Stitching: "bg-chip-blue text-chip-blue-fg",
+    Unassigned: "border border-slate-200 bg-slate-100 text-slate-700",
+    Cutting: "border border-sky-200 bg-sky-50 text-sky-700",
+    Stitching: "border border-sky-200 bg-sky-50 text-sky-700",
     Embroidery: "bg-chip-blue text-chip-blue-fg",
     Finishing: "bg-chip-purple text-chip-purple-fg",
     Trial: "bg-chip-info text-chip-info-fg",
     Alteration: "bg-chip-red text-chip-red-fg",
-    Delayed: "bg-chip-red text-chip-red-fg",
-    Ready: "bg-chip-purple text-chip-purple-fg",
-    Delivered: "bg-chip-mint text-chip-mint-fg",
-    Cancelled: "bg-chip-info text-chip-info-fg",
+    Delayed: "border border-red-200 bg-red-50 text-red-700",
+    Ready: "border border-green-200 bg-green-50 text-green-700",
+    Delivered: "border border-blue-200 bg-blue-50 text-blue-700",
+    Cancelled: "border border-slate-300 bg-slate-50 text-slate-500",
   };
   return (
-    <span className={cn("inline-block rounded-full px-3 py-1 text-xs font-semibold", styles[stage])}>
+    <span className={cn("inline-flex h-[30px] items-center rounded-full px-3 text-[13px] font-semibold", styles[stage])}>
       {stage === "Unassigned" ? "Not Ready" : stage}
     </span>
   );
@@ -116,7 +122,14 @@ function isDelayedCard(card: JobCard) {
 }
 
 function displayStage(card: JobCard): JobCardStage {
-  if (!card.assignedStaffId && card.stage !== "Delivered" && card.stage !== "Cancelled") {
+  // A completed card is still Ready even after its worker assignment has been
+  // cleared. Only unfinished, unassigned cards should display as Not Ready.
+  if (
+    !card.assignedStaffId &&
+    card.stage !== "Ready" &&
+    card.stage !== "Delivered" &&
+    card.stage !== "Cancelled"
+  ) {
     return "Unassigned";
   }
   return card.stage;
@@ -233,6 +246,7 @@ function JobCardsContent() {
   const [focusedJobCardId, setFocusedJobCardId] = useState<string | null>(null);
   const [detailsCard, setDetailsCard] = useState<JobCard | null>(null);
   const [historyCard, setHistoryCard] = useState<JobCard | null>(null);
+  const [transferCard, setTransferCard] = useState<JobCard | null>(null);
   const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
   const [stockCard, setStockCard] = useState<JobCard | null>(null);
   const [openMenuCardId, setOpenMenuCardId] = useState<string | null>(null);
@@ -401,11 +415,11 @@ function JobCardsContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-4">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-7">
+      <div className="mb-5">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">Job Cards</h1>
-          <p className="text-sm text-ink-muted">
+          <h1 className="text-[30px] font-bold tracking-tight text-[#111827]">Job Cards</h1>
+          <p className="mt-1 text-[16px] text-[#64748B]">
             Garment-level work cards for readiness, delays, and delivery tracking.
           </p>
         </div>
@@ -468,28 +482,29 @@ function JobCardsContent() {
             </div>
           )}
 
-          <div className="mb-5 space-y-3">
+          <div className="mb-4 space-y-3">
             <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                autoFocus
                 placeholder="Search job card, order, customer, phone, garment, worker..."
-                className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                className="h-[50px] w-full rounded-[10px] border border-[#DCE5EA] bg-white pl-11 pr-4 text-base text-ink outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
               />
             </label>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1">
               {FILTERS.map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   onClick={() => setFilter(option.value)}
                   className={cn(
-                    "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
+                    "h-[42px] shrink-0 rounded-[9px] border px-3.5 text-[15px] font-medium transition-colors",
                     filter === option.value
-                      ? "border-primary bg-primary-tint text-primary"
-                      : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
+                      ? "border-primary bg-primary-tint font-semibold text-primary"
+                      : "border-[#DCE5EA] bg-white text-ink hover:bg-[#F8FAFC]"
                   )}
                 >
                   {option.label}
@@ -497,10 +512,11 @@ function JobCardsContent() {
               ))}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value as JobCardStage | "all")}
+                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
               >
                 {STAGE_FILTERS.map((stage) => (
                   <option key={stage} value={stage}>
@@ -511,6 +527,7 @@ function JobCardsContent() {
               <Select
                 value={dueFilter}
                 onChange={(event) => setDueFilter(event.target.value as DueFilter)}
+                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
               >
                 {DUE_FILTERS.map((option) => (
                   <option key={option} value={option}>
@@ -521,6 +538,7 @@ function JobCardsContent() {
               <Select
                 value={garmentFilter}
                 onChange={(event) => setGarmentFilter(event.target.value)}
+                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
               >
                 <option value="all">Garment: All</option>
                 {garmentOptions.map((garment) => (
@@ -532,10 +550,13 @@ function JobCardsContent() {
             </div>
           </div>
 
-          <div className="overflow-visible rounded-xl border border-border-soft bg-white shadow-soft">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-[#64748B]">{filteredCards.length} job card{filteredCards.length === 1 ? "" : "s"}</p>
+          </div>
+          <div className="overflow-visible rounded-[14px] border border-[#DCE5EA] bg-white shadow-soft">
             <table className="w-full table-fixed text-left">
-              <thead className="text-[13px] font-semibold text-ink-muted">
-                <tr className="border-b border-border-soft">
+              <thead className="bg-[#F8FAFC] text-[14px] font-bold text-[#475569]">
+                <tr className="h-[50px] border-b border-[#DCE5EA]">
                   <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
                   <th className="w-[14%] whitespace-nowrap px-4 py-3">Job Card</th>
                   <th className="w-[18%] whitespace-nowrap px-4 py-3">Customer</th>
@@ -552,7 +573,7 @@ function JobCardsContent() {
                     key={card.id}
                     data-job-card-id={card.id}
                     className={cn(
-                      "border-t border-border-soft hover:bg-surface",
+                      "h-[68px] border-t border-[#E8EEF2] text-[15px] transition-colors duration-150 hover:bg-[#F8FFFD]",
                       focusedJobCardId === card.id && "bg-primary-tint ring-2 ring-primary/30"
                     )}
                   >
@@ -565,30 +586,32 @@ function JobCardsContent() {
                           {card.orderNumber}
                         </Link>
                       ) : (
-                        <span className="font-medium text-ink-muted">{card.orderNumber}</span>
+                        <span className="font-semibold text-ink-muted">{card.orderNumber}</span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <button
                         type="button"
                         onClick={() => setDetailsCard(card)}
-                        className="font-semibold text-primary hover:underline"
+                        className="inline-flex items-center gap-1.5 font-bold text-primary hover:underline"
                       >
+                        <ClipboardList className="h-4 w-4" aria-hidden="true" />
                         {card.jobCardNumber}
                       </button>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <div className="font-medium text-ink">{card.customer?.name ?? "Unknown"}</div>
-                      <div className="text-xs text-ink-muted">{card.customer?.phone ?? ""}</div>
+                      <div className="flex items-center gap-1.5 font-semibold text-ink"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{card.customer?.name ?? "Unknown"}</div>
+                      <div className="pl-5 text-[13px] text-ink-muted">{card.customer?.phone ?? ""}</div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-ink">
-                      <GarmentCell card={card} />
+                      <span className="flex items-center gap-1.5 font-semibold"><Shirt className="h-3.5 w-3.5 text-primary" aria-hidden="true" /><GarmentCell card={card} /></span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <StageBadge stage={displayStage(card)} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
+                        <CalendarDays className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
                         {formatDate(card.deliveryDate)}
                       </span>
                       {isDelayedCard(card) && (
@@ -597,13 +620,13 @@ function JobCardsContent() {
                         </div>
                       )}
                     </td>
-                    <td className="w-[190px] whitespace-nowrap bg-white px-4 py-3 text-right">
+                    <td className="w-[190px] whitespace-nowrap px-4 py-3 text-right">
                       <div className="relative flex items-center justify-end gap-2">
                         <Link
                           href={jobCardPrintUrl(card)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                          className="inline-flex h-10 items-center gap-1.5 rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint"
                         >
                           <Printer className="h-3.5 w-3.5" />
                           Print Job Card
@@ -613,7 +636,7 @@ function JobCardsContent() {
                           onClick={() =>
                             setOpenMenuCardId((current) => (current === card.id ? null : card.id))
                           }
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                          className="flex h-10 w-10 items-center justify-center rounded-[9px] border border-[#DCE5EA] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                           aria-label="More actions"
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -656,6 +679,19 @@ function JobCardsContent() {
                               >
                                 History
                               </button>
+                              {card.assignedStaffId &&
+                                !["Ready", "Delivered", "Cancelled"].includes(displayStage(card)) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTransferCard(card);
+                                      setOpenMenuCardId(null);
+                                    }}
+                                    className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+                                  >
+                                    Transfer Job Card
+                                  </button>
+                                )}
                             </div>
                           </>
                         )}
@@ -670,7 +706,9 @@ function JobCardsContent() {
 
           {filteredCards.length === 0 && (
             <div className="mt-4 rounded-xl border border-dashed border-border-soft bg-white p-8 text-center text-sm text-ink-muted">
-              No job cards match this view.
+              <ClipboardList className="mx-auto mb-2 h-6 w-6 text-primary" aria-hidden="true" />
+              <p className="font-semibold text-ink">No job cards found</p>
+              <p className="mt-1">Try changing the search or filters.</p>
             </div>
           )}
         </>
@@ -745,6 +783,112 @@ function JobCardsContent() {
           onClose={() => setHistoryCard(null)}
         />
       )}
+
+      {transferCard && (
+        <JobCardTransferModal
+          card={transferCard}
+          staff={staff}
+          onClose={() => setTransferCard(null)}
+          onTransferred={() => {
+            setTransferCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function JobCardTransferModal({
+  card,
+  staff,
+  onClose,
+  onTransferred,
+}: {
+  card: JobCard;
+  staff: Staff[];
+  onClose: () => void;
+  onTransferred: () => void;
+}) {
+  const [newStaffId, setNewStaffId] = useState("");
+  const [reason, setReason] = useState("");
+  const [recordAdvance, setRecordAdvance] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advancePaymentMode, setAdvancePaymentMode] = useState<PaymentMode>("Cash");
+  const [advanceNotes, setAdvanceNotes] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const availableStaff = staff.filter(
+    (member) => member.status === "Active" && member.id !== card.assignedStaffId
+  );
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setSaving(true);
+    const result = await transferJobCardAction(card.id, {
+      newStaffId,
+      reason,
+      recordAdvance,
+      advanceAmount: recordAdvance ? Number(advanceAmount) : undefined,
+      advancePaymentMode: recordAdvance ? advancePaymentMode : undefined,
+      advanceNotes,
+    });
+    setSaving(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    onTransferred();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <button type="button" className="absolute inset-0" aria-label="Close transfer dialog" onClick={onClose} />
+      <form
+        onSubmit={submit}
+        className="relative w-full max-w-lg rounded-2xl border border-border-soft bg-white shadow-xl"
+      >
+        <div className="border-b border-border-soft px-6 py-5">
+          <h2 className="text-xl font-semibold text-ink">Transfer Job Card</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            {card.jobCardNumber} · {card.garment} · {displayStage(card)}
+          </p>
+          <p className="mt-2 text-sm text-ink">
+            Current tailor: <span className="font-semibold">{card.assignedTo}</span>
+          </p>
+        </div>
+        <div className="space-y-4 px-6 py-5">
+          {error && <div className="rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">{error}</div>}
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            New tailor
+            <select value={newStaffId} onChange={(event) => setNewStaffId(event.target.value)} className="h-11 rounded-lg border border-border bg-white px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <option value="">Select tailor</option>
+              {availableStaff.map((member) => <option key={member.id} value={member.id}>{member.name} — {member.role}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-ink">
+            Transfer reason
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="e.g. Ramesh is unavailable today" className="rounded-lg border border-border px-3 py-2 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <label className="flex items-start gap-3 rounded-xl border border-border-soft bg-surface p-3 text-sm text-ink">
+            <input type="checkbox" checked={recordAdvance} onChange={(event) => setRecordAdvance(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+            <span><span className="block font-semibold">Record advance already paid to {card.assignedTo}</span><span className="mt-0.5 block text-xs text-ink-muted">This is added to the previous tailor’s Paid / Advance ledger and offsets their future payable balance.</span></span>
+          </label>
+          {recordAdvance && (
+            <div className="grid gap-3 rounded-xl border border-border-soft p-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium text-ink">Advance amount<input value={advanceAmount} onChange={(event) => setAdvanceAmount(event.target.value)} inputMode="decimal" placeholder="0.00" className="h-10 rounded-lg border border-border px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+              <label className="grid gap-1.5 text-sm font-medium text-ink">Paid by<select value={advancePaymentMode} onChange={(event) => setAdvancePaymentMode(event.target.value as PaymentMode)} className="h-10 rounded-lg border border-border bg-white px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"><option>Cash</option><option>GPay</option><option>UPI</option><option>Bank Transfer</option><option>Card</option><option>Cheque</option></select></label>
+              <label className="grid gap-1.5 text-sm font-medium text-ink sm:col-span-2">Advance note (optional)<input value={advanceNotes} onChange={(event) => setAdvanceNotes(event.target.value)} placeholder="Reference or settlement note" className="h-10 rounded-lg border border-border px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+            </div>
+          )}
+          <p className="rounded-lg bg-primary-tint px-3 py-2 text-xs text-primary">After transfer, print a replacement stage job card for the new tailor. Only that new slip should be tally-scanned.</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border-soft px-6 py-4">
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface">Cancel</button>
+          <button type="submit" disabled={saving} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Transferring..." : "Transfer Job Card"}</button>
+        </div>
+      </form>
     </div>
   );
 }

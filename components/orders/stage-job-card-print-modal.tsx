@@ -13,6 +13,28 @@ export interface StageJobCardPrintTarget {
   serialNo: number;
 }
 
+type StagePrintSetupData = {
+  staff: Staff[];
+  workStages: CatalogWorkStage[];
+};
+
+let stagePrintSetupRequest: Promise<StagePrintSetupData> | null = null;
+
+function getStagePrintSetupData() {
+  if (!stagePrintSetupRequest) {
+    stagePrintSetupRequest = Promise.all([
+      getStaffAction(),
+      getActiveWorkStagesAction(),
+    ])
+      .then(([staff, workStages]) => ({ staff, workStages }))
+      .catch((error) => {
+        stagePrintSetupRequest = null;
+        throw error;
+      });
+  }
+  return stagePrintSetupRequest;
+}
+
 export function StageJobCardPrintModal({
   order,
   target,
@@ -52,7 +74,7 @@ export function StageJobCardPrintModal({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getStaffAction(), getActiveWorkStagesAction()]).then(([staffResult, stages]) => {
+    getStagePrintSetupData().then(({ staff: staffResult, workStages: stages }) => {
       if (cancelled) return;
       setStaff(staffResult);
       setWorkStages(stages);
@@ -157,7 +179,9 @@ export function StageJobCardPrintModal({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Assign to
+            <span>
+              Assign to <span className="text-red-600">*</span>
+            </span>
             <span className="relative block">
               <select
                 value={staffId}
@@ -218,7 +242,7 @@ export function StageJobCardPrintModal({
           <button
             type="button"
             onClick={createPrintout}
-            disabled={saving || !selectedItem}
+            disabled={saving || !selectedItem || !staffId}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}

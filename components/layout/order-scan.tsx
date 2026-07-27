@@ -18,9 +18,18 @@ function looksLikeOrderScan(value: string) {
   return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^ORD-\d{4}-\d{3,}$/.test(code);
 }
 
+function looksLikeStageSlipScan(value: string) {
+  const code = value.trim().toUpperCase();
+  return /^TS\|JOB\|[A-Z0-9]{12,}$/.test(code) || /^JCS-\d{4}-\d{3,}$/.test(code);
+}
+
+function looksLikeSupportedScan(value: string) {
+  return looksLikeOrderScan(value) || looksLikeStageSlipScan(value);
+}
+
 function shouldSuppressScannerCharacter(value: string) {
   const code = value.toUpperCase();
-  return code.startsWith("TS|ORD") || code.startsWith("ORD");
+  return code.startsWith("TS|ORD") || code.startsWith("ORD") || code.startsWith("TS|JOB") || code.startsWith("JCS");
 }
 
 function focusedTextControl() {
@@ -70,6 +79,15 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
     resolvingRef.current = true;
     setIsResolving(true);
     setError("");
+    if (looksLikeStageSlipScan(trimmed)) {
+      resolvingRef.current = false;
+      setIsResolving(false);
+      setOpen(false);
+      setManualCode("");
+      window.dispatchEvent(new Event(CLOSE_TRANSIENT_OVERLAYS_EVENT));
+      router.push(`/job-cards/tally?scan=${encodeURIComponent(trimmed)}`);
+      return;
+    }
     const result = await resolveOrderScanAction(trimmed);
     resolvingRef.current = false;
     setIsResolving(false);
@@ -140,7 +158,7 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
         if (
           value.length >= MIN_SCANNER_LENGTH &&
           totalMs <= Math.max(300, value.length * SCANNER_TOTAL_MS_PER_CHAR) &&
-          looksLikeOrderScan(value)
+          looksLikeSupportedScan(value)
         ) {
           event.preventDefault();
           event.stopPropagation();

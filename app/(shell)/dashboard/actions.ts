@@ -4,6 +4,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { getDashboardData, type DashboardData } from "@/lib/dashboard";
+import { withPerformanceContext } from "@/lib/performance/query-profiler";
 
 // ---------------------------------------------------------------------------
 // Phase 6E: Dashboard's first-ever Server Action layer (it previously called
@@ -25,10 +26,12 @@ import { getDashboardData, type DashboardData } from "@/lib/dashboard";
 export async function getDashboardDataAction(
   todayIso: string
 ): Promise<DashboardData | null> {
+  return withPerformanceContext("getDashboardDataAction", async () => {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "dashboard.view");
   if (!guard.ok) return null;
 
   const admin = createAdminClient();
   return getDashboardData(admin, todayIso);
+  });
 }

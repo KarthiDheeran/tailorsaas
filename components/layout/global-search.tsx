@@ -2,18 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Search, X } from "lucide-react";
+import { Barcode, Loader2, Search, X } from "lucide-react";
 import {
   globalSearchAction,
   type GlobalSearchGroup,
   type GlobalSearchResult,
 } from "@/app/(shell)/global-search/actions";
+import { resolveOrderScanAction } from "@/app/(shell)/orders/actions";
 import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
 
 const GROUPS: GlobalSearchGroup[] = ["Customers", "Orders", "Job Cards", "Staff"];
 const MIN_QUERY_LENGTH = 2;
 const DEBOUNCE_MS = 220;
+
+function isOrderCode(value: string) {
+  const code = value.trim().toUpperCase();
+  return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^ORD-\d{4}-\d{3,}$/.test(code);
+}
+
+function isStageSlipCode(value: string) {
+  const code = value.trim().toUpperCase();
+  return /^TS\|JOB\|[A-Z0-9]{12,}$/.test(code) || /^JCS-\d{4}-\d{3,}$/.test(code);
+}
 
 function isMacPlatform() {
   if (typeof navigator === "undefined") return false;
@@ -41,6 +52,7 @@ export function GlobalSearchButton({
     Staff: [],
   });
   const [activeIndex, setActiveIndex] = useState(0);
+  const [entryError, setEntryError] = useState("");
   const shortcutLabel = isMacPlatform() ? "Cmd K" : "Ctrl K";
 
   const flatResults = useMemo(
@@ -58,6 +70,7 @@ export function GlobalSearchButton({
       Staff: [],
     });
     setActiveIndex(0);
+    setEntryError("");
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   }
 
@@ -68,6 +81,66 @@ export function GlobalSearchButton({
   function selectResult(result: GlobalSearchResult) {
     closePalette();
     router.push(result.href);
+  }
+
+  async function resolveQuickEntry() {
+    const code = query.trim();
+    if (!code) return;
+    setEntryError("");
+
+    if (isStageSlipCode(code)) {
+      closePalette();
+      router.push(`/job-cards/tally?scan=${encodeURIComponent(code)}`);
+      return;
+    }
+
+    if (isOrderCode(code)) {
+      setIsLoading(true);
+      let result: Awaited<ReturnType<typeof resolveOrderScanAction>>;
+      try {
+        result = await resolveOrderScanAction(code);
+      } catch {
+        setIsLoading(false);
+        setEntryError("Could not open that order. Please try again.");
+        return;
+      }
+      setIsLoading(false);
+      if (!result.success) {
+        setEntryError(result.error || "Order not found.");
+        return;
+      }
+      closePalette();
+      router.push(`/orders/${result.data.orderId}`);
+      return;
+    }
+
+    if (flatResults[activeIndex]) {
+      selectResult(flatResults[activeIndex].result);
+      return;
+    }
+
+    // A manually typed job-card number can be submitted before the debounce
+    // finishes. Resolve it once, then use the normal result navigation.
+    setIsLoading(true);
+    let payload: Awaited<ReturnType<typeof globalSearchAction>>;
+    try {
+      payload = await globalSearchAction(code);
+    } catch {
+      setIsLoading(false);
+      setEntryError("Search is temporarily unavailable. Please try again.");
+      return;
+    }
+    setIsLoading(false);
+    const exactJobCard = payload.results["Job Cards"].find(
+      (result) => result.title.toLowerCase() === code.toLowerCase()
+    );
+    if (exactJobCard) {
+      selectResult(exactJobCard);
+      return;
+    }
+    setResults(payload.results);
+    setActiveIndex(0);
+    setEntryError("No matching order, job card, customer, or staff member.");
   }
 
   useEffect(() => {
@@ -175,9 +248,9 @@ export function GlobalSearchButton({
       event.preventDefault();
       setActiveIndex((index) => (index - 1 + flatResults.length) % flatResults.length);
     }
-    if (event.key === "Enter" && flatResults[activeIndex]) {
+    if (event.key === "Enter") {
       event.preventDefault();
-      selectResult(flatResults[activeIndex].result);
+      void resolveQuickEntry();
     }
   }
 
@@ -187,16 +260,16 @@ export function GlobalSearchButton({
         ref={triggerRef}
         type="button"
         onClick={openPalette}
-        title={`Search (${shortcutLabel})`}
+        title={`Scan / Find (${shortcutLabel})`}
         className={cn(
           "flex items-center gap-2 rounded-lg border border-border-soft bg-white text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink",
           compact ? "h-10 w-10 justify-center" : "w-full justify-between px-3 py-2.5"
         )}
-        aria-label={`Search (${shortcutLabel})`}
+        aria-label={`Scan / Find (${shortcutLabel})`}
       >
         <span className="flex items-center gap-2">
-          <Search className="h-4 w-4 shrink-0" />
-          {!compact && <span className="hidden min-[1536px]:inline">Search</span>}
+          <Barcode className="h-4 w-4 shrink-0" />
+          {!compact && <span className="hidden min-[1536px]:inline">Scan / Find</span>}
         </span>
         {!compact && (
           <span className="hidden rounded-md border border-border-soft px-1.5 py-0.5 text-[11px] text-ink-faint 2xl:inline-flex">
@@ -217,7 +290,7 @@ export function GlobalSearchButton({
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Global search"
+            aria-label="Quick scan and find"
             className="relative flex max-h-[min(680px,calc(100vh-96px))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-xl"
           >
             <div className="flex items-center gap-3 border-b border-border-soft px-4 py-3">
@@ -225,9 +298,12 @@ export function GlobalSearchButton({
               <input
                 ref={inputRef}
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setEntryError("");
+                }}
                 onKeyDown={handleInputKeyDown}
-                placeholder="Search customers, orders, job cards, or staff..."
+                placeholder="Scan or enter order, job card, slip, customer or phone..."
                 className="h-9 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
               />
               {isLoading && <Loader2 className="h-4 w-4 animate-spin text-ink-faint" />}
@@ -242,9 +318,10 @@ export function GlobalSearchButton({
             </div>
 
             <div className="min-h-[180px] overflow-y-auto py-2">
+              {entryError && <p className="px-4 pt-3 text-sm font-medium text-red-700">{entryError}</p>}
               {query.trim().length < MIN_QUERY_LENGTH ? (
                 <p className="px-4 py-8 text-center text-sm text-ink-muted">
-                  Type at least 2 characters to search.
+                  Scan a code, enter an order/job-card number, or type at least 2 characters to search.
                 </p>
               ) : isLoading && flatResults.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-ink-muted">

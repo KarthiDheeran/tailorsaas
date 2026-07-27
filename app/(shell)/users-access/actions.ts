@@ -57,6 +57,7 @@ export async function createUserAction(input: {
     email: input.email.trim(),
     password: input.tempPassword,
     email_confirm: true,
+    app_metadata: { must_change_password: true },
   });
   if (createError || !created.user) {
     return { success: false, error: createError?.message ?? "Could not create user." };
@@ -135,6 +136,7 @@ export async function resetUserPasswordAction(input: {
   const admin = createAdminClient();
   const { error: pwError } = await admin.auth.admin.updateUserById(input.userId, {
     password: input.tempPassword,
+    app_metadata: { must_change_password: true },
   });
   if (pwError) return { success: false, error: pwError.message };
 

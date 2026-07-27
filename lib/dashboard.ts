@@ -5,16 +5,13 @@ import {
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
 import {
-  getInventoryItems,
-  isMissingInventorySchemaError,
-} from "@/lib/data/inventory-db";
-import {
   getJobCards,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import { getAllOrders } from "@/lib/data/orders-db";
 import { formatCurrency } from "@/lib/currency";
 import { isActiveOrder, isReceivableOrder } from "@/lib/order-finance";
+import type { ProductionQueueStage } from "@/components/dashboard/production-queue";
 
 // Phase 6E: real, Supabase-backed selector over Order data — the customer
 // names/phones the leaf components (todays-deliveries.tsx etc.) show come
@@ -51,8 +48,8 @@ export interface DashboardData {
   stats: DashboardStat[];
   todaysDeliveries: Order[];
   overdueOrders: (Order & { daysLate: number })[];
-  trialQueue: Order[];
   paymentPending: Order[];
+  productionQueue: ProductionQueueStage[];
 }
 
 export async function getDashboardData(
@@ -62,7 +59,6 @@ export async function getDashboardData(
   const allOrders = await getAllOrders(supabase);
   const activeOrders = allOrders.filter(isActiveOrder);
   const yesterdayIso = addDays(todayIso, -1);
-  const trialWindowEndIso = addDays(todayIso, 7);
 
   const ordersToday = activeOrders.filter((o) => o.orderDate === todayIso);
   const ordersYesterday = activeOrders.filter(
@@ -81,12 +77,6 @@ export async function getDashboardData(
     .map((o) => ({ ...o, daysLate: daysBetween(o.deliveryDate, todayIso) }))
     .sort((a, b) => b.daysLate - a.daysLate);
 
-  const allPendingTrials = activeOrders.filter((o) => o.trialDate >= todayIso);
-  const trialsToday = allPendingTrials.filter((o) => o.trialDate === todayIso);
-  const trialQueue = allPendingTrials
-    .filter((o) => o.trialDate <= trialWindowEndIso)
-    .sort((a, b) => (a.trialDate < b.trialDate ? -1 : 1));
-
   const paymentPending = activeOrders
     .filter(isReceivableOrder)
     .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
@@ -104,9 +94,8 @@ export async function getDashboardData(
     ordersToday.reduce((sum, o) => sum + o.advancePaid, 0) +
     todaysDeliveries.reduce((sum, o) => sum + o.balance, 0);
 
-  const [jobCardStats, inventoryStats, expenseStats] = await Promise.all([
+  const [jobCardStats, expenseStats] = await Promise.all([
     getDashboardJobCardStats(supabase, todayIso),
-    getDashboardInventoryStats(supabase),
     getDashboardExpenseStats(supabase, todayIso),
   ]);
 
@@ -141,12 +130,6 @@ export async function getDashboardData(
       tone: overdueOrders.length === 0 ? "default" : "warning",
     },
     {
-      label: "Pending Trials",
-      value: String(allPendingTrials.length),
-      sublabel: `${trialsToday.length} today`,
-      tone: "default",
-    },
-    {
       label: "Outstanding Balance",
       value: formatCurrency(outstandingBalanceTotal),
       sublabel: `From ${paymentPending.length} orders`,
@@ -177,17 +160,6 @@ export async function getDashboardData(
     );
   }
 
-  if (inventoryStats) {
-    stats.push(
-      {
-        label: "Low Stock Items",
-        value: String(inventoryStats.lowStock),
-        sublabel: "Reorder needed",
-        tone: inventoryStats.lowStock > 0 ? "warning" : "default",
-      }
-    );
-  }
-
   if (expenseStats) {
     stats.push({
       label: "Expenses Today",
@@ -201,42 +173,41 @@ export async function getDashboardData(
     stats,
     todaysDeliveries,
     overdueOrders,
-    trialQueue,
     paymentPending,
+    productionQueue: jobCardStats?.productionQueue ?? [],
   };
 }
 
 async function getDashboardJobCardStats(
   supabase: SupabaseClient,
   todayIso: string
-): Promise<{ unassigned: number; delayed: number } | null> {
+): Promise<{ unassigned: number; delayed: number; productionQueue: ProductionQueueStage[] } | null> {
   try {
     const cards = await getJobCards(supabase, todayIso);
     const active = cards.filter(
       (card) => card.stage !== "Cancelled" && card.stage !== "Delivered"
     );
+    const pendingByStage = new Map<string, ProductionQueueStage>();
+    for (const card of active) {
+      if (card.stage === "Ready") continue;
+      const current = pendingByStage.get(card.stage) ?? {
+        stage: card.stage,
+        count: 0,
+        delayedCount: 0,
+      };
+      current.count += 1;
+      if (card.isDelayed) current.delayedCount += 1;
+      pendingByStage.set(card.stage, current);
+    }
     return {
       unassigned: active.filter((card) => card.stage === "Unassigned").length,
       delayed: active.filter((card) => card.isDelayed).length,
+      productionQueue: Array.from(pendingByStage.values()).sort(
+        (a, b) => b.count - a.count || a.stage.localeCompare(b.stage)
+      ),
     };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return null;
-    throw error;
-  }
-}
-
-async function getDashboardInventoryStats(
-  supabase: SupabaseClient
-): Promise<{ lowStock: number } | null> {
-  try {
-    const items = await getInventoryItems(supabase);
-    return {
-      lowStock: items.filter(
-        (item) => item.active && item.quantityOnHand <= item.reorderLevel
-      ).length,
-    };
-  } catch (error) {
-    if (isMissingInventorySchemaError(error)) return null;
     throw error;
   }
 }

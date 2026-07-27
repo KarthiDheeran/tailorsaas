@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Power, Inbox } from "lucide-react";
+import { CircleCheck, Pencil, Power, Inbox } from "lucide-react";
 import type { CatalogWorkStage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
@@ -9,11 +9,13 @@ export function WorkStageTable({
   canManage,
   onEdit,
   onToggleActive,
+  onSetFinal,
 }: {
   stages: CatalogWorkStage[];
   canManage: boolean;
   onEdit: (stage: CatalogWorkStage) => void;
   onToggleActive: (stage: CatalogWorkStage) => void;
+  onSetFinal: (stage: CatalogWorkStage) => void;
 }) {
   if (stages.length === 0) {
     return (
@@ -32,6 +34,7 @@ export function WorkStageTable({
             <th className="whitespace-nowrap px-5 py-3">Stage</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">Order</th>
             <th className="whitespace-nowrap px-5 py-3">Status</th>
+            <th className="whitespace-nowrap px-5 py-3">Ready rule</th>
             {canManage && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
           </tr>
         </thead>
@@ -53,6 +56,16 @@ export function WorkStageTable({
                 >
                   {stage.isActive ? "Active" : "Inactive"}
                 </span>
+              </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                {stage.isFinalStage ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                    <CircleCheck className="h-3.5 w-3.5" />
+                    Makes job Ready
+                  </span>
+                ) : (
+                  <span className="text-xs text-ink-muted">Continue to next stage</span>
+                )}
               </td>
               {canManage && (
                 <td className="whitespace-nowrap px-5 py-3">
@@ -76,6 +89,16 @@ export function WorkStageTable({
                     >
                       <Power className="h-3.5 w-3.5" />
                     </button>
+                    {!stage.isFinalStage && stage.isActive && (
+                      <button
+                        type="button"
+                        title="Set as final production stage"
+                        onClick={() => onSetFinal(stage)}
+                        className="flex h-8 items-center rounded-lg border border-primary px-2 text-xs font-semibold text-primary hover:bg-primary-tint"
+                      >
+                        Set final
+                      </button>
+                    )}
                   </div>
                 </td>
               )}

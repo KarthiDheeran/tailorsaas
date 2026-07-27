@@ -30,17 +30,17 @@ export function PaymentsTabs({
   );
 
   return (
-    <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
+    <div className="mb-4 flex items-center gap-1 border-b border-border-soft">
       {tabs.map((tab) => (
         <button
           key={tab.key}
           type="button"
           onClick={() => onChange(tab.key)}
           className={cn(
-            "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+            "-mb-px border-b-2 px-4 py-2.5 text-[15px] font-semibold transition-colors",
             active === tab.key
               ? "border-primary text-primary"
-              : "border-transparent text-ink-muted hover:text-ink"
+              : "border-transparent text-[#475569] hover:text-ink"
           )}
         >
           {t(tab.labelKey)}

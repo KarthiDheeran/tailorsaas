@@ -321,18 +321,25 @@ export function OrderAttachmentDraftCard({
           ? ""
           : cn(
               "rounded-xl border border-border-soft bg-white shadow-soft",
-              inlineSummary ? "flex h-full flex-col justify-center p-3.5" : "p-3"
+              inlineSummary
+                ? "flex h-full flex-col rounded-2xl border-[#DCE5EA] p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:min-h-[96px] lg:p-4"
+                : "p-3"
             )
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className={cn("font-semibold text-ink", inlineSummary ? "text-[15px]" : "text-[13px]")}>
-            {inlineSummary
-              ? `Attachments - ${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}`
-              : `Photos - ${attachmentCount}`}
-          </span>
-          {summaryAttachments.length > 0 && (
+          {inlineSummary && (
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+              <FileUp className="h-5 w-5" aria-hidden="true" />
+            </span>
+          )}
+          <div className="min-w-0">
+            <span className={cn("font-semibold text-ink", inlineSummary ? "whitespace-nowrap text-[20px] font-bold tracking-tight text-[#111827]" : "text-[13px]")}>
+              {inlineSummary ? "Attachments" : `Photos - ${attachmentCount}`}
+            </span>
+          </div>
+          {!inlineSummary && summaryAttachments.length > 0 && (
             <div className="flex min-w-0 items-center">
               {summaryAttachments.slice(0, 3).map((attachment, index) => (
                 <button
@@ -371,9 +378,15 @@ export function OrderAttachmentDraftCard({
           <button
             type="button"
             onClick={() => setManagerOpen(true)}
-            className="h-8 shrink-0 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+            className={cn(
+              "shrink-0 border bg-white font-semibold transition-colors",
+              inlineSummary
+                ? "inline-flex h-[42px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-[#0F766E] px-4 text-sm text-[#0F766E] hover:bg-[#ECFDF5] focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/30"
+                : "h-8 rounded-md border-border px-2.5 text-xs text-ink hover:bg-surface"
+            )}
           >
-            {inlineSummary ? "Manage attachments" : "Manage"}
+            {inlineSummary && <FileUp className="h-4 w-4" aria-hidden="true" />}
+            {inlineSummary ? "Manage Attachments" : "Manage"}
           </button>
         )}
         <label
@@ -397,8 +410,44 @@ export function OrderAttachmentDraftCard({
         </label>
       </div>
 
-      {inlineSummary && attachmentCount === 0 && (
-        <p className="mt-2 text-sm text-ink-muted">No files attached</p>
+      {inlineSummary && (
+        <div className="mt-3 flex min-h-9 w-full flex-wrap items-center gap-2.5">
+          <span className="inline-flex h-[26px] shrink-0 items-center rounded-full border border-slate-200 bg-[#F8FAFC] px-2.5 text-[13px] font-semibold text-[#64748B]">
+            {attachmentCount} {attachmentCount === 1 ? "file" : "files"}
+          </span>
+          {summaryAttachments.length > 0 ? (
+            <div className="flex min-w-0 items-center">
+              {summaryAttachments.slice(0, 3).map((attachment, index) => (
+                <button
+                  key={attachment.id}
+                  type="button"
+                  onClick={attachment.onPreview}
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border-soft bg-surface",
+                    index > 0 && "-ml-2"
+                  )}
+                  title={attachment.name}
+                >
+                  {attachment.image && attachment.previewUrl ? (
+                    <Image src={attachment.previewUrl} alt={attachment.name} width={36} height={36} unoptimized className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-4 w-4 text-ink-faint" />
+                  )}
+                </button>
+              ))}
+              {summaryAttachments.length > 3 && (
+                <span className="-ml-2 flex h-9 w-9 items-center justify-center rounded-lg border border-border-soft bg-white text-[11px] font-semibold text-ink-muted">
+                  +{summaryAttachments.length - 3}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 text-[15px] font-semibold text-[#334155]">
+              <FileUp className="h-4 w-4 shrink-0 text-[#0F766E]" aria-hidden="true" />
+              <span>No attachments added</span>
+            </div>
+          )}
+        </div>
       )}
 
       {error && (

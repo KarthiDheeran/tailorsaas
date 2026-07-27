@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { markPasswordChangedAction } from "@/app/auth/actions";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -48,7 +49,12 @@ export function SetNewPasswordForm({
       setError(updateError.message);
       return;
     }
-    await supabase.rpc("mark_password_changed");
+    const markResult = await markPasswordChangedAction();
+    if (!markResult.success) {
+      setLoading(false);
+      setError(markResult.error ?? "Could not complete the password update.");
+      return;
+    }
     setLoading(false);
     router.push("/");
     router.refresh();

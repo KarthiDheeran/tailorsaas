@@ -378,7 +378,7 @@ function OrdersPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]">
       {showCreatedToast && (
         <div className="fixed right-8 top-6 z-50 flex items-center gap-2 rounded-lg border border-border-soft bg-white px-4 py-3 shadow-soft">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
@@ -395,10 +395,10 @@ function OrdersPageContent() {
           </button>
         </div>
       )}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-primary-tint via-white to-sky-50 px-5 py-4 shadow-soft sm:px-6">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">{t("orders.title")}</h1>
-          <p className="text-sm text-ink-muted">
+          <h1 className="text-[28px] font-bold tracking-tight text-slate-900">{t("orders.title")}</h1>
+          <p className="mt-0.5 text-sm font-medium text-slate-600">
             {t("orders.subtitle")}
           </p>
         </div>

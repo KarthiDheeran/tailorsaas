@@ -22,6 +22,7 @@ import {
   getGarmentTypesAction,
   getWorkStagesAction,
   setAddOnActiveAction,
+  setFinalWorkStageAction,
   setGarmentTypeActiveAction,
   setWorkStageActiveAction,
   updateAddOnAction,
@@ -162,6 +163,15 @@ function CatalogPageContent() {
     setRefreshKey((k) => k + 1);
   }
 
+  async function handleSetFinalWorkStage(stage: CatalogWorkStage) {
+    const result = await setFinalWorkStageAction(stage.id);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
   async function handleToggleAddOnActive(addOn: CatalogAddOn) {
     const result = await setAddOnActiveAction(addOn.id, !addOn.isActive);
     if (!result.success) {
@@ -253,6 +263,7 @@ function CatalogPageContent() {
           canManage={canManage}
           onEdit={setEditingWorkStage}
           onToggleActive={handleToggleWorkStageActive}
+          onSetFinal={handleSetFinalWorkStage}
         />
       )}
 

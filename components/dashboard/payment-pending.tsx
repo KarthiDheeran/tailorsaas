@@ -37,9 +37,9 @@ export function PaymentPending({ orders }: { orders: Order[] }) {
               return (
                 <li
                   key={order.id}
-                  className="flex items-center justify-between gap-3 px-5 py-3"
+                  className="flex flex-col gap-2.5 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[13px]">
                       <Link
                         href={`/orders?view=${order.id}`}
@@ -47,17 +47,17 @@ export function PaymentPending({ orders }: { orders: Order[] }) {
                       >
                         {order.orderNumber}
                       </Link>
-                      <span className="truncate text-ink">
+                      <span className="truncate text-ink" title={customer?.name ?? "Unknown"}>
                         {customer?.name ?? "Unknown"}
                       </span>
                     </div>
-                    <div className="text-xs text-ink-muted">
+                    <div className="truncate text-xs text-ink-muted" title={`Due since ${formatDate(order.deliveryDate)}`}>
                       Due since {formatDate(order.deliveryDate)} - Paid{" "}
                       {formatCurrency(order.advancePaid)} of{" "}
                       {formatCurrency(order.totalAmount)}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
+                  <div className="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
                     <span className="rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
                       {formatCurrency(order.balance)}
                     </span>
@@ -80,7 +80,7 @@ export function PaymentPending({ orders }: { orders: Order[] }) {
                 ? `${remainingCount} more pending`
                 : "Showing all pending payments"}
             </span>
-            <Link href="/payments" className="font-semibold text-primary hover:underline">
+            <Link href="/payments" className="rounded font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               View all
             </Link>
           </div>

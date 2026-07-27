@@ -33,8 +33,8 @@ export function OverdueOrdersList({
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="text-[13px] font-semibold text-ink-muted">
+            <table className="min-w-[820px] w-full text-left">
+              <thead className="bg-surface/70 text-[13px] font-semibold text-ink-muted">
                 <tr className="border-b border-border-soft">
                   <th className="whitespace-nowrap px-5 py-2.5">Order No</th>
                   <th className="whitespace-nowrap px-5 py-2.5">Customer</th>
@@ -57,18 +57,18 @@ export function OverdueOrdersList({
                   return (
                     <tr
                       key={order.id}
-                      className="border-t border-border-soft hover:bg-surface"
+                      className="border-t border-border-soft transition-colors hover:bg-surface"
                     >
                       <td className="whitespace-nowrap px-5 py-3">
                         <Link
                           href={`/orders?view=${order.id}`}
-                          className="font-semibold text-primary hover:underline"
+                          className="rounded font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           {order.orderNumber}
                         </Link>
                       </td>
                       <td className="whitespace-nowrap px-5 py-3">
-                        <div className="text-ink">
+                        <div className="max-w-[150px] truncate text-ink" title={customer?.name ?? "Unknown"}>
                           {customer?.name ?? "Unknown"}
                         </div>
                         {customer && (
@@ -85,8 +85,8 @@ export function OverdueOrdersList({
                           {order.daysLate}d late
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-ink-muted">
-                        {itemsSummary}
+                      <td className="max-w-[250px] px-5 py-3 text-ink-muted">
+                        <span className="block truncate" title={itemsSummary}>{itemsSummary}</span>
                       </td>
                       <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
                         {formatCurrency(order.balance)}
@@ -103,7 +103,7 @@ export function OverdueOrdersList({
                 ? `${remainingCount} more overdue`
                 : "Showing all overdue orders"}
             </span>
-            <Link href="/orders" className="font-semibold text-primary hover:underline">
+            <Link href="/orders" className="rounded font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               View all
             </Link>
           </div>

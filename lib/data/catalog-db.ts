@@ -25,7 +25,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 const ADDON_COLUMNS = "id, name, default_price, worker_stage_rates, is_active";
-const WORK_STAGE_COLUMNS = "id, name, stage_key, display_order, is_active";
+const WORK_STAGE_COLUMNS =
+  "id, name, stage_key, display_order, is_active, is_final_stage";
+const LEGACY_WORK_STAGE_COLUMNS = "id, name, stage_key, display_order, is_active";
 
 interface AddOnRow {
   id: string;
@@ -51,6 +53,7 @@ interface WorkStageRow {
   stage_key: string;
   display_order: number;
   is_active: boolean;
+  is_final_stage: boolean;
 }
 
 function normalizeStageKey(name: string) {
@@ -64,7 +67,17 @@ function mapWorkStage(row: WorkStageRow): CatalogWorkStage {
     stageKey: row.stage_key,
     displayOrder: Number(row.display_order),
     isActive: row.is_active,
+    isFinalStage: row.is_final_stage,
   };
+}
+
+function mapLegacyWorkStage(row: Omit<WorkStageRow, "is_final_stage">): CatalogWorkStage {
+  return mapWorkStage({
+    ...row,
+    // Compatibility while the new migration is being applied. This matches
+    // the production behavior that existed before final-stage configuration.
+    is_final_stage: row.stage_key === "Ironing/Packing",
+  });
 }
 
 function isMissingWorkStagesSchemaError(error: unknown): boolean {
@@ -72,6 +85,11 @@ function isMissingWorkStagesSchemaError(error: unknown): boolean {
   const code = candidate.code ?? "";
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
   return code === "42P01" || code === "PGRST205" || message.includes("catalog_work_stages");
+}
+
+function isMissingFinalStageColumnError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string };
+  return candidate.code === "42703" || String(candidate.message ?? "").includes("is_final_stage");
 }
 
 export async function getAllWorkStages(supabase: SupabaseClient): Promise<CatalogWorkStage[]> {
@@ -82,6 +100,17 @@ export async function getAllWorkStages(supabase: SupabaseClient): Promise<Catalo
     .order("name");
   if (error) {
     if (isMissingWorkStagesSchemaError(error)) return DEFAULT_WORK_STAGES;
+    if (isMissingFinalStageColumnError(error)) {
+      const { data: legacyRows, error: legacyError } = await supabase
+        .from("catalog_work_stages")
+        .select(LEGACY_WORK_STAGE_COLUMNS)
+        .order("display_order", { ascending: true })
+        .order("name");
+      if (legacyError) throw legacyError;
+      return ((legacyRows as Omit<WorkStageRow, "is_final_stage">[]) ?? []).map(
+        mapLegacyWorkStage
+      );
+    }
     throw error;
   }
   return ((data as WorkStageRow[]) ?? []).map(mapWorkStage);
@@ -103,11 +132,53 @@ export async function createWorkStage(
       stage_key: normalizeStageKey(data.name),
       display_order: data.displayOrder,
       is_active: data.isActive,
+      is_final_stage: false,
     })
     .select(WORK_STAGE_COLUMNS)
     .single();
   if (error) throw error;
   return mapWorkStage(row as WorkStageRow);
+}
+
+export async function setFinalWorkStage(
+  supabase: SupabaseClient,
+  id: string
+): Promise<CatalogWorkStage | undefined> {
+  const { data: stage, error: stageError } = await supabase
+    .from("catalog_work_stages")
+    .select(WORK_STAGE_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (stageError) throw stageError;
+  if (!stage) return undefined;
+  if (!(stage as WorkStageRow).is_active) {
+    throw new Error("Only an active work stage can be the final production stage.");
+  }
+  if ((stage as WorkStageRow).stage_key === "Delivery") {
+    throw new Error("Delivery cannot be the final production stage. Choose the last workshop stage.");
+  }
+
+  const { error: clearError } = await supabase
+    .from("catalog_work_stages")
+    .update({ is_final_stage: false, updated_at: new Date().toISOString() })
+    .neq("id", id);
+  if (clearError) throw clearError;
+
+  const { data: updated, error: updateError } = await supabase
+    .from("catalog_work_stages")
+    .update({ is_final_stage: true, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(WORK_STAGE_COLUMNS)
+    .maybeSingle();
+  if (updateError) throw updateError;
+  return updated ? mapWorkStage(updated as WorkStageRow) : undefined;
+}
+
+export async function getFinalWorkStage(
+  supabase: SupabaseClient
+): Promise<CatalogWorkStage | undefined> {
+  const stages = await getActiveWorkStages(supabase);
+  return stages.find((stage) => stage.isFinalStage);
 }
 
 export async function updateWorkStage(

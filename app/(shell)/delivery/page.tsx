@@ -216,6 +216,7 @@ function DeliveryDeskContent() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              autoFocus
               placeholder="Search order, customer, phone, area, or garment"
               className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
             />

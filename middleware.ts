@@ -9,8 +9,16 @@ import { updateSession } from "@/lib/supabase/middleware";
 const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password"];
 
 export async function middleware(request: NextRequest) {
-  const { response, supabase, user } = await updateSession(request);
+  const diagnostics = process.env.PERFORMANCE_DIAGNOSTICS === "true";
   const path = request.nextUrl.pathname;
+  if (diagnostics) {
+    request.headers.set("x-performance-request-id", crypto.randomUUID());
+    request.headers.set("x-performance-route", path);
+  }
+  const startedAt = performance.now();
+  const authStartedAt = performance.now();
+  const { response, supabase, user } = await updateSession(request);
+  const authMs = performance.now() - authStartedAt;
 
   // Route Handlers under /auth/** (e.g. /auth/confirm) manage their own
   // session exchange from an emailed link — never gate them here.
@@ -37,18 +45,38 @@ export async function middleware(request: NextRequest) {
   // Forced first-login password change, per Phase 2 scope. Skipped on
   // /change-password itself and /reset-password (both are how you satisfy
   // this check in the first place).
+  let profileMs = 0;
   if (path !== "/change-password" && path !== "/reset-password") {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("must_change_password")
-      .eq("id", user.id)
-      .single();
+    const metadataFlag = user.app_metadata?.must_change_password;
+    let mustChangePassword = metadataFlag === true;
+    if (metadataFlag !== true && metadataFlag !== false) {
+      const profileStartedAt = performance.now();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("must_change_password")
+        .eq("id", user.id)
+        .single();
+      profileMs = performance.now() - profileStartedAt;
+      mustChangePassword = profile?.must_change_password === true;
+    }
 
-    if (profile?.must_change_password) {
+    if (mustChangePassword) {
       const url = request.nextUrl.clone();
       url.pathname = "/change-password";
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      if (diagnostics) {
+        const totalMs = performance.now() - startedAt;
+        redirectResponse.headers.set("Server-Timing", `auth;dur=${authMs.toFixed(1)}, profile;dur=${profileMs.toFixed(1)}, middleware;dur=${totalMs.toFixed(1)}`);
+        console.info(`[MIDDLEWARE PERF] path=${path} authMs=${authMs.toFixed(1)} profileMs=${profileMs.toFixed(1)} totalMs=${totalMs.toFixed(1)} redirected=true`);
+      }
+      return redirectResponse;
     }
+  }
+
+  if (diagnostics) {
+    const totalMs = performance.now() - startedAt;
+    response.headers.set("Server-Timing", `auth;dur=${authMs.toFixed(1)}, profile;dur=${profileMs.toFixed(1)}, middleware;dur=${totalMs.toFixed(1)}`);
+    console.info(`[MIDDLEWARE PERF] path=${path} authMs=${authMs.toFixed(1)} profileMs=${profileMs.toFixed(1)} totalMs=${totalMs.toFixed(1)} redirected=false`);
   }
 
   return response;
@@ -56,6 +84,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|sw.js|offline.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js|map|ico|woff|woff2|ttf|otf)$).*)",
   ],
 };

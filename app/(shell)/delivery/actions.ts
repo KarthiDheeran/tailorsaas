@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { getCustomers } from "@/lib/data/customers-db";
 import { getAllOrders, getOrderById, updateOrderStatus } from "@/lib/data/orders-db";
@@ -37,13 +38,14 @@ function sortDeliveryDeskOrders(a: Order, b: Order): number {
 export async function getDeliveryDeskOrdersAction(
   todayIso: string
 ): Promise<DeliveryDeskOrder[]> {
+  return withPerformanceContext("getDeliveryDeskOrdersAction", async () => {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
 
   const [orders, customers] = await Promise.all([
-    getAllOrders(supabase),
-    getCustomers(supabase),
+    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)),
+    profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(supabase)),
   ]);
   const customerById = new Map(customers.map((customer) => [customer.id, customer]));
 
@@ -54,6 +56,7 @@ export async function getDeliveryDeskOrdersAction(
       order,
       customer: customerById.get(order.customerId),
     }));
+  });
 }
 
 export async function markOrderDeliveredAction(

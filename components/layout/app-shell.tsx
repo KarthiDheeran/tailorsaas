@@ -5,6 +5,7 @@ import { OrderScanProvider } from "@/components/layout/order-scan";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useGlobalNewOrderShortcut } from "@/hooks/use-global-new-order-shortcut";
+import { useGlobalNavigationShortcuts } from "@/hooks/use-global-navigation-shortcuts";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   // Phase 3: the session/profile/role fetch is async now (a real Supabase
@@ -14,6 +15,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // so this only affects the logged-in app shell.
   const { isLoading, hasPermission } = useCurrentUser();
   useGlobalNewOrderShortcut(!isLoading && hasPermission("orders.create"));
+  useGlobalNavigationShortcuts([
+    { key: "h", href: "/dashboard", enabled: !isLoading && hasPermission("dashboard.view") },
+    { key: "o", href: "/orders", enabled: !isLoading && hasPermission("orders.view") },
+    {
+      key: "j",
+      href: "/job-cards/tally",
+      enabled: !isLoading && (hasPermission("orders.view") || hasPermission("staff.view")),
+    },
+    { key: "d", href: "/delivery", enabled: !isLoading && hasPermission("orders.view") },
+    { key: "c", href: "/customers", enabled: !isLoading && hasPermission("customers.view") },
+    {
+      key: "f",
+      href: "/payments",
+      enabled: !isLoading && (hasPermission("orders.viewPayments") || hasPermission("expenses.view")),
+    },
+    { key: "i", href: "/inventory", enabled: !isLoading && hasPermission("inventory.view") },
+    { key: "w", href: "/staff", enabled: !isLoading && hasPermission("staff.view") },
+    { key: "r", href: "/reports", enabled: !isLoading && hasPermission("reports.view") },
+    {
+      key: "m",
+      href: "/communications",
+      enabled:
+        !isLoading &&
+        (hasPermission("calendar.view") || hasPermission("orders.view") || hasPermission("customers.view")),
+    },
+    { key: "g", href: "/settings", enabled: !isLoading && hasPermission("settings.view") },
+  ]);
   const canScanOrders = !isLoading && hasPermission("orders.view");
 
   if (isLoading) {
@@ -27,11 +55,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-transparent">
       <MobileNav />
       <DesktopTopNav />
       <OrderScanProvider enabled={canScanOrders} />
-      <main className="min-w-0 bg-surface">{children}</main>
+      <main className="min-w-0">{children}</main>
     </div>
   );
 }

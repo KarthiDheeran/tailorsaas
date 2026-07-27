@@ -316,7 +316,7 @@ export function OrdersTable({
   return (
     <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
       <table className="w-full text-left">
-        <thead className="text-[13px] font-semibold text-ink-muted">
+        <thead className="bg-slate-50/80 text-[13px] font-bold text-slate-700">
           <tr className="border-b border-border-soft">
             <th className="whitespace-nowrap px-5 py-3">{t("orders.orderNo")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
@@ -371,7 +371,7 @@ export function OrdersTable({
               <tr
                 key={order.id}
                 onClick={() => onRowClick?.(order)}
-                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-surface"
+                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-emerald-50/50"
               >
                 <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                   {order.orderNumber}
@@ -381,7 +381,7 @@ export function OrdersTable({
                     <Link
                       href={`/customers/${order.customerId}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="text-ink hover:text-primary hover:underline"
+                      className="font-medium text-slate-800 hover:text-primary hover:underline"
                     >
                       {customer.name}
                     </Link>
@@ -389,16 +389,16 @@ export function OrdersTable({
                     <div className="text-ink">{t("common.unknown")}</div>
                   )}
                   {customer && (
-                    <div className="text-xs text-ink-muted">{customer.phone}</div>
+                    <div className="text-xs font-medium text-slate-500">{customer.phone}</div>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-600">
                   {formatDate(order.orderDate)}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-600">
                   {formatDate(order.deliveryDate)}
                 </td>
-                <td className="px-5 py-3 text-ink-muted">{itemsSummary}</td>
+                <td className="px-5 py-3 font-medium text-slate-700">{itemsSummary}</td>
                 <td className="whitespace-nowrap px-5 py-3">
                   {editableStatus && onStatusChange ? (
                     <OrderStatusEditor
@@ -411,7 +411,7 @@ export function OrdersTable({
                 </td>
                 {canViewPayments && (
                   <>
-                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
+                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-slate-900">
                       {formatCurrency(order.totalAmount)}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-right">

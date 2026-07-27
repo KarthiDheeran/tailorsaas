@@ -155,6 +155,48 @@ export async function getJobCards(
   );
 }
 
+/**
+ * A printed stage slip is tied to one physical job-card unit.  Keeping this
+ * input here (rather than in the UI) makes the tally workflow use the same
+ * stage and payroll rules as the normal job-card controls.
+ */
+export interface JobCardStageSlipAssignmentInput {
+  orderId: string;
+  orderItemSerialNo: number;
+  unitNo: number;
+  taskType: TaskType;
+  staffId: string;
+  wageRate: number;
+  wageAmount: number;
+  notes?: string;
+}
+
+export interface JobCardStageSlipCompletionInput {
+  orderId: string;
+  orderItemSerialNo: number;
+  unitNo: number;
+  taskType: TaskType;
+  staffId: string;
+  wageRate: number;
+  wageAmount: number;
+  isFinalStage: boolean;
+}
+
+export interface JobCardStageSlipCompletionResult {
+  jobCardId: string;
+  orderId: string;
+  fromStage: JobCardStage;
+  toStage: JobCardStage;
+  alreadyCompleted: boolean;
+}
+
+export interface JobCardTransferResult {
+  orderId: string;
+  previousStaffId: string;
+  newStaffId: string;
+  currentStage: JobCardStage;
+}
+
 export async function syncJobCardsForOrder(
   supabase: SupabaseClient,
   orderId: string
@@ -304,6 +346,155 @@ export async function assignJobCard(
     error = retry.error;
   }
   if (error) throw error;
+}
+
+/**
+ * Assign the exact unit represented by a printed stage slip.  A card may be
+ * printed only while it is waiting for its next production stage, which
+ * prevents a scan from paying or advancing the wrong stage.
+ */
+export async function assignJobCardForStageSlip(
+  supabase: SupabaseClient,
+  input: JobCardStageSlipAssignmentInput
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("id, order_status, current_stage, assigned_staff_id, cancelled")
+    .eq("order_id", input.orderId)
+    .eq("order_item_serial_no", input.orderItemSerialNo)
+    .eq("unit_no", input.unitNo)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job card not found for this garment unit.");
+
+  const row = data as {
+    id: string;
+    order_status: OrderStatus;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(row);
+  const requestedStage = taskTypeToStage(input.taskType);
+  const isReplacementPrint =
+    row.current_stage === requestedStage && row.assigned_staff_id === input.staffId;
+  if (row.current_stage !== "Unassigned" && !isReplacementPrint) {
+    throw new Error(
+      `Complete the current ${row.current_stage} stage before printing the next stage card.`
+    );
+  }
+
+  const stage = requestedStage;
+  const { error: updateError } = await supabase
+    .from("job_cards")
+    .update({
+      current_stage: stage,
+      assigned_staff_id: input.staffId,
+      wage_rate: input.wageRate,
+      wage_amount: input.wageAmount,
+      notes: input.notes?.trim() || null,
+      started_date: new Date().toISOString().slice(0, 10),
+      completed_date: null,
+      cancelled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id);
+  if (updateError) throw updateError;
+  return row.id;
+}
+
+/**
+ * Transfers an unfinished production stage to another tailor. Payroll is not
+ * created here; the new tailor earns only after their replacement slip is
+ * scanned in Tally.
+ */
+export async function transferJobCard(
+  supabase: SupabaseClient,
+  id: string,
+  newStaffId: string
+): Promise<JobCardTransferResult> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("order_id, order_status, current_stage, assigned_staff_id, cancelled")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job card not found.");
+
+  const row = data as {
+    order_id: string;
+    order_status: OrderStatus;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(row);
+  if (row.current_stage === "Unassigned" || row.current_stage === "Ready") {
+    throw new Error("Only an active, unfinished production stage can be transferred.");
+  }
+  if (!row.assigned_staff_id) throw new Error("This job card has no assigned tailor to transfer.");
+  if (row.assigned_staff_id === newStaffId) {
+    throw new Error("Choose a different tailor for the transfer.");
+  }
+
+  const { data: newStaff, error: staffError } = await supabase
+    .from("staff")
+    .select("id, status")
+    .eq("id", newStaffId)
+    .maybeSingle();
+  if (staffError) throw staffError;
+  if (!newStaff || (newStaff as { status: string }).status !== "Active") {
+    throw new Error("The new tailor must be an active staff member.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("job_cards")
+    .update({ assigned_staff_id: newStaffId, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("assigned_staff_id", row.assigned_staff_id);
+  if (updateError) throw updateError;
+
+  return {
+    orderId: row.order_id,
+    previousStaffId: row.assigned_staff_id,
+    newStaffId,
+    currentStage: row.current_stage,
+  };
+}
+
+/** Checks that a physical garment unit is ready to receive its next printed stage card. */
+export async function assertJobCardAvailableForStageSlip(
+  supabase: SupabaseClient,
+  input: Pick<
+    JobCardStageSlipAssignmentInput,
+    "orderId" | "orderItemSerialNo" | "unitNo" | "taskType" | "staffId"
+  >
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("order_status, current_stage, assigned_staff_id, cancelled")
+    .eq("order_id", input.orderId)
+    .eq("order_item_serial_no", input.orderItemSerialNo)
+    .eq("unit_no", input.unitNo)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job card not found for this garment unit.");
+
+  const row = data as {
+    order_status: OrderStatus;
+    current_stage: JobCardStage;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+  };
+  assertJobCardEditable(row);
+  const isReplacementPrint =
+    row.current_stage === taskTypeToStage(input.taskType) &&
+    row.assigned_staff_id === input.staffId;
+  if (row.current_stage !== "Unassigned" && !isReplacementPrint) {
+    throw new Error(
+      `Complete the current ${row.current_stage} stage before printing the next stage card.`
+    );
+  }
 }
 
 export async function getJobCardAssignedStaffId(
@@ -468,6 +659,106 @@ export async function completeJobCard(
     .eq("id", id);
   if (error) throw error;
   return current.order_id;
+}
+
+/**
+ * Completes a job-card stage from the barcode slip printed for that exact
+ * garment unit.  The slip's payroll snapshot is used so worker add-ons paid
+ * at print time are credited exactly once when the scan succeeds.
+ */
+export async function completeJobCardStageSlip(
+  supabase: SupabaseClient,
+  input: JobCardStageSlipCompletionInput,
+  todayIso: string
+): Promise<JobCardStageSlipCompletionResult> {
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select(
+      "id, current_stage, order_id, order_status, assigned_staff_id, cancelled, job_card_number"
+    )
+    .eq("order_id", input.orderId)
+    .eq("order_item_serial_no", input.orderItemSerialNo)
+    .eq("unit_no", input.unitNo)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job card not found for this scanned slip.");
+
+  const row = data as {
+    id: string;
+    current_stage: JobCardStage;
+    order_id: string;
+    order_status: OrderStatus;
+    assigned_staff_id: string | null;
+    cancelled: boolean;
+    job_card_number: string;
+  };
+  assertJobCardEditable(row);
+
+  const expectedStage = taskTypeToStage(input.taskType);
+  const nextStage: JobCardStage = input.isFinalStage ? "Ready" : "Unassigned";
+  const alreadyAdvanced =
+    row.current_stage === nextStage &&
+    (nextStage === "Ready" || !row.assigned_staff_id);
+
+  // A retry after a network failure can reach this point after the job-card
+  // update succeeded but before the tally mark was saved.  Treat that retry
+  // as recovery, not as a second payroll event.
+  if (row.current_stage !== expectedStage) {
+    if (alreadyAdvanced) {
+      return {
+        jobCardId: row.id,
+        orderId: row.order_id,
+        fromStage: expectedStage,
+        toStage: nextStage,
+        alreadyCompleted: true,
+      };
+    }
+    throw new Error(
+      `This slip is for ${expectedStage}, but the job card is currently ${row.current_stage}.`
+    );
+  }
+  if (!row.assigned_staff_id || row.assigned_staff_id !== input.staffId) {
+    throw new Error("This stage slip does not match the worker assigned to the job card.");
+  }
+
+  await recordStaffWorkEarning(supabase, {
+    staffId: input.staffId,
+    jobCardId: row.id,
+    orderId: row.order_id,
+    jobCardNumber: row.job_card_number,
+    taskType: input.taskType,
+    completedDate: todayIso,
+    wageRate: input.wageRate,
+    wageAmount: input.wageAmount,
+  });
+
+  const isFinalCompletion = input.isFinalStage;
+  const update: Record<string, unknown> = {
+    current_stage: isFinalCompletion ? "Ready" : "Unassigned",
+    updated_at: new Date().toISOString(),
+  };
+  if (isFinalCompletion) {
+    update.completed_date = todayIso;
+  } else {
+    update.assigned_staff_id = null;
+    update.started_date = null;
+    update.completed_date = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from("job_cards")
+    .update(update)
+    .eq("id", row.id)
+    .eq("current_stage", expectedStage);
+  if (updateError) throw updateError;
+
+  return {
+    jobCardId: row.id,
+    orderId: row.order_id,
+    fromStage: expectedStage,
+    toStage: nextStage,
+    alreadyCompleted: false,
+  };
 }
 
 export async function moveJobCardStage(
