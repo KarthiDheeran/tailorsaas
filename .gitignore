@@ -39,6 +39,7 @@ next-env.d.ts
 /analysis-screens/
 /analysis-screens-after/
 /analysis-screens-workflow/
+/performance-reports/
 
 # local dev server logs
 next-dev.err.log
