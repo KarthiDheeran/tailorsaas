@@ -3,13 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  ClipboardList,
   MoreVertical,
   Printer,
-  Scissors,
   Search,
-  Shirt,
   X,
 } from "lucide-react";
 import {
@@ -215,43 +211,6 @@ function measurementEntries(card: JobCard) {
   return { entries, notes };
 }
 
-function SummaryCard({
-  label,
-  value,
-  icon: Icon,
-  tone = "default",
-  onClick,
-}: {
-  label: string;
-  value: number;
-  icon: typeof ClipboardList;
-  tone?: "default" | "warning";
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full rounded-xl border border-border-soft bg-white p-5 text-left shadow-soft transition-colors hover:bg-surface"
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-ink-muted">{label}</p>
-        <div
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg",
-            tone === "warning" ? "bg-chip-red text-chip-red-fg" : "bg-primary-tint text-primary"
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-      <div className={cn("text-[26px] font-semibold", tone === "warning" ? "text-chip-red-fg" : "text-ink")}>
-        {value}
-      </div>
-    </button>
-  );
-}
-
 function JobCardsContent() {
   const { hasPermission } = useCurrentUser();
   const canManageStaff = hasPermission("staff.manage");
@@ -407,9 +366,6 @@ function JobCardsContent() {
   }, [inventoryMovements]);
 
   const activeCount = jobCards.filter(isActiveCard).length;
-  const unassignedCount = jobCards.filter((c) => isActiveCard(c) && displayStage(c) === "Unassigned").length;
-  const delayedCount = jobCards.filter(isDelayedCard).length;
-  const readyCount = jobCards.filter((c) => displayStage(c) === "Ready").length;
   const activeOrderCount = orders.filter(
     (order) => order.status !== "Delivered" && order.status !== "Cancelled"
   ).length;
@@ -511,13 +467,6 @@ function JobCardsContent() {
               </button>
             </div>
           )}
-
-          <div className="mb-6 mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard label="Active Items" value={activeCount} icon={ClipboardList} onClick={() => setFilter("active")} />
-            <SummaryCard label="Not Ready" value={unassignedCount} icon={Scissors} onClick={() => setFilter("Unassigned")} />
-            <SummaryCard label="Delayed" value={delayedCount} icon={AlertTriangle} tone="warning" onClick={() => setFilter("delayed")} />
-            <SummaryCard label="Ready Items" value={readyCount} icon={Shirt} onClick={() => setFilter("Ready")} />
-          </div>
 
           <div className="mb-5 space-y-3">
             <label className="relative block">

@@ -96,20 +96,26 @@ export async function getCustomerById(
 // Matches by name or phone — used by the Orders page's main search box.
 export async function searchCustomers(
   supabase: SupabaseClient,
-  query: string
+  query: string,
+  limit?: number
 ): Promise<Customer[]> {
   const q = query.trim();
   if (!q) return [];
   const phoneQuery = q.replace(/\D/g, "");
-  const filters = [`name.ilike.%${q}%`, `phone.ilike.%${q}%`];
+  const filters = [`name.ilike.${q}%`, `phone.ilike.%${q}%`];
   if (phoneQuery && phoneQuery !== q) {
     filters.push(`phone.ilike.%${phoneQuery}%`);
   }
-  const { data, error } = await supabase
+  const request = supabase
     .from("customers")
     .select(CUSTOMER_COLUMNS)
     .or(filters.join(","))
     .order("name");
+  const resultLimit =
+    typeof limit === "number" && Number.isInteger(limit) && limit > 0
+      ? Math.min(limit, 20)
+      : undefined;
+  const { data, error } = resultLimit ? await request.limit(resultLimit) : await request;
   if (error) throw error;
   return ((data as CustomerRow[]) ?? []).map(mapCustomer);
 }

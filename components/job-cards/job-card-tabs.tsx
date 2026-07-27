@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 type JobCardTab = "cards" | "tally";
 
 const tabs: { label: string; href: string; value: JobCardTab }[] = [
-  { label: "Job Cards", href: "/job-cards", value: "cards" },
   { label: "Tally Scans", href: "/job-cards/tally", value: "tally" },
+  { label: "Job Cards", href: "/job-cards", value: "cards" },
 ];
 
 export function JobCardTabs({ active }: { active: JobCardTab }) {

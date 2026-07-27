@@ -146,11 +146,14 @@ export async function searchCustomersByPhoneAction(query: string): Promise<Custo
 // Matches by name or phone — used by the Orders page's main search box
 // (order-list-filters.tsx), distinct from searchCustomersByPhoneAction's
 // phone-only match used by the New Order flow's Phone field.
-export async function searchCustomersAction(query: string): Promise<Customer[]> {
+export async function searchCustomersAction(
+  query: string,
+  limit?: number
+): Promise<Customer[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.view");
   if (!guard.ok) return [];
-  return searchCustomers(supabase, query);
+  return searchCustomers(supabase, query, limit);
 }
 
 export async function getCustomerByPhoneAction(phone: string): Promise<Customer | undefined> {

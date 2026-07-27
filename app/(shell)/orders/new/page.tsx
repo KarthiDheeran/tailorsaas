@@ -80,6 +80,12 @@ const inputClass =
 
 type CustomerEntryMode = "search" | "selected" | "new";
 
+// Searching is a server round-trip (including auth and permission checks),
+// so do not issue one for every character the operator types.
+const CUSTOMER_SEARCH_DEBOUNCE_MS = 250;
+const CUSTOMER_SEARCH_MIN_LENGTH = 2;
+const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
+
 const emptyCustomerDraft = {
   phone: "",
   name: "",
@@ -241,10 +247,12 @@ function NewOrderPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillCustomerId]);
 
-  // Phone-suggestions autosuggest - only searches once a customer isn't
-  // already matched, same trigger condition as before.
+  // Customer autosuggest is a server-side lookup. Debouncing prevents one
+  // request per keystroke; the cancelled flag prevents an older response from
+  // replacing the latest results when requests finish out of order.
   useEffect(() => {
-    if (customerMode !== "search" || !customerSearchQuery.trim()) {
+    const query = customerSearchQuery.trim();
+    if (customerMode !== "search" || query.length < CUSTOMER_SEARCH_MIN_LENGTH) {
       setCustomerSearchResults([]);
       setActiveCustomerResultIndex(0);
       setCustomerResultsOpen(false);
@@ -255,18 +263,21 @@ function NewOrderPageContent() {
     let cancelled = false;
     setCustomerSearchLoading(true);
     setCustomerSearchCompleted(false);
-    searchCustomersAction(customerSearchQuery).then((results) => {
-      if (cancelled) return;
-      setCustomerSearchResults(results.slice(0, 8));
-      setActiveCustomerResultIndex(0);
-      setCustomerSearchLoading(false);
-      setCustomerSearchCompleted(true);
-      setCustomerResultsOpen(
-        !!customerSearchRef.current?.contains(document.activeElement)
-      );
-    });
+    const timeout = window.setTimeout(() => {
+      searchCustomersAction(query, CUSTOMER_SEARCH_RESULT_LIMIT).then((results) => {
+        if (cancelled) return;
+        setCustomerSearchResults(results);
+        setActiveCustomerResultIndex(0);
+        setCustomerSearchLoading(false);
+        setCustomerSearchCompleted(true);
+        setCustomerResultsOpen(
+          !!customerSearchRef.current?.contains(document.activeElement)
+        );
+      });
+    }, CUSTOMER_SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       setCustomerSearchLoading(false);
     };
   }, [customerMode, customerSearchQuery]);
