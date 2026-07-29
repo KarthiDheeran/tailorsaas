@@ -28,7 +28,7 @@ export interface Customer {
 export interface GarmentMeasurement {
   customerId: string;
   garmentType: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fitNotes?: string;
   notes?: string;
   updatedAt: string;
@@ -46,7 +46,7 @@ export interface GarmentMeasurement {
 // as GarmentMeasurement, which stays a separate, garment-scoped snapshot.
 export interface CustomerMeasurements {
   customerId: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   notes?: string;
   updatedAt: string;
 }
@@ -58,7 +58,7 @@ export interface MeasurementHistoryEntry {
   kind: MeasurementHistoryKind;
   customerId: string;
   garmentType?: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fitNotes?: string;
   notes?: string;
   source: string;
@@ -165,7 +165,8 @@ export interface OrderItem {
   // modal for this item — see New Order's Measurements handling). The
   // customer's own GarmentMeasurement/CustomerMeasurements records remain
   // the live, editable source; this is just what this particular order used.
-  measurements?: Record<string, string>;
+  measurements?: Record<string, unknown>;
+  fieldSchemaSnapshot?: Record<string, unknown>;
   fabricSource?: OrderItemFabricSource;
   fabricNotes?: string;
   designNotes?: string;

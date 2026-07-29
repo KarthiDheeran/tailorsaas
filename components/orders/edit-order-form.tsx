@@ -2,8 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Customer, Order, OrderAttachment, OrderStatus } from "@/lib/types";
-import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
-import { getAddOnsAction, getGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import type { CatalogAddOn, CatalogGarmentType, GarmentTypeConfiguration } from "@/lib/catalog";
+import {
+  getAddOnsAction,
+  getGarmentTypeConfigurationsAction,
+  getGarmentTypesAction,
+} from "@/app/(shell)/catalog/actions";
 import { saveGarmentMeasurementAction } from "@/app/(shell)/customers/actions";
 import { updateOrderAction } from "@/app/(shell)/orders/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
@@ -44,6 +48,10 @@ import {
 } from "@/lib/data/shop-billing-settings-db";
 import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import { cn } from "@/lib/utils";
+import {
+  readGarmentConfigurationCache,
+  writeGarmentConfigurationCache,
+} from "@/lib/garment-configuration-browser-cache";
 
 const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
@@ -84,6 +92,7 @@ export function EditOrderForm({
 
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
+  const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [orderDate, setOrderDate] = useState(order.orderDate);
   const [deliveryDate, setDeliveryDate] = useState(order.deliveryDate);
@@ -126,12 +135,29 @@ export function EditOrderForm({
       getAddOnsAction(),
       getOrderPricingBillingSettingsAction(),
     ]).then(
-      ([garments, allAddOns, settings]) => {
+      async ([garments, allAddOns, settings]) => {
+        const garmentIds = garments.map((garment) => garment.id);
+        const cachedConfigurations = readGarmentConfigurationCache();
+        const cacheCoversActiveGarments =
+          cachedConfigurations !== null &&
+          garmentIds.every((id) => cachedConfigurations.some((item) => item.garment.id === id));
+        const configurations = cacheCoversActiveGarments
+          ? cachedConfigurations
+          : await getGarmentTypeConfigurationsAction(garmentIds);
         if (cancelled) return;
         setGarmentTypes(garments);
         setAddOns(allAddOns);
+        setGarmentConfigurations(configurations);
         setBillingSettings(settings);
         setCatalogLoaded(true);
+        if (!cacheCoversActiveGarments) writeGarmentConfigurationCache(configurations);
+        if (cacheCoversActiveGarments) {
+          getGarmentTypeConfigurationsAction(garmentIds).then((freshConfigurations) => {
+            if (cancelled) return;
+            setGarmentConfigurations(freshConfigurations);
+            writeGarmentConfigurationCache(freshConfigurations);
+          });
+        }
       }
     );
     return () => {
@@ -514,6 +540,8 @@ export function EditOrderForm({
             onItemsChange={setItems}
             garmentTypes={garmentTypes}
             addOns={addOns}
+            garmentConfigurations={garmentConfigurations}
+            garmentConfigurationsLoaded={catalogLoaded}
             paymentStrip={
               canViewPayments ? (
                 <div className="grid gap-3 text-sm md:grid-cols-3 xl:grid-cols-[0.8fr_1.1fr_0.8fr_1.2fr_1.1fr]">

@@ -9,13 +9,25 @@ import {
   getGarmentMeasurementsForCustomerAction,
   saveGarmentMeasurementAction,
 } from "@/app/(shell)/customers/actions";
-import { getActiveGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import {
+  getActiveGarmentTypesAction,
+  getGarmentTypeConfigurationAction,
+} from "@/app/(shell)/catalog/actions";
 import type { CatalogGarmentType } from "@/lib/catalog";
 import type { Customer, GarmentMeasurement } from "@/lib/types";
 import { CustomerMeasurementsForm } from "@/components/customers/customer-measurements-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  createGarmentFieldDraft,
+  normalizeGarmentFieldValue,
+  resolveRuntimeGarmentFields,
+  serializeGarmentFieldDraft,
+  type GarmentFieldDraft,
+  type GarmentFieldValue,
+  type RuntimeGarmentField,
+} from "@/lib/garment-form-runtime";
 
 type CopyMessage = {
   tone: "success" | "info";
@@ -49,7 +61,12 @@ function formatGarmentName(name: string) {
 }
 
 function hasFilledMeasurementValues(measurement: GarmentMeasurement) {
-  return Object.values(measurement.values).some((value) => value.trim() !== "");
+  return Object.values(measurement.values).some((value) =>
+    value !== null &&
+    value !== undefined &&
+    (typeof value !== "string" || value.trim() !== "") &&
+    (!Array.isArray(value) || value.length > 0)
+  );
 }
 
 function findMeasurement(
@@ -62,15 +79,16 @@ function findMeasurement(
 
 function matchingFieldIdsForCopy(
   source: GarmentMeasurement,
-  sourceGarment: CatalogGarmentType,
-  targetGarment: CatalogGarmentType
+  targetFieldIds: ReadonlySet<string>
 ) {
-  const sourceFieldIds = new Set(sourceGarment.measurementFieldIds);
-  const targetFieldIds = new Set(targetGarment.measurementFieldIds);
   return Object.entries(source.values)
     .filter(
       ([key, value]) =>
-        value.trim() !== "" && sourceFieldIds.has(key) && targetFieldIds.has(key)
+        value !== null &&
+        value !== undefined &&
+        (typeof value !== "string" || value.trim() !== "") &&
+        (!Array.isArray(value) || value.length > 0) &&
+        targetFieldIds.has(key)
     )
     .map(([key]) => key);
 }
@@ -99,7 +117,8 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const [measurements, setMeasurements] = useState<GarmentMeasurement[]>([]);
   const [selectedGarmentId, setSelectedGarmentId] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [fieldDraft, setFieldDraft] = useState<GarmentFieldDraft>({ typedValues: {}, passthroughValues: {} });
+  const [runtimeFields, setRuntimeFields] = useState<RuntimeGarmentField[]>([]);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -118,13 +137,11 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     ]).then(([c, garments, existingMeasurements]) => {
       if (cancelled) return;
       setCustomer(c ?? null);
-      const measurableGarments = garments.filter(
-        (garment) => garment.measurementFieldIds.length > 0
-      );
-      setGarmentTypes(measurableGarments);
+      setGarmentTypes(garments);
       setMeasurements(existingMeasurements);
       setSelectedGarmentId("");
-      setValues({});
+      setFieldDraft({ typedValues: {}, passthroughValues: {} });
+      setRuntimeFields([]);
       setNotes("");
       setLoaded(true);
     });
@@ -153,14 +170,14 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
       ) {
         return sources;
       }
-      const sourceGarment = garmentTypes.find(
-        (garment) => garmentKey(garment.name) === garmentKey(measurement.garmentType)
+      const targetFieldIds = new Set(
+        runtimeFields.length > 0
+          ? runtimeFields.map((field) => field.code)
+          : selectedGarment.measurementFieldIds
       );
-      if (!sourceGarment) return sources;
       const matchingFieldIds = matchingFieldIdsForCopy(
         measurement,
-        sourceGarment,
-        selectedGarment
+        targetFieldIds
       );
       if (matchingFieldIds.length === 0) return sources;
       sources.push({ measurement, matchingFieldIds });
@@ -168,7 +185,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     }, []).sort((a, b) =>
       a.measurement.garmentType.localeCompare(b.measurement.garmentType)
     );
-  }, [garmentTypes, measurements, selectedGarment]);
+  }, [measurements, runtimeFields, selectedGarment]);
 
   if (loaded && !customer) {
     notFound();
@@ -185,7 +202,23 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     const measurement = garment
       ? findMeasurement(measurements, garment.name)
       : undefined;
-    setValues({ ...(measurement?.values ?? {}) });
+    const legacyFields = (garment?.measurementFieldIds ?? []).map((code, index) => ({
+      code, name: code, fieldType: "measurement" as const, inputType: "number" as const,
+      sectionId: null, sectionName: "Measurements", sectionOrder: 0, displayOrder: index,
+      required: false, unit: "inch", placeholder: null, options: [], min: null, max: null,
+      decimalPlaces: 2, defaultValue: null,
+    }));
+    void getGarmentTypeConfigurationAction(garmentId)
+      .then((configuration) => {
+        const resolved = resolveRuntimeGarmentFields(configuration?.fields ?? null, []);
+        const fields = resolved && resolved.length > 0 ? resolved : legacyFields;
+        setRuntimeFields(fields);
+        setFieldDraft(createGarmentFieldDraft(measurement?.values ?? {}, fields));
+      })
+      .catch(() => {
+        setRuntimeFields(legacyFields);
+        setFieldDraft(createGarmentFieldDraft(measurement?.values ?? {}, legacyFields));
+      });
     setNotes(combineNotes(measurement));
   }
 
@@ -195,12 +228,16 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     );
     if (!source) return;
 
-    setValues((prev) => {
-      const next = { ...prev };
+    setFieldDraft((previous) => {
+      const next = { ...previous.typedValues };
       for (const key of matchingFieldIds) {
-        next[key] = source.measurement.values[key];
+        const value = source.measurement.values[key];
+        const field = runtimeFields.find((candidate) => candidate.code === key);
+        if (field && value !== undefined) {
+          next[key] = normalizeGarmentFieldValue(value, field.inputType);
+        }
       }
-      return next;
+      return { ...previous, typedValues: next };
     });
     setCopyMessage({
       tone: "success",
@@ -230,7 +267,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     }
 
     const overwritesExisting = source.matchingFieldIds.some(
-      (key) => values[key]?.trim()
+      (key) => fieldDraft.typedValues[key] !== undefined && fieldDraft.typedValues[key] !== null && fieldDraft.typedValues[key] !== ""
     );
     if (overwritesExisting) {
       setPendingCopy({
@@ -256,12 +293,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
     setCopyMessage(null);
     setPendingCopy(null);
     setSaving(true);
-    const allowedFieldIds = new Set(selectedGarment.measurementFieldIds);
-    const scopedValues = Object.fromEntries(
-      Object.entries(values)
-        .filter(([key]) => allowedFieldIds.has(key))
-        .map(([key, value]) => [key, value.trim()])
-    );
+    const scopedValues = serializeGarmentFieldDraft(fieldDraft);
     const result = await saveGarmentMeasurementAction({
       customerId: params.id,
       garmentType: selectedGarment.name,
@@ -284,7 +316,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
         a.garmentType.localeCompare(b.garmentType)
       );
     });
-    setValues({ ...result.data.values });
+    setFieldDraft(createGarmentFieldDraft(result.data.values, runtimeFields));
     setNotes(combineNotes(result.data));
     setSuccessMessage(`${formatGarmentName(result.data.garmentType)} measurements saved.`);
     setSaving(false);
@@ -477,11 +509,17 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
       {selectedGarment && (
         <CustomerMeasurementsForm
           garmentName={selectedGarment.name}
-          fieldIds={selectedGarment.measurementFieldIds}
-          values={values}
+          fields={runtimeFields}
+          values={fieldDraft.typedValues}
           notes={notes}
-          onValueChange={(key, value) =>
-            setValues((prev) => ({ ...prev, [key]: value }))
+          onValueChange={(key, value: GarmentFieldValue) =>
+            setFieldDraft((previous) => ({
+              ...previous,
+              typedValues: {
+                ...previous.typedValues,
+                [key]: value,
+              },
+            }))
           }
           onNotesChange={setNotes}
         />

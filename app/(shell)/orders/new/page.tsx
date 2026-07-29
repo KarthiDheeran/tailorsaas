@@ -15,21 +15,31 @@ import {
   getCustomerByIdAction,
   getCustomerByPhoneAction,
   getCustomerDetailAction,
+  getCustomersAction,
+  createCustomerAction,
   saveGarmentMeasurementAction,
   searchCustomersAction,
 } from "@/app/(shell)/customers/actions";
 import {
   createOrderAction,
   createOrderForNewCustomerAction,
+  generateNextOrderNumberAction,
 } from "@/app/(shell)/orders/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
 import {
   getActiveGarmentTypesAction,
   getAddOnsAction,
+  getGarmentTypeConfigurationsAction,
 } from "@/app/(shell)/catalog/actions";
 import type { CustomerDetail } from "@/lib/customers-db";
-import type { CatalogAddOn, CatalogGarmentType } from "@/lib/catalog";
+import {
+  GARMENT_SECTIONS,
+  type CatalogAddOn,
+  type CatalogGarmentType,
+  type GarmentTypeConfiguration,
+  type GarmentSection,
+} from "@/lib/catalog";
 import type {
   Customer,
   Gender,
@@ -56,7 +66,6 @@ import {
   type QueuedOrderAttachment,
 } from "@/components/orders/order-attachment-draft-card";
 import { NewOrderSummaryPanel } from "@/components/orders/new-order-summary-panel";
-import { StageJobCardPrintModal } from "@/components/orders/stage-job-card-print-modal";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -71,6 +80,10 @@ import {
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
 import { getOrderTaxBreakdown } from "@/lib/order-tax";
+import {
+  readGarmentConfigurationCache,
+  writeGarmentConfigurationCache,
+} from "@/lib/garment-configuration-browser-cache";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -86,12 +99,29 @@ const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
 type CustomerEntryMode = "search" | "selected" | "new";
+const ORDER_SECTION_OPTIONS = GARMENT_SECTIONS.map((section, index) => ({
+  section,
+  code: index + 1,
+}));
 
 // Searching is a server round-trip (including auth and permission checks),
 // so do not issue one for every character the operator types.
 const CUSTOMER_SEARCH_DEBOUNCE_MS = 250;
 const CUSTOMER_SEARCH_MIN_LENGTH = 2;
 const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
+const CUSTOMER_BROWSER_CACHE_KEY = "tailorsaas:new-order-customers:v1";
+const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
+
+function customerMatchesSearch(customer: Customer, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const digits = query.replace(/\D/g, "");
+  return (
+    customer.name.trim().toLowerCase().startsWith(normalizedQuery) ||
+    (digits.length > 0 && customer.phone.replace(/\D/g, "").startsWith(digits))
+  );
+}
 
 const emptyCustomerDraft = {
   phone: "",
@@ -123,16 +153,138 @@ function buildOrderConfirmationMessage(order: Order): string {
   ].filter(Boolean).join("\n");
 }
 
+function OrderSectionCombobox({
+  value,
+  inputRef,
+  onChange,
+  hasError = false,
+}: {
+  value: GarmentSection | "";
+  inputRef: React.RefObject<HTMLInputElement>;
+  onChange: (section: GarmentSection) => void;
+  hasError?: boolean;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selected = ORDER_SECTION_OPTIONS.find((option) => option.section === value);
+  const filtered = ORDER_SECTION_OPTIONS.filter((option) => {
+    const normalized = query.trim().toLowerCase();
+    return !normalized || option.code.toString().startsWith(normalized) || option.section.toLowerCase().startsWith(normalized);
+  });
+  const inputValue = open ? query : selected ? `${selected.code} - ${selected.section}` : "";
+
+  function selectSection(option: (typeof ORDER_SECTION_OPTIONS)[number]) {
+    setOpen(false);
+    setQuery("");
+    setActiveIndex(0);
+    onChange(option.section);
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.min(current + 1, Math.max(filtered.length - 1, 0)));
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const exactCode = ORDER_SECTION_OPTIONS.find((option) => option.code.toString() === query.trim());
+      const option = exactCode ?? filtered[activeIndex];
+      if (option) selectSection(option);
+      return;
+    }
+    if (event.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+    }
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+      onBlur={(event) => {
+        if (!rootRef.current?.contains(event.relatedTarget as Node | null)) {
+          setOpen(false);
+          setQuery("");
+        }
+      }}
+    >
+      <input
+        ref={inputRef}
+        required
+        role="combobox"
+        aria-label="Order section"
+        aria-expanded={open}
+        aria-controls="order-section-options"
+        aria-activedescendant={open && filtered[activeIndex] ? `order-section-${filtered[activeIndex].code}` : undefined}
+        autoComplete="off"
+        value={inputValue}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+          setActiveIndex(0);
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+          setActiveIndex(0);
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder="Type 1, 2, or 3"
+        className={cn(
+          "h-[50px] w-full rounded-[10px] border border-[#DCE5EA] bg-white px-4 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
+          hasError && "border-chip-red-fg"
+        )}
+      />
+      {open && (
+        <div id="order-section-options" role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-border-soft bg-white py-1 shadow-soft">
+          {filtered.map((option, index) => (
+            <button
+              key={option.section}
+              id={`order-section-${option.code}`}
+              type="button"
+              role="option"
+              aria-selected={option.section === value}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => selectSection(option)}
+              className={cn(
+                "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors",
+                index === activeIndex ? "bg-primary-tint text-primary" : "text-ink hover:bg-surface"
+              )}
+            >
+              <span className="inline-flex min-w-7 justify-center rounded-md border border-border-soft bg-white px-1.5 py-0.5 font-mono text-xs font-bold text-primary">{option.code}</span>
+              <span className="font-semibold">{option.section}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewOrderPageContent() {
   const router = useRouter();
   const customerSearchRef = useRef<HTMLDivElement>(null);
   const customerSearchInputRef = useRef<HTMLInputElement>(null);
+  const newCustomerNameInputRef = useRef<HTMLInputElement>(null);
+  const orderSectionRef = useRef<HTMLInputElement>(null);
   const customerResultButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const deliveryDateWasEditedRef = useRef(false);
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
+  const canCreateCustomers = hasPermission("customers.create");
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
-  const canPrintJobCard = hasPermission("orders.printJobCard");
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customerId");
@@ -145,6 +297,10 @@ function NewOrderPageContent() {
     useState<HTMLDivElement | null>(null);
   const [newCustomer, setNewCustomer] = useState(emptyCustomerDraft);
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  const [cachedCustomers, setCachedCustomers] = useState<Customer[] | null>(null);
+  const [customerCreationError, setCustomerCreationError] = useState<string | null>(null);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [orderNumberPreview, setOrderNumberPreview] = useState("");
 
   const [orderDate, setOrderDate] = useState(todayIso());
   const trialDate = "";
@@ -164,7 +320,6 @@ function NewOrderPageContent() {
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
-  const [showStagePrintModal, setShowStagePrintModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
   const [attachmentUploadFailures, setAttachmentUploadFailures] = useState<
@@ -185,6 +340,7 @@ function NewOrderPageContent() {
   const [saving, setSaving] = useState(false);
   const [leavingToOrders, setLeavingToOrders] = useState(false);
   const [garmentFocusRequest, setGarmentFocusRequest] = useState(0);
+  const [orderSection, setOrderSection] = useState<GarmentSection | "">("");
 
   // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
   // once here and threaded down to NewOrderItemsCard as props - every
@@ -192,14 +348,40 @@ function NewOrderPageContent() {
   // below stays a synchronous array find(), not its own Supabase call.
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
+  const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
+  const [garmentConfigurationsLoaded, setGarmentConfigurationsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([getActiveGarmentTypesAction(), getAddOnsAction()]).then(
-      ([garments, allAddOns]) => {
+      async ([garments, allAddOns]) => {
+        const garmentIds = garments.map((garment) => garment.id);
+        const cachedConfigurations = readGarmentConfigurationCache();
+        const cacheCoversActiveGarments =
+          cachedConfigurations !== null &&
+          garmentIds.every((id) => cachedConfigurations.some((item) => item.garment.id === id));
+
+        if (cacheCoversActiveGarments) {
+          if (cancelled) return;
+          setGarmentTypes(garments);
+          setAddOns(allAddOns);
+          setGarmentConfigurations(cachedConfigurations);
+          setGarmentConfigurationsLoaded(true);
+          getGarmentTypeConfigurationsAction(garmentIds).then((freshConfigurations) => {
+            if (cancelled) return;
+            setGarmentConfigurations(freshConfigurations);
+            writeGarmentConfigurationCache(freshConfigurations);
+          });
+          return;
+        }
+
+        const configurations = await getGarmentTypeConfigurationsAction(garmentIds);
         if (cancelled) return;
         setGarmentTypes(garments);
         setAddOns(allAddOns);
+        setGarmentConfigurations(configurations);
+        setGarmentConfigurationsLoaded(true);
+        writeGarmentConfigurationCache(configurations);
       }
     );
     return () => {
@@ -224,6 +406,58 @@ function NewOrderPageContent() {
       customerSearchInputRef.current?.focus({ preventScroll: true });
     }, 0);
   }, [prefillCustomerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const cached = window.sessionStorage.getItem(CUSTOMER_BROWSER_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as CustomerBrowserCache;
+        if (Array.isArray(parsed.customers) && Date.now() - parsed.savedAt < CUSTOMER_BROWSER_CACHE_TTL_MS) {
+          setCachedCustomers(parsed.customers);
+          return () => {
+            cancelled = true;
+          };
+        }
+      }
+    } catch {
+      // Private/disabled storage simply uses the server fallback below.
+    }
+
+    getCustomersAction()
+      .then((customers) => {
+        if (cancelled) return;
+        setCachedCustomers(customers);
+        try {
+          window.sessionStorage.setItem(
+            CUSTOMER_BROWSER_CACHE_KEY,
+            JSON.stringify({ savedAt: Date.now(), customers } satisfies CustomerBrowserCache)
+          );
+        } catch {
+          // A full session store must never block order entry.
+        }
+      })
+      .catch(() => !cancelled && setCachedCustomers(null));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    generateNextOrderNumberAction(orderSection)
+      .then((number) => !cancelled && setOrderNumberPreview(number))
+      .catch(() => !cancelled && setOrderNumberPreview(""));
+    return () => {
+      cancelled = true;
+    };
+  }, [orderSection]);
+
+  useEffect(() => {
+    if (customerMode !== "new") return;
+    window.setTimeout(() => newCustomerNameInputRef.current?.focus({ preventScroll: true }), 0);
+  }, [customerMode]);
 
   // isDirty's baseline - starts blank, updated once if a prefill customer
   // loads, so "dirty" only reflects changes made *after* the form settled
@@ -258,9 +492,8 @@ function NewOrderPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillCustomerId]);
 
-  // Customer autosuggest is a server-side lookup. Debouncing prevents one
-  // request per keystroke; the cancelled flag prevents an older response from
-  // replacing the latest results when requests finish out of order.
+  // Use the session-scoped customer cache for normal lookups. Until its first
+  // load finishes, the existing debounced server lookup remains the fallback.
   useEffect(() => {
     const query = customerSearchQuery.trim();
     if (customerMode !== "search" || query.length < CUSTOMER_SEARCH_MIN_LENGTH) {
@@ -271,27 +504,65 @@ function NewOrderPageContent() {
       setCustomerSearchCompleted(false);
       return;
     }
+    const cachedResults = cachedCustomers
+      ? cachedCustomers
+        .filter((customer) => customerMatchesSearch(customer, query))
+        .slice(0, CUSTOMER_SEARCH_RESULT_LIMIT)
+      : [];
+    if (cachedResults.length > 0) {
+      setCustomerSearchResults(cachedResults);
+      setActiveCustomerResultIndex(0);
+      setCustomerSearchLoading(false);
+      setCustomerSearchCompleted(true);
+      setCustomerResultsOpen(!!customerSearchRef.current?.contains(document.activeElement));
+      return;
+    }
+
+    // A browser cache can be stale after another terminal/user created a
+    // customer. A cache miss must never become a false "No customers found".
     let cancelled = false;
     setCustomerSearchLoading(true);
     setCustomerSearchCompleted(false);
     const timeout = window.setTimeout(() => {
-      searchCustomersAction(query, CUSTOMER_SEARCH_RESULT_LIMIT).then((results) => {
-        if (cancelled) return;
-        setCustomerSearchResults(results);
-        setActiveCustomerResultIndex(0);
-        setCustomerSearchLoading(false);
-        setCustomerSearchCompleted(true);
-        setCustomerResultsOpen(
-          !!customerSearchRef.current?.contains(document.activeElement)
-        );
-      });
+      searchCustomersAction(query, CUSTOMER_SEARCH_RESULT_LIMIT)
+        .then((results) => {
+          if (cancelled) return;
+          setCustomerSearchResults(results);
+          setActiveCustomerResultIndex(0);
+          setCustomerSearchLoading(false);
+          setCustomerSearchCompleted(true);
+          setCustomerResultsOpen(
+            !!customerSearchRef.current?.contains(document.activeElement)
+          );
+          if (results.length > 0) {
+            setCachedCustomers((current) => {
+              const resultIds = new Set(results.map((customer) => customer.id));
+              const next = [...results, ...(current ?? []).filter((customer) => !resultIds.has(customer.id))];
+              try {
+                window.sessionStorage.setItem(
+                  CUSTOMER_BROWSER_CACHE_KEY,
+                  JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
+                );
+              } catch {
+                // Storage is only a speed optimization.
+              }
+              return next;
+            });
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setCustomerSearchResults([]);
+          setCustomerSearchLoading(false);
+          setCustomerSearchCompleted(true);
+        });
     }, CUSTOMER_SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
       setCustomerSearchLoading(false);
     };
-  }, [customerMode, customerSearchQuery]);
+  }, [cachedCustomers, customerMode, customerSearchQuery]);
 
   useEffect(() => {
     if (!customerResultsOpen) return;
@@ -332,6 +603,13 @@ function NewOrderPageContent() {
       setPhoneDuplicateChecking(false);
       return;
     }
+    if (cachedCustomers !== null) {
+      setPhoneDuplicateCustomer(
+        cachedCustomers.find((customer) => customer.phone.replace(/\D/g, "") === phone) ?? null
+      );
+      setPhoneDuplicateChecking(false);
+      return;
+    }
     let cancelled = false;
     setPhoneDuplicateChecking(true);
     getCustomerByPhoneAction(phone).then((customer) => {
@@ -343,12 +621,22 @@ function NewOrderPageContent() {
       cancelled = true;
       setPhoneDuplicateChecking(false);
     };
-  }, [customerMode, newCustomer.phone]);
+  }, [cachedCustomers, customerMode, newCustomer.phone]);
 
   useEffect(() => {
     const name = newCustomer.name.trim();
     if (customerMode !== "new" || name.length < 2) {
       setSimilarNameCustomers([]);
+      setSimilarNameChecking(false);
+      return;
+    }
+    if (cachedCustomers !== null) {
+      const normalized = name.toLowerCase();
+      setSimilarNameCustomers(
+        cachedCustomers
+          .filter((customer) => customer.name.toLowerCase().includes(normalized))
+          .slice(0, 4)
+      );
       setSimilarNameChecking(false);
       return;
     }
@@ -370,7 +658,7 @@ function NewOrderPageContent() {
       cancelled = true;
       setSimilarNameChecking(false);
     };
-  }, [customerMode, newCustomer.name]);
+  }, [cachedCustomers, customerMode, newCustomer.name]);
 
   // Previous Orders / customer summary panel data - re-fetched whenever the
   // matched customer changes.
@@ -457,6 +745,7 @@ function NewOrderPageContent() {
       ? "Delivery date cannot be before order date."
       : undefined;
   const errors = {
+    orderSection: !orderSection ? "Select an order section before adding garments." : undefined,
     customer:
       !hasSelectedCustomer && !isCreatingNewCustomer
         ? "Select an existing customer or create a new customer."
@@ -488,9 +777,22 @@ function NewOrderPageContent() {
   };
   const hasErrors = Object.values(errors).some(Boolean);
 
+  function focusGarmentEntry() {
+    if (orderSection) {
+      setGarmentFocusRequest((current) => current + 1);
+      return;
+    }
+    window.setTimeout(() => orderSectionRef.current?.focus(), 0);
+  }
+
+  function handleOrderSectionChange(section: GarmentSection) {
+    setOrderSection(section);
+    window.setTimeout(() => setGarmentFocusRequest((current) => current + 1), 0);
+  }
+
   function handleSelectCustomer(c: Customer) {
     applyCustomer(c);
-    setGarmentFocusRequest((current) => current + 1);
+    focusGarmentEntry();
   }
 
   function focusCustomerResult(index: number) {
@@ -581,6 +883,7 @@ function NewOrderPageContent() {
     setSimilarNameCustomers([]);
     setCustomerResultsOpen(false);
     setCustomerSearchCompleted(false);
+    setCustomerCreationError(null);
     setNewCustomer({
       ...emptyCustomerDraft,
       phone: /^\d/.test(query) ? query.replace(/\D/g, "").slice(0, 10) : "",
@@ -589,12 +892,65 @@ function NewOrderPageContent() {
     setCustomerMode("new");
   }
 
+  function refreshCustomerBrowserCache(customer: Customer) {
+    setCachedCustomers((current) => {
+      const next = [customer, ...(current ?? []).filter((item) => item.id !== customer.id)];
+      try {
+        window.sessionStorage.setItem(
+          CUSTOMER_BROWSER_CACHE_KEY,
+          JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
+        );
+      } catch {
+        // Cache persistence is optional; the in-memory list remains current.
+      }
+      return next;
+    });
+  }
+
+  async function handleSaveCustomerAndContinue() {
+    const name = newCustomer.name.trim();
+    const phone = newCustomer.phone.trim();
+    if (!name) {
+      setCustomerCreationError("Customer name is required.");
+      newCustomerNameInputRef.current?.focus();
+      return;
+    }
+    if (!/^\d{10}$/.test(phone)) {
+      setCustomerCreationError("Enter a valid 10-digit phone number.");
+      return;
+    }
+    if (phoneDuplicateCustomer) {
+      setCustomerCreationError("This phone number already belongs to an existing customer.");
+      return;
+    }
+
+    setCreatingCustomer(true);
+    setCustomerCreationError(null);
+    const result = await createCustomerAction({
+      name,
+      phone,
+      area: newCustomer.area.trim(),
+      address: newCustomer.address.trim(),
+      gender: newCustomer.gender,
+    });
+    setCreatingCustomer(false);
+    if (!result.success) {
+      setCustomerCreationError(result.error);
+      return;
+    }
+
+    refreshCustomerBrowserCache(result.data);
+    applyCustomer(result.data);
+    focusGarmentEntry();
+  }
+
   function handleCancelNewCustomer() {
     setNewCustomer(emptyCustomerDraft);
     setDuplicateCustomer(null);
     setPhoneDuplicateCustomer(null);
     setSimilarNameCustomers([]);
     setCustomerSearchCompleted(false);
+    setCustomerCreationError(null);
     setCustomerMode("search");
   }
 
@@ -721,6 +1077,7 @@ function NewOrderPageContent() {
     if (matchedCustomer) {
       created = await createOrderAction({
         customerId: matchedCustomer.id,
+        orderSection: orderSection as GarmentSection,
         orderDate,
         trialDate,
         deliveryDate,
@@ -747,6 +1104,7 @@ function NewOrderPageContent() {
           gender: newCustomer.gender,
         },
         order: {
+          orderSection: orderSection as GarmentSection,
           orderDate,
           trialDate,
           deliveryDate,
@@ -871,12 +1229,7 @@ function NewOrderPageContent() {
     <div className="pb-24">
       <div className="mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]">
         <div
-          className={cn(
-            "grid grid-cols-1 gap-6 lg:items-start",
-            matchedCustomer || customerMode === "new"
-              ? "lg:grid-cols-[minmax(0,1fr)_360px]"
-              : "lg:grid-cols-1"
-          )}
+          className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start"
         >
           <div className="min-w-0 space-y-3">
             <div
@@ -884,6 +1237,15 @@ function NewOrderPageContent() {
                 "min-h-[110px] rounded-2xl border border-[#DCE5EA] bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6"
               )}
             >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#334155]">New Order</p>
+                  <p className="mt-0.5 text-xs text-[#64748B]">Order number is confirmed when the order is saved.</p>
+                </div>
+                <span className="rounded-full border border-[#B7E3DC] bg-[#ECFDF5] px-3 py-1.5 text-sm font-bold text-[#0F766E]">
+                  {orderNumberPreview || "Select order section"}
+                </span>
+              </div>
               {customerMode !== "selected" && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 {customerMode === "new" && (
@@ -1047,6 +1409,7 @@ function NewOrderPageContent() {
                     Customer Name
                   </span>
                   <input
+                    ref={newCustomerNameInputRef}
                     required
                     value={newCustomer.name}
                     onChange={(e) =>
@@ -1139,6 +1502,25 @@ function NewOrderPageContent() {
                   </div>
                 </div>
                   </div>
+                  {canCreateCustomers && (
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#BBF7D0] bg-[#ECFDF5] px-3.5 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#166534]">Save customer before adding garments</p>
+                        <p className="mt-0.5 text-xs text-[#64748B]">The customer is added to this browser&apos;s search list immediately.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveCustomerAndContinue()}
+                        disabled={creatingCustomer || !!phoneDuplicateCustomer}
+                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-[#0F766E] bg-white px-3.5 text-sm font-semibold text-[#0F766E] transition-colors hover:bg-[#D1FAE5] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {creatingCustomer ? "Creating..." : "Create Customer & Continue"}
+                      </button>
+                    </div>
+                  )}
+                  {customerCreationError && (
+                    <p className="mt-3 text-sm font-medium text-chip-red-fg">{customerCreationError}</p>
+                  )}
                   {phoneDuplicateCustomer && (
                     <div className="rounded-lg border border-chip-red-fg/20 bg-chip-red px-3.5 py-3 text-sm">
                       <div className="font-semibold text-chip-red-fg">
@@ -1205,7 +1587,22 @@ function NewOrderPageContent() {
                 </>
                 )}
               </div>
-              <div ref={setGarmentSelectorTarget} className="min-w-0 border-t border-[#DCE5EA] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0" />
+              <div className="min-w-0 border-t border-[#DCE5EA] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[15px] font-semibold text-[#334155]">Order Section</span>
+                  <OrderSectionCombobox
+                    value={orderSection}
+                    inputRef={orderSectionRef}
+                    onChange={handleOrderSectionChange}
+                    hasError={submitAttempted && !!errors.orderSection}
+                  />
+                  <p className="text-xs text-[#64748B]">Type code: 1 Men · 2 Chutti · 3 Blouse</p>
+                </div>
+                {submitAttempted && errors.orderSection && (
+                  <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
+                )}
+                <div ref={setGarmentSelectorTarget} className="mt-4" />
+              </div>
               </div>
             </div>
 
@@ -1220,6 +1617,8 @@ function NewOrderPageContent() {
               onItemsChange={setItems}
               garmentTypes={garmentTypes}
               addOns={addOns}
+              garmentConfigurations={garmentConfigurations}
+              garmentConfigurationsLoaded={garmentConfigurationsLoaded}
               previousOrders={customerDetail?.orders ?? []}
               paymentStrip={
                 canViewPayments ? (
@@ -1301,74 +1700,36 @@ function NewOrderPageContent() {
               }
               autoSnapshotDefaultMeasurements
               focusFirstGarmentRequest={garmentFocusRequest}
+              garmentSection={orderSection || null}
               garmentSelectorTarget={garmentSelectorTarget}
             />
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-stretch">
-              <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:grid lg:min-h-[96px] lg:grid-cols-[auto_minmax(165px,1fr)_minmax(165px,1fr)] lg:items-center lg:gap-4 lg:p-4">
-                <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-[#111827] lg:mb-0 lg:whitespace-nowrap">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
-                    <CalendarDays className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  {t("orders.orderDates")}
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:contents">
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[15px] font-semibold text-[#334155]">
-                      {t("orders.orderDate")}
-                    </span>
-                    <input
-                      type="date"
-                      required
-                      value={orderDate}
-                      onChange={(e) => setOrderDate(e.target.value)}
-                      className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[15px] font-semibold text-[#334155]">
-                      {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
-                    </span>
-                    <input
-                      type="date"
-                      required
-                      value={deliveryDate}
-                      onChange={(e) => {
-                        deliveryDateWasEditedRef.current = true;
-                        setDeliveryDate(e.target.value);
-                      }}
-                      className={cn(
-                        "h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
-                        submitAttempted &&
-                          errors.deliveryDate &&
-                          "border-chip-red-fg"
-                      )}
-                    />
-                    {submitAttempted && errors.deliveryDate && (
-                      <p className="text-xs text-chip-red-fg">
-                        {errors.deliveryDate}
-                      </p>
-                    )}
-                  </label>
-                </div>
-              </div>
-              <OrderAttachmentDraftCard
-                inlineSummary
-                queued={queuedAttachments}
-                onQueuedChange={setQueuedAttachments}
-                error={(submitAttempted && errors.attachments) || attachmentError}
-              />
-              </div>
+            <OrderAttachmentDraftCard
+              inlineSummary
+              queued={queuedAttachments}
+              onQueuedChange={setQueuedAttachments}
+              error={(submitAttempted && errors.attachments) || attachmentError}
+            />
 
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-3">
+            <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-[#111827]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span>
+                {t("orders.orderDates")}
+              </h3>
+              <div className="space-y-4">
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.orderDate")}</span><input type="date" required value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20" /></label>
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span></span><input type="date" required value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className={cn("h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20", submitAttempted && errors.deliveryDate && "border-chip-red-fg")} />{submitAttempted && errors.deliveryDate && <p className="text-xs text-chip-red-fg">{errors.deliveryDate}</p>}</label>
+              </div>
+            </div>
             <NewOrderSummaryPanel
               customer={matchedCustomer}
               detail={customerDetail}
               onRepeatOrder={handleRepeatOrder}
               repeatCopyMessage={repeatCopyMessage}
-              newCustomerPending={customerMode === "new"}
+              hideCustomerSummary
             />
           </div>
         </div>
@@ -1514,15 +1875,6 @@ function NewOrderPageContent() {
                     Send WhatsApp confirmation
                   </button>
                 )}
-                {canPrintJobCard && (
-                  <button
-                    type="button"
-                    onClick={() => setShowStagePrintModal(true)}
-                    className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-                  >
-                    Print Stage Job Card
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={handleViewOrder}
@@ -1547,13 +1899,6 @@ function NewOrderPageContent() {
             </div>
           </div>
         </>
-      )}
-      {savedOrder && showStagePrintModal && (
-        <StageJobCardPrintModal
-          order={savedOrder}
-          target={{ serialNo: savedOrder.items[0]?.serialNo ?? 1 }}
-          onClose={() => setShowStagePrintModal(false)}
-        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import {
+  GARMENT_SECTIONS,
   MEASUREMENT_FIELD_GROUPS,
   customMeasurementFieldId,
   customMeasurementFieldLabel,
@@ -10,6 +11,7 @@ import {
   measurementFieldLabel,
   type CatalogAddOn,
   type CatalogGarmentType,
+  type GarmentSection,
   type GarmentTypeInput,
 } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -38,6 +40,7 @@ export function GarmentTypeDrawer({
   const { t } = useLanguage();
   const isEdit = garment !== null;
   const [name, setName] = useState(garment?.name ?? "");
+  const [section, setSection] = useState<GarmentSection>(garment?.section ?? "Men");
   const [shortcutCode, setShortcutCode] = useState(
     garment?.shortcutCode?.toString() ?? ""
   );
@@ -114,6 +117,7 @@ export function GarmentTypeDrawer({
     setSubmitting(true);
     const result = await onSaved({
       name: trimmedName,
+      section,
       shortcutCode: parsedShortcutCode,
       basePrice,
       measurementFieldIds: selectedFieldIds,
@@ -185,6 +189,22 @@ export function GarmentTypeDrawer({
                     placeholder="e.g. Pant"
                     className={inputClass}
                   />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Order Section
+                  </span>
+                  <select
+                    value={section}
+                    onChange={(e) => setSection(e.target.value as GarmentSection)}
+                    className={inputClass}
+                  >
+                    {GARMENT_SECTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">

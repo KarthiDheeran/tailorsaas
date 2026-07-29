@@ -254,7 +254,7 @@ export async function getCustomerMeasurementsAction(
 
 export async function saveCustomerMeasurementsAction(data: {
   customerId: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   notes?: string;
   source?: string;
 }): Promise<ActionResult<CustomerMeasurements>> {
@@ -287,7 +287,7 @@ export async function getGarmentMeasurementsForCustomerAction(
 export async function getGarmentMeasurementDraftSeedAction(
   customerId: string,
   garmentType: string
-): Promise<{ values: Record<string, string>; fitNotes: string; notes: string }> {
+): Promise<{ values: Record<string, unknown>; fitNotes: string; notes: string }> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.viewMeasurements");
   if (!guard.ok) return { values: {}, fitNotes: "", notes: "" };
@@ -297,7 +297,7 @@ export async function getGarmentMeasurementDraftSeedAction(
 export async function saveGarmentMeasurementAction(data: {
   customerId: string;
   garmentType: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fitNotes?: string;
   notes?: string;
   source?: string;

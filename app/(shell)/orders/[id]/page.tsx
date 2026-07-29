@@ -51,6 +51,10 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { measurementFieldLabel, type CatalogGarmentType } from "@/lib/catalog";
+import {
+  historicalGarmentValueText,
+  resolveHistoricalGarmentDisplayFields,
+} from "@/lib/garment-form-runtime";
 import { formatCurrency } from "@/lib/currency";
 import {
   DEFAULT_SHOP_BILLING_SETTINGS,
@@ -151,7 +155,7 @@ type MeasurementSnapshotDisplay = {
 };
 
 type MeasurementDraftSeed = {
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fitNotes: string;
   notes: string;
 };
@@ -203,6 +207,22 @@ function measurementSnapshotDisplay(
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return { entries: [], notes: "", invalid: true };
+  }
+
+  if (item.fieldSchemaSnapshot) {
+    const historicalFields = resolveHistoricalGarmentDisplayFields({
+      measurements: raw as Record<string, unknown>,
+      fieldSchemaSnapshot: item.fieldSchemaSnapshot,
+    });
+    return {
+      entries: historicalFields.map((field) => ({
+        key: field.code,
+        label: field.unit ? `${field.label} (${field.unit})` : field.label,
+        value: historicalGarmentValueText(field.value),
+      })),
+      notes: safeMeasurementValue((raw as Record<string, unknown>)[MEASUREMENT_NOTES_KEY]),
+      invalid: false,
+    };
   }
 
   const display = measurementDisplayFromRecord(

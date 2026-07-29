@@ -124,7 +124,9 @@ function buildInvoiceShareMessage(order: Order, customer: Customer, url: string)
 }
 
 function hasMeasurementSnapshot(item: Order["items"][number]) {
-  return Object.values(item.measurements ?? {}).some((value) => value.trim() !== "");
+  return Object.values(item.measurements ?? {}).some((value) =>
+    typeof value === "string" ? value.trim() !== "" : value !== null
+  );
 }
 
 function InvoiceShareActions({

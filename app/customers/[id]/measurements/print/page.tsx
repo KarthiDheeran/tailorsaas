@@ -8,6 +8,7 @@ import {
 } from "@/app/(shell)/customers/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { measurementFieldLabel } from "@/lib/catalog";
+import { historicalGarmentValueText } from "@/lib/garment-form-runtime";
 import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
@@ -46,11 +47,14 @@ function formatGarmentName(name: string) {
     .join("");
 }
 
-function filledEntries(values: Record<string, string>) {
-  return Object.entries(values).filter(([, value]) => value.trim() !== "");
+function filledEntries(values: Record<string, unknown>) {
+  return Object.entries(values).filter(([, value]) => {
+    if (value === null || value === undefined || value === "") return false;
+    return !Array.isArray(value) || value.length > 0;
+  });
 }
 
-function MeasurementGrid({ values }: { values: Record<string, string> }) {
+function MeasurementGrid({ values }: { values: Record<string, unknown> }) {
   const entries = filledEntries(values);
   if (entries.length === 0) {
     return <p className="text-sm italic text-gray-500">No filled fields.</p>;
@@ -64,7 +68,7 @@ function MeasurementGrid({ values }: { values: Record<string, string> }) {
           className="flex justify-between gap-3 border-b border-dotted border-gray-300 pb-0.5"
         >
           <span className="text-gray-600">{measurementFieldLabel(key)}</span>
-          <span className="font-semibold">{value}</span>
+          <span className="font-semibold">{historicalGarmentValueText(value)}</span>
         </div>
       ))}
     </div>

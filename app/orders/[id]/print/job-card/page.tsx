@@ -17,6 +17,10 @@ import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { formatDate } from "@/components/orders/orders-table";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
+import {
+  historicalGarmentValueText,
+  resolveHistoricalGarmentDisplayFields,
+} from "@/lib/garment-form-runtime";
 import { barcodeSvgDataUri } from "@/lib/barcode-code128";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
 import {
@@ -114,18 +118,28 @@ function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function measurementEntries(measurements?: Record<string, string>) {
+function measurementEntries(
+  measurements?: Record<string, unknown>,
+  fieldSchemaSnapshot?: Record<string, unknown>
+) {
   if (!measurements) return [];
+  if (fieldSchemaSnapshot) {
+    return resolveHistoricalGarmentDisplayFields({ measurements, fieldSchemaSnapshot }).map((field) => ({
+      key: field.code,
+      label: field.unit ? `${field.label} (${field.unit})` : field.label,
+      value: historicalGarmentValueText(field.value),
+    }));
+  }
   const keys = [
-    ...measurementFields.map((field) => field.id).filter((key) => measurements[key]?.trim()),
+    ...measurementFields.map((field) => field.id).filter((key) => typeof measurements[key] === "string" && measurements[key].trim()),
     ...Object.keys(measurements).filter(
-      (key) => !measurementFields.some((field) => field.id === key) && measurements[key]?.trim()
+      (key) => !measurementFields.some((field) => field.id === key) && typeof measurements[key] === "string" && measurements[key].trim()
     ),
   ];
   return keys.map((key) => ({
     key,
     label: FIELD_LABELS[key] ?? measurementFieldLabel(key),
-    value: measurements[key],
+    value: historicalGarmentValueText(measurements[key]),
   }));
 }
 
@@ -299,9 +313,7 @@ function PrintSetup({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            <span>
-              Assign to <span className="text-red-600">*</span>
-            </span>
+            <span>Assign to <span className="font-normal text-ink-muted">(optional)</span></span>
             <select
               value={staffId}
               onChange={(event) => setStaffId(event.target.value)}
@@ -343,7 +355,7 @@ function PrintSetup({
           <button
             type="button"
             onClick={submit}
-            disabled={saving || !selectedItem || !staffId}
+            disabled={saving || !selectedItem}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -385,7 +397,7 @@ function StageSlipPrintV2({
 }) {
   const { locale } = useLanguage();
   const labels = SLIP_LABELS[locale];
-  const measurements = measurementEntries(slip.measurementsSnapshot);
+  const measurements = measurementEntries(slip.measurementsSnapshot, slip.fieldSchemaSnapshot);
   const measurementRows = chunkEntries(measurements, 4);
   const barcodeValue = `TS|JOB|${slip.scanToken}`;
   const customerName = customer?.name ?? slip.customerSnapshot?.name ?? "-";

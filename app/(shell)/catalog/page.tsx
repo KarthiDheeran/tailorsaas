@@ -7,31 +7,48 @@ import { ArrowLeft, Plus } from "lucide-react";
 import type {
   AddOnInput,
   CatalogAddOn,
+  CatalogField,
   CatalogGarmentType,
+  CatalogSection,
+  CatalogSectionInput,
   CatalogWorkStage,
+  GarmentTypeConfiguration,
+  GarmentTypeFieldAssignmentInput,
   GarmentTypeInput,
   WorkStageInput,
 } from "@/lib/catalog";
 import {
   createAddOnAction,
   createGarmentTypeAction,
+  createCatalogFieldAction,
+  createCatalogSectionAction,
   createWorkStageAction,
   getActiveAddOnsAction,
   getActiveWorkStagesAction,
   getAddOnsAction,
+  getCatalogFieldsAction,
+  getCatalogSectionsAction,
+  getGarmentTypeConfigurationAction,
+  getGarmentTypeConfigurationsAction,
   getGarmentTypesAction,
   getWorkStagesAction,
   setAddOnActiveAction,
+  setCatalogFieldActiveAction,
+  saveGarmentTypeConfigurationAction,
   setFinalWorkStageAction,
   setGarmentTypeActiveAction,
   setWorkStageActiveAction,
   updateAddOnAction,
   updateGarmentTypeAction,
+  updateCatalogFieldAction,
+  updateCatalogSectionAction,
   updateWorkStageAction,
 } from "@/app/(shell)/catalog/actions";
 import { CatalogTabs, type CatalogTab } from "@/components/catalog/catalog-tabs";
 import { CatalogTable } from "@/components/catalog/catalog-table";
+import { GarmentTypeConfigDrawer } from "@/components/catalog/garment-type-config-drawer";
 import { GarmentTypeDrawer } from "@/components/catalog/garment-type-drawer";
+import { FieldsPanel, SectionsPanel } from "@/components/catalog/metadata-catalog-panels";
 import { AddOnTable } from "@/components/catalog/addon-table";
 import { AddOnDrawer } from "@/components/catalog/addon-drawer";
 import { WorkStageTable } from "@/components/catalog/work-stage-table";
@@ -42,7 +59,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 
 function isCatalogTab(value: string | null): value is CatalogTab {
-  return value === "garment-types" || value === "addons" || value === "work-stages";
+  return value === "garment-types" || value === "fields" || value === "sections" || value === "addons" || value === "work-stages";
 }
 
 function CatalogPageContent() {
@@ -60,6 +77,8 @@ function CatalogPageContent() {
 
   const [editingGarment, setEditingGarment] =
     useState<CatalogGarmentType | null>(null);
+  const [garmentConfiguration, setGarmentConfiguration] = useState<GarmentTypeConfiguration | null>(null);
+  const [metadataFieldCounts, setMetadataFieldCounts] = useState<Record<string, number>>({});
   const [isAddingGarment, setIsAddingGarment] = useState(false);
 
   const [editingAddOn, setEditingAddOn] = useState<CatalogAddOn | null>(null);
@@ -77,6 +96,8 @@ function CatalogPageContent() {
   const [activeAddOns, setActiveAddOns] = useState<CatalogAddOn[]>([]);
   const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
   const [activeWorkStages, setActiveWorkStages] = useState<CatalogWorkStage[]>([]);
+  const [catalogFields, setCatalogFields] = useState<CatalogField[]>([]);
+  const [catalogSections, setCatalogSections] = useState<CatalogSection[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
   useEffect(() => {
@@ -94,13 +115,30 @@ function CatalogPageContent() {
       getActiveAddOnsAction(),
       getWorkStagesAction(),
       getActiveWorkStagesAction(),
-    ]).then(([garments, allAddOns, active, stages, activeStages]) => {
+      getCatalogFieldsAction(),
+      getCatalogSectionsAction(),
+    ]).then(async ([garments, allAddOns, active, stages, activeStages, fields, sections]) => {
       if (cancelled) return;
       setGarmentTypes(garments);
       setAddOns(allAddOns);
       setActiveAddOns(active);
       setWorkStages(stages);
       setActiveWorkStages(activeStages);
+      setCatalogFields(fields);
+      setCatalogSections(sections);
+      const configurations = await getGarmentTypeConfigurationsAction(
+        garments.map((garment) => garment.id)
+      );
+      if (!cancelled) {
+        setMetadataFieldCounts(
+          Object.fromEntries(
+            configurations.map((configuration) => [
+              configuration.garment.id,
+              configuration.fields.filter((field) => field.field?.isActive).length,
+            ])
+          )
+        );
+      }
     }).finally(() => {
       if (!cancelled) setIsLoadingCatalog(false);
     });
@@ -109,16 +147,64 @@ function CatalogPageContent() {
     };
   }, [refreshKey]);
 
-  async function handleSaveGarment(data: GarmentTypeInput) {
+  async function handleSaveGarmentConfiguration(
+    data: GarmentTypeInput,
+    assignments: GarmentTypeFieldAssignmentInput[],
+    legacyMeasurementFieldIds: string[]
+  ) {
+    const result = await saveGarmentTypeConfigurationAction(
+      editingGarment?.id ?? null,
+      data,
+      assignments,
+      legacyMeasurementFieldIds
+    );
+    if (result.success) {
+      setEditingGarment(null);
+      setIsAddingGarment(false);
+      setGarmentConfiguration(null);
+      setRefreshKey((k) => k + 1);
+    }
+    return result;
+  }
+
+  async function handleSaveLegacyGarment(data: GarmentTypeInput) {
     const result = editingGarment
       ? await updateGarmentTypeAction(editingGarment.id, data)
       : await createGarmentTypeAction(data);
     if (result.success) {
       setEditingGarment(null);
       setIsAddingGarment(false);
-      setRefreshKey((k) => k + 1);
+      setRefreshKey((key) => key + 1);
     }
     return result;
+  }
+
+  async function openGarmentEditor(garment: CatalogGarmentType) {
+    setEditingGarment(garment);
+    setGarmentConfiguration(null);
+    try {
+      setGarmentConfiguration(await getGarmentTypeConfigurationAction(garment.id));
+    } catch {
+      window.alert("Could not load the garment field configuration.");
+    }
+  }
+
+  async function handleSaveSection(id: string | null, data: CatalogSectionInput) {
+    const result = id ? await updateCatalogSectionAction(id, data) : await createCatalogSectionAction(data);
+    if (result.success) setRefreshKey((key) => key + 1);
+    return result;
+  }
+
+  async function handleSaveField(id: string | null, data: import("@/lib/catalog").CatalogFieldInput) {
+    const result = id ? await updateCatalogFieldAction(id, data) : await createCatalogFieldAction(data);
+    if (result.success) setRefreshKey((key) => key + 1);
+    return result;
+  }
+
+  async function handleToggleField(field: CatalogField) {
+    const result = await setCatalogFieldActiveAction(field.id, !field.isActive);
+    if (!result.success) window.alert(result.error);
+    else setRefreshKey((key) => key + 1);
   }
 
   async function handleToggleGarmentActive(garment: CatalogGarmentType) {
@@ -182,6 +268,7 @@ function CatalogPageContent() {
   }
 
   const garmentDrawerOpen = isAddingGarment || editingGarment !== null;
+  const metadataAvailable = catalogFields.length > 0 && catalogSections.length > 0;
   const addOnDrawerOpen = isAddingAddOn || editingAddOn !== null;
   const workStageDrawerOpen = isAddingWorkStage || editingWorkStage !== null;
 
@@ -206,7 +293,10 @@ function CatalogPageContent() {
           (tab === "garment-types" ? (
             <button
               type="button"
-              onClick={() => setIsAddingGarment(true)}
+              onClick={() => {
+                setGarmentConfiguration(null);
+                setIsAddingGarment(true);
+              }}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
             >
               <Plus className="h-4 w-4" />
@@ -221,7 +311,7 @@ function CatalogPageContent() {
               <Plus className="h-4 w-4" />
               {t("catalog.addAddOn")}
             </button>
-          ) : (
+          ) : tab === "work-stages" ? (
             <button
               type="button"
               onClick={() => setIsAddingWorkStage(true)}
@@ -230,7 +320,7 @@ function CatalogPageContent() {
               <Plus className="h-4 w-4" />
               Add Work Stage
             </button>
-          ))}
+          ) : null)}
       </div>
 
       <CatalogTabs
@@ -244,12 +334,30 @@ function CatalogPageContent() {
       {isLoadingCatalog ? (
         <LoadingState label="Loading catalog..." />
       ) : tab === "garment-types" ? (
-        <CatalogTable
-          garmentTypes={garmentTypes}
+        <>
+          {!metadataAvailable && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Dynamic Fields and Sections will be available after database migrations 0055 and 0056 are applied. Existing catalog management remains available.
+            </div>
+          )}
+          <CatalogTable
+            garmentTypes={garmentTypes}
+            metadataFieldCounts={metadataFieldCounts}
+            canManage={canManage}
+            onEdit={metadataAvailable ? openGarmentEditor : setEditingGarment}
+            onToggleActive={handleToggleGarmentActive}
+          />
+        </>
+      ) : tab === "fields" ? (
+        <FieldsPanel
+          fields={catalogFields}
+          sections={catalogSections}
           canManage={canManage}
-          onEdit={setEditingGarment}
-          onToggleActive={handleToggleGarmentActive}
+          onSave={handleSaveField}
+          onToggleActive={handleToggleField}
         />
+      ) : tab === "sections" ? (
+        <SectionsPanel sections={catalogSections} canManage={canManage} onSave={handleSaveSection} />
       ) : tab === "addons" ? (
         <AddOnTable
           addOns={addOns}
@@ -267,7 +375,22 @@ function CatalogPageContent() {
         />
       )}
 
-      {canManage && garmentDrawerOpen && (
+      {canManage && garmentDrawerOpen && metadataAvailable && (
+        <GarmentTypeConfigDrawer
+          garment={editingGarment}
+          configuration={garmentConfiguration}
+          fields={catalogFields}
+          sections={catalogSections}
+          activeAddOns={activeAddOns}
+          onCancel={() => {
+            setEditingGarment(null);
+            setIsAddingGarment(false);
+            setGarmentConfiguration(null);
+          }}
+          onSaved={handleSaveGarmentConfiguration}
+        />
+      )}
+      {canManage && garmentDrawerOpen && !metadataAvailable && (
         <GarmentTypeDrawer
           garment={editingGarment}
           activeAddOns={activeAddOns}
@@ -275,7 +398,7 @@ function CatalogPageContent() {
             setEditingGarment(null);
             setIsAddingGarment(false);
           }}
-          onSaved={handleSaveGarment}
+          onSaved={handleSaveLegacyGarment}
         />
       )}
 

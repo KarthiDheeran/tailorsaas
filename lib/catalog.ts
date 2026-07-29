@@ -23,6 +23,132 @@ export interface CatalogMeasurementField {
   label: string;
 }
 
+// Phase 1 of the configurable garment-form rollout. These types describe the
+// database-backed metadata catalog. The legacy measurement exports below stay
+// in place until all existing order and customer flows use this metadata.
+export const CATALOG_FIELD_TYPES = ["measurement", "style", "instruction"] as const;
+export type CatalogFieldType = (typeof CATALOG_FIELD_TYPES)[number];
+
+export const CATALOG_FIELD_INPUT_TYPES = [
+  "number",
+  "text",
+  "textarea",
+  "select",
+  "multiselect",
+  "checkbox",
+] as const;
+export type CatalogFieldInputType = (typeof CATALOG_FIELD_INPUT_TYPES)[number];
+
+export interface CatalogSection {
+  id: string;
+  name: string;
+  displayOrder: number;
+  icon: string | null;
+  isActive: boolean;
+}
+
+export interface CatalogField {
+  id: string;
+  code: string;
+  name: string;
+  fieldType: CatalogFieldType;
+  defaultSectionId: string | null;
+  inputType: CatalogFieldInputType;
+  unit: string | null;
+  placeholder: string | null;
+  options: string[];
+  uiMetadata: Record<string, unknown>;
+  minValue: number | null;
+  maxValue: number | null;
+  decimalPlaces: number | null;
+  isRequiredDefault: boolean;
+  displayOrder: number;
+  isActive: boolean;
+  /** System field codes are stable so saved schema snapshots stay meaningful. */
+  isSystem: boolean;
+}
+
+export interface CatalogGarmentTypeField {
+  id: string;
+  garmentTypeId: string;
+  fieldId: string;
+  sectionId: string | null;
+  displayOrder: number;
+  isRequired: boolean;
+  defaultValue: unknown;
+  field?: CatalogField;
+  section?: CatalogSection | null;
+}
+
+export type GarmentTypeFieldAssignmentInput = {
+  fieldId: string;
+  sectionId: string | null;
+  displayOrder: number;
+  isRequired: boolean;
+  defaultValue: unknown;
+};
+
+export type GarmentTypeConfiguration = {
+  garment: CatalogGarmentType;
+  fields: CatalogGarmentTypeField[];
+};
+
+export type CatalogSectionInput = {
+  name: string;
+  displayOrder: number;
+  icon: string | null;
+  isActive: boolean;
+};
+
+export type CatalogFieldInput = {
+  code: string;
+  name: string;
+  fieldType: CatalogFieldType;
+  defaultSectionId: string | null;
+  inputType: CatalogFieldInputType;
+  unit: string | null;
+  placeholder: string | null;
+  options: string[];
+  uiMetadata?: Record<string, unknown>;
+  minValue: number | null;
+  maxValue: number | null;
+  decimalPlaces: number | null;
+  isRequiredDefault: boolean;
+  displayOrder: number;
+  isActive: boolean;
+};
+
+// Per-item shirt construction choices. These belong to the order-item
+// measurement snapshot (not a global customer column) and are shown only for
+// Half Shirt / Full Shirt in order entry.
+export const SHIRT_STYLE_FIELDS = [
+  {
+    id: "shirtR1",
+    label: "R1 (Sleeve)",
+    options: ["பட்டி மடிப்பு", "உள் பட்டி மடிப்பு", "1 இஞ்ச் பட்டி மடிப்பு"],
+  },
+  {
+    id: "shirtR2",
+    label: "R2",
+    options: ["2 தையல்", "1/2 இஞ்ச் தையல்", "அனைத்தும் 2 தையல்"],
+  },
+  {
+    id: "shirtR3",
+    label: "R3",
+    options: ["உள் பாக்கெட்", "ஒரு பாக்கெட்"],
+  },
+  {
+    id: "shirtR4",
+    label: "R4",
+    options: ["கட் சர்ட்"],
+  },
+] as const;
+
+export function isShirtStyleGarment(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  return normalized === "half shirt" || normalized === "full shirt" || normalized === "shirt";
+}
+
 // Reusable Add-ons/Extras master — garment types reference these by id
 // (addOnIds) rather than each defining their own name/price, so an add-on
 // like "Inner Pocket" is defined once and can be linked to Pant, Shirt, Coat,
@@ -39,16 +165,7 @@ export interface CatalogWorkStage {
   isFinalStage: boolean;
 }
 
-export const DEFAULT_WORK_STAGE_NAMES = [
-  "Measurement",
-  "Cutting",
-  "Stitching",
-  "Embroidery",
-  "Finishing",
-  "Alteration",
-  "Ironing/Packing",
-  "Delivery",
-] as const;
+export const DEFAULT_WORK_STAGE_NAMES = ["Cutting", "Stitching"] as const;
 
 export const DEFAULT_WORK_STAGES: CatalogWorkStage[] = DEFAULT_WORK_STAGE_NAMES.map(
   (name, index) => ({
@@ -59,7 +176,7 @@ export const DEFAULT_WORK_STAGES: CatalogWorkStage[] = DEFAULT_WORK_STAGE_NAMES.
     isActive: true,
     // Keeps the existing shop workflow unchanged until a manager selects a
     // different final production stage in Settings > Work Stages.
-    isFinalStage: name === "Ironing/Packing",
+    isFinalStage: false,
   })
 );
 
@@ -74,6 +191,7 @@ export interface CatalogAddOn {
 export interface CatalogGarmentType {
   id: string;
   name: string;
+  section: GarmentSection;
   shortcutCode: number | null;
   basePrice: number;
   measurementFieldIds: string[];
@@ -81,19 +199,35 @@ export interface CatalogGarmentType {
   isActive: boolean;
 }
 
+export const GARMENT_SECTIONS = ["Men", "Chutti", "Blouse"] as const;
+export type GarmentSection = (typeof GARMENT_SECTIONS)[number];
+
+export function isGarmentSection(value: unknown): value is GarmentSection {
+  return typeof value === "string" && GARMENT_SECTIONS.includes(value as GarmentSection);
+}
+
+// Supports a safe rollout while the database migration is being applied. Once
+// order_section exists, the configured database value always takes precedence.
+export function defaultGarmentSectionForName(name: string): GarmentSection {
+  switch (name.trim().toLowerCase()) {
+    case "half pant":
+    case "skirt":
+    case "finoform":
+      return "Chutti";
+    default:
+      return "Men";
+  }
+}
+
 export const INITIAL_GARMENT_SHORTCUT_CODES: Record<string, number> = {
-  alteration: 1,
-  blouse: 2,
-  dress: 3,
-  gown: 4,
-  kurta: 5,
-  lehenga: 6,
-  pant: 7,
-  "salwar suit": 8,
-  "saree fall/pico": 9,
-  shirt: 10,
-  suit: 11,
-  waistcoat: 12,
+  "half shirt": 1,
+  "full shirt": 2,
+  "half pant": 3,
+  pant: 4,
+  safari: 5,
+  skirt: 6,
+  finoform: 7,
+  coat: 8,
 };
 
 export function initialShortcutCodeForGarmentName(name: string): number | null {
@@ -233,6 +367,8 @@ export function customMeasurementFieldLabel(id: string): string {
 }
 
 export function measurementFieldLabel(id: string): string {
+  const shirtStyleField = SHIRT_STYLE_FIELDS.find((field) => field.id === id);
+  if (shirtStyleField) return shirtStyleField.label;
   if (isCustomMeasurementFieldId(id)) {
     return customMeasurementFieldLabel(id) || "Custom Field";
   }
@@ -270,6 +406,7 @@ export function calculateGarmentAmount(
 
 export type GarmentTypeInput = {
   name: string;
+  section: GarmentSection;
   shortcutCode: number | null;
   basePrice: number;
   measurementFieldIds: string[];

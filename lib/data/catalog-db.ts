@@ -1,10 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_WORK_STAGES, initialShortcutCodeForGarmentName } from "@/lib/catalog";
+import {
+  DEFAULT_WORK_STAGES,
+  defaultGarmentSectionForName,
+  initialShortcutCodeForGarmentName,
+} from "@/lib/catalog";
 import type {
   AddOnInput,
   CatalogAddOn,
   CatalogGarmentType,
   CatalogWorkStage,
+  GarmentSection,
   GarmentTypeInput,
   WorkStageInput,
 } from "@/lib/catalog";
@@ -304,13 +309,14 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
-  "id, name, shortcut_code, base_price, measurement_field_ids, addon_ids, is_active";
+  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, is_active";
 const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
 interface GarmentRow {
   id: string;
   name: string;
+  order_section: GarmentSection;
   shortcut_code: number | null;
   base_price: number;
   measurement_field_ids: string[];
@@ -318,7 +324,7 @@ interface GarmentRow {
   is_active: boolean;
 }
 
-type LegacyGarmentRow = Omit<GarmentRow, "shortcut_code">;
+type LegacyGarmentRow = Omit<GarmentRow, "shortcut_code" | "order_section">;
 
 function isMissingShortcutCodeColumn(error: unknown): boolean {
   return (
@@ -333,6 +339,7 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
   return {
     id: row.id,
     name: row.name,
+    section: row.order_section,
     shortcutCode: row.shortcut_code ?? initialShortcutCodeForGarmentName(row.name),
     basePrice: row.base_price,
     measurementFieldIds: row.measurement_field_ids ?? [],
@@ -344,6 +351,7 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
 function mapLegacyGarment(row: LegacyGarmentRow): CatalogGarmentType {
   return mapGarment({
     ...row,
+    order_section: defaultGarmentSectionForName(row.name),
     shortcut_code: initialShortcutCodeForGarmentName(row.name),
   });
 }
@@ -418,6 +426,7 @@ export async function createGarmentType(
     .from("catalog_garment_types")
     .insert({
       name: data.name,
+      order_section: data.section,
       shortcut_code: data.shortcutCode,
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,
@@ -439,6 +448,7 @@ export async function updateGarmentType(
     .from("catalog_garment_types")
     .update({
       name: data.name,
+      order_section: data.section,
       shortcut_code: data.shortcutCode,
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,

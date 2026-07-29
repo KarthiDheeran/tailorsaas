@@ -2,13 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
-import type { TranslationKey } from "@/lib/i18n/translations";
 
 const TABS = [
-  { key: "garment-types", labelKey: "catalog.garmentTypes" },
-  { key: "addons", labelKey: "catalog.addOnsExtras" },
-  { key: "work-stages", labelKey: "catalog.workStages" },
-] as const satisfies { key: string; labelKey: TranslationKey }[];
+  { key: "garment-types", label: "Garment Types" },
+  { key: "fields", label: "Fields" },
+  { key: "sections", label: "Sections" },
+  { key: "addons", label: "Add-ons / Extras" },
+  { key: "work-stages", label: "Work Stages" },
+] as const;
 
 export type CatalogTab = (typeof TABS)[number]["key"];
 
@@ -35,7 +36,13 @@ export function CatalogTabs({
               : "border-transparent text-ink-muted hover:text-ink"
           )}
         >
-          {t(tab.labelKey)}
+            {tab.key === "garment-types"
+              ? t("catalog.garmentTypes")
+              : tab.key === "addons"
+                ? t("catalog.addOnsExtras")
+                : tab.key === "work-stages"
+                  ? t("catalog.workStages")
+                  : tab.label}
         </button>
       ))}
     </div>

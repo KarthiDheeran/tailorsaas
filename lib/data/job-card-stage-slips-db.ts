@@ -21,7 +21,8 @@ export interface JobCardStageSlip {
   staffName: string;
   wageRate: number;
   wageAmount: number;
-  measurementsSnapshot?: Record<string, string>;
+  measurementsSnapshot?: Record<string, unknown>;
+  fieldSchemaSnapshot?: Record<string, unknown>;
   addOnsSnapshot?: OrderItemAddOn[];
   labourAddOnsSnapshot?: OrderItemAddOn[];
   notes?: string;
@@ -43,7 +44,7 @@ export interface CreateJobCardStageSlipInput {
 const JOB_CARD_STAGE_SLIP_COLUMNS = `
   id, scan_token, slip_code, order_id, order_item_serial_no, unit_no, order_number, customer_id,
   customer_snapshot, garment_type, quantity, stage, staff_id, staff_name, wage_rate,
-  wage_amount, measurements_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
+  wage_amount, measurements_snapshot, field_schema_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
   printed_at, tallied_at, created_at
 `;
 
@@ -64,7 +65,8 @@ interface JobCardStageSlipRow {
   staff_name: string;
   wage_rate: number;
   wage_amount: number;
-  measurements_snapshot: Record<string, string> | null;
+  measurements_snapshot: Record<string, unknown> | null;
+  field_schema_snapshot: Record<string, unknown> | null;
   add_ons_snapshot: OrderItemAddOn[] | null;
   labour_add_ons_snapshot: OrderItemAddOn[] | null;
   notes: string | null;
@@ -92,6 +94,7 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
     wageRate: Number(row.wage_rate),
     wageAmount: Number(row.wage_amount),
     measurementsSnapshot: row.measurements_snapshot ?? undefined,
+    fieldSchemaSnapshot: row.field_schema_snapshot ?? undefined,
     addOnsSnapshot: row.add_ons_snapshot ?? undefined,
     labourAddOnsSnapshot: row.labour_add_ons_snapshot ?? undefined,
     notes: row.notes?.trim() ? row.notes : undefined,
@@ -108,11 +111,10 @@ export function isMissingJobCardStageSlipsSchemaError(error: unknown): boolean {
   return code === "42P01" || code === "PGRST205" || message.includes("job_card_stage_slips");
 }
 
-function meaningfulMeasurements(value: unknown): Record<string, string> | null {
+function meaningfulMeasurements(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, raw]) => typeof raw === "string" && raw.trim() !== "")
-    .map(([key, raw]) => [key, String(raw).trim()] as const);
+    .filter(([, raw]) => raw !== null && raw !== undefined && raw !== "" && (!Array.isArray(raw) || raw.length > 0));
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
@@ -164,6 +166,7 @@ export async function createJobCardStageSlip(
       wage_rate: wageRate,
       wage_amount: wageRate * quantity + labourAddOnsTotal,
       measurements_snapshot: meaningfulMeasurements(item.measurements),
+      field_schema_snapshot: item.fieldSchemaSnapshot ?? null,
       add_ons_snapshot: item.addOns ?? null,
       labour_add_ons_snapshot: labourAddOns.length > 0 ? labourAddOns : null,
       notes: input.notes?.trim() || null,
@@ -251,4 +254,53 @@ export async function getTalliedJobCardStageSlips(
     throw error;
   }
   return ((data as unknown as JobCardStageSlipRow[]) ?? []).map(mapSlip);
+}
+
+/**
+ * Returns the most recent unscanned slip for one physical garment unit and
+ * stage. Production bundles reuse this slip on reprint so one barcode cannot
+ * be scanned twice for the same pending work.
+ */
+export async function getPendingJobCardStageSlip(
+  supabase: SupabaseClient,
+  input: Pick<CreateJobCardStageSlipInput, "orderId" | "orderItemSerialNo" | "unitNo" | "stage">
+): Promise<JobCardStageSlip | undefined> {
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .eq("order_id", input.orderId)
+    .eq("order_item_serial_no", input.orderItemSerialNo)
+    .eq("unit_no", input.unitNo)
+    .eq("stage", input.stage)
+    .is("tallied_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
+    throw error;
+  }
+  return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+}
+
+export async function getJobCardStageSlipsByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<JobCardStageSlip[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .in("id", ids);
+  if (error) {
+    if (isMissingJobCardStageSlipsSchemaError(error)) return [];
+    throw error;
+  }
+  const byId = new Map(
+    ((data as unknown as JobCardStageSlipRow[]) ?? []).map((row) => [row.id, mapSlip(row)])
+  );
+  return ids.flatMap((id) => {
+    const slip = byId.get(id);
+    return slip ? [slip] : [];
+  });
 }

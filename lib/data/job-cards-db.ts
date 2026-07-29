@@ -38,7 +38,7 @@ export interface JobCardActivitySnapshot {
 const JOB_CARD_COLUMNS = `
   id, job_card_number, order_id, order_number, customer_id, order_status,
   order_item_serial_no, unit_no, garment_type, customer_snapshot,
-  measurements_snapshot, fabric_source, fabric_notes, design_notes,
+  measurements_snapshot, field_schema_snapshot, fabric_source, fabric_notes, design_notes,
   current_stage, assigned_staff_id, priority, due_date, trial_date,
   started_date, completed_date, cancelled, notes, wage_rate, wage_amount,
   created_at, updated_at
@@ -47,7 +47,7 @@ const JOB_CARD_COLUMNS = `
 const LEGACY_JOB_CARD_COLUMNS = `
   id, job_card_number, order_id, order_number, customer_id, order_status,
   order_item_serial_no, unit_no, garment_type, customer_snapshot,
-  measurements_snapshot, fabric_source, fabric_notes, design_notes,
+  measurements_snapshot, field_schema_snapshot, fabric_source, fabric_notes, design_notes,
   current_stage, assigned_staff_id, priority, due_date, trial_date,
   started_date, completed_date, cancelled, notes, created_at, updated_at
 `;
@@ -63,7 +63,8 @@ interface JobCardRow {
   unit_no: number;
   garment_type: string;
   customer_snapshot: CustomerSnapshot | null;
-  measurements_snapshot: Record<string, string> | null;
+  measurements_snapshot: Record<string, unknown> | null;
+  field_schema_snapshot: Record<string, unknown> | null;
   fabric_source: JobCardFabricSource;
   fabric_notes: string | null;
   design_notes: string | null;
@@ -205,6 +206,21 @@ export async function syncJobCardsForOrder(
     p_order_id: orderId,
   });
   if (error) throw error;
+  const { data: itemRows, error: itemsError } = await supabase
+    .from("order_items")
+    .select("serial_no, field_schema_snapshot")
+    .eq("order_id", orderId);
+  if (itemsError) throw itemsError;
+  await Promise.all(
+    ((itemRows as Array<{ serial_no: number; field_schema_snapshot: Record<string, unknown> | null }> | null) ?? [])
+      .map((item) =>
+        supabase
+          .from("job_cards")
+          .update({ field_schema_snapshot: item.field_schema_snapshot })
+          .eq("order_id", orderId)
+          .eq("order_item_serial_no", item.serial_no)
+      )
+  );
   await reconcileJobCardsForOrderStatus(supabase, orderId);
 }
 
@@ -869,6 +885,7 @@ function mapJobCardRow(
     rate: 0,
     amount: 0,
     measurements: row.measurements_snapshot ?? undefined,
+    fieldSchemaSnapshot: row.field_schema_snapshot ?? undefined,
     fabricSource: row.fabric_source,
     fabricNotes: row.fabric_notes ?? undefined,
     designNotes: row.design_notes?.trim() ? row.design_notes : undefined,

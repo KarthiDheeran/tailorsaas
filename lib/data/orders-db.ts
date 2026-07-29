@@ -10,6 +10,7 @@ import type {
   OrderStatus,
   PaymentMode,
 } from "@/lib/types";
+import type { GarmentSection } from "@/lib/catalog";
 
 // ---------------------------------------------------------------------------
 // Phase 6C: real, Supabase-backed replacements for lib/data/stub-data.ts's
@@ -30,7 +31,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const ORDER_ITEM_COLUMNS =
-  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, field_schema_snapshot, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 interface OrderItemRow {
   id: string;
@@ -44,7 +45,8 @@ interface OrderItemRow {
   add_ons_total: number | null;
   final_rate: number | null;
   amount: number;
-  measurements: Record<string, string> | null;
+  measurements: Record<string, unknown> | null;
+  field_schema_snapshot: Record<string, unknown> | null;
   fabric_source: OrderItemFabricSource | null;
   fabric_notes: string | null;
   design_notes: string | null;
@@ -68,6 +70,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
     finalRate: row.final_rate ?? undefined,
     amount: row.amount,
     measurements: row.measurements ?? undefined,
+    fieldSchemaSnapshot: row.field_schema_snapshot ?? undefined,
     fabricSource: row.fabric_source ?? undefined,
     fabricNotes: row.fabric_notes?.trim() ? row.fabric_notes : undefined,
     designNotes: row.design_notes?.trim() ? row.design_notes : undefined,
@@ -257,8 +260,13 @@ export async function getOrdersForCustomer(
 // Non-mutating preview only — see peek_next_order_number()'s own comment in
 // the migration. The real, unique number is only ever assigned inside
 // create_order_with_items at actual save time.
-export async function peekNextOrderNumber(supabase: SupabaseClient): Promise<string> {
-  const { data, error } = await supabase.rpc("peek_next_order_number");
+export async function peekNextOrderNumber(
+  supabase: SupabaseClient,
+  orderSection: GarmentSection
+): Promise<string> {
+  const { data, error } = await supabase.rpc("peek_next_order_number", {
+    p_order_section: orderSection,
+  });
   if (error) throw error;
   return (data as string) ?? "";
 }
@@ -274,6 +282,7 @@ export async function createOrder(
     items: OrderItem[];
     advancePaid: number;
     paymentMode: PaymentMode;
+    orderSection: GarmentSection;
     status?: OrderStatus;
   }
 ): Promise<Order> {
@@ -297,6 +306,7 @@ export async function createOrder(
     p_advance_paid: data.advancePaid,
     p_payment_mode: data.paymentMode,
     p_status: data.status ?? "In Progress",
+    p_order_section: data.orderSection,
     p_items: data.items,
   });
   if (error) throw error;

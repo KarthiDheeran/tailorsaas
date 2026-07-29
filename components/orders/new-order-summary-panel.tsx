@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   CalendarDays,
+  AlertTriangle,
   ExternalLink,
   History,
   MapPin,
@@ -11,6 +12,7 @@ import {
   ReceiptText,
   Repeat,
   ShoppingBag,
+  Truck,
   User,
   UserRound,
   WalletCards,
@@ -53,12 +55,14 @@ export function NewOrderSummaryPanel({
   onRepeatOrder,
   repeatCopyMessage,
   newCustomerPending = false,
+  hideCustomerSummary = false,
 }: {
   customer: Customer | null;
   detail: CustomerDetail | undefined;
   onRepeatOrder: (order: Order) => void;
   repeatCopyMessage?: string | null;
   newCustomerPending?: boolean;
+  hideCustomerSummary?: boolean;
 }) {
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
@@ -88,13 +92,81 @@ export function NewOrderSummaryPanel({
   const recentOrders = [...detail.orders]
     .filter((order) => order.status !== "Cancelled")
     .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1));
+  const today = new Date().toISOString().slice(0, 10);
+  const undeliveredOrders = detail.orders
+    .filter((order) => order.status !== "Delivered" && order.status !== "Cancelled")
+    .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
+  const overdueUndeliveredOrders = undeliveredOrders.filter(
+    (order) => Boolean(order.deliveryDate) && order.deliveryDate < today
+  );
   const visibleRecentOrders = showAllPreviousOrders
     ? recentOrders
     : recentOrders.slice(0, 2);
 
   return (
     <div className="space-y-3">
-      <Card
+      {undeliveredOrders.length > 0 && (
+        <div
+          role="alert"
+          className={`rounded-2xl border p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] ${
+            overdueUndeliveredOrders.length > 0
+              ? "border-[#FED7AA] bg-[#FFF7ED]"
+              : "border-[#BFDBFE] bg-[#EFF6FF]"
+          }`}
+        >
+          <div className="flex items-start gap-2.5">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${overdueUndeliveredOrders.length > 0 ? "bg-[#FFEDD5] text-[#C2410C]" : "bg-[#DBEAFE] text-[#1D4ED8]"}`}>
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-bold text-[#111827]">Previous Order Attention</p>
+              <p className="mt-0.5 text-sm text-[#475569]">
+                {overdueUndeliveredOrders.length > 0
+                  ? `${overdueUndeliveredOrders.length} previous order${overdueUndeliveredOrders.length === 1 ? " is" : "s are"} past the promised delivery date.`
+                  : `${undeliveredOrders.length} previous order${undeliveredOrders.length === 1 ? " is" : "s are"} not yet delivered.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {undeliveredOrders.slice(0, 2).map((order) => {
+              const overdue = Boolean(order.deliveryDate) && order.deliveryDate < today;
+              return (
+                <div key={order.id} className="rounded-xl border border-black/5 bg-white/75 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/orders?view=${order.id}`} className="min-w-0 truncate text-sm font-bold text-[#0F766E] hover:underline">
+                      {order.orderNumber}
+                    </Link>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${overdue ? "bg-[#FEE2E2] text-[#B91C1C]" : "bg-[#E2E8F0] text-[#334155]"}`}>
+                      {overdue ? "Delivery overdue" : order.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 break-words text-[13px] leading-5 text-[#475569]">
+                    {order.items.map((item) => `${item.particular} x${item.qty}`).join(", ")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px] text-[#64748B]">
+                    <span>Promised: {order.deliveryDate ? formatDate(order.deliveryDate) : "Not set"}</span>
+                    {canViewPayments && order.balance > 0 && (
+                      <span className="font-semibold text-[#C2410C]">Due {formatCurrency(order.balance)}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href={`/orders?view=${undeliveredOrders[0].id}`} className="inline-flex h-9 items-center justify-center rounded-lg border border-[#0F766E] bg-white px-3 text-[13px] font-semibold text-[#0F766E] transition-colors hover:bg-[#ECFDF5]">
+              View Previous Order
+            </Link>
+            <Link href="/delivery" className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#0F766E] px-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#115E59]">
+              <Truck className="h-3.5 w-3.5" aria-hidden="true" />
+              Open Delivery
+            </Link>
+          </div>
+        </div>
+      )}
+      {!hideCustomerSummary && <Card
         title={t("orders.customerSummary")}
         icon={<UserRound className="h-5 w-5" aria-hidden="true" />}
       >
@@ -154,7 +226,7 @@ export function NewOrderSummaryPanel({
             {t("common.viewProfile")}
           </Link>
         </div>
-      </Card>
+      </Card>}
 
       {recentOrders.length > 0 && (
         <Card

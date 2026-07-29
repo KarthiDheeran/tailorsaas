@@ -1,9 +1,12 @@
 "use client";
 
-import { measurementFieldLabel } from "@/lib/catalog";
+import { GarmentFormFields } from "@/components/orders/garment-form-fields";
+import type {
+  GarmentFieldValue,
+  GarmentFieldValues,
+  RuntimeGarmentField,
+} from "@/lib/garment-form-runtime";
 
-const inputClass =
-  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 const textareaClass =
   "rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
@@ -21,17 +24,17 @@ function formatGarmentName(name: string) {
 
 export function CustomerMeasurementsForm({
   garmentName,
-  fieldIds,
+  fields,
   values,
   notes,
   onValueChange,
   onNotesChange,
 }: {
   garmentName: string;
-  fieldIds: string[];
-  values: Record<string, string>;
+  fields: RuntimeGarmentField[];
+  values: GarmentFieldValues;
   notes: string;
-  onValueChange: (key: string, value: string) => void;
+  onValueChange: (key: string, value: GarmentFieldValue) => void;
   onNotesChange: (notes: string) => void;
 }) {
   return (
@@ -40,23 +43,8 @@ export function CustomerMeasurementsForm({
         <h3 className="mb-4 text-[17px] font-semibold text-ink">
           {garmentName ? `${formatGarmentName(garmentName)} Measurements` : "Measurements"}
         </h3>
-        {fieldIds.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {fieldIds.map((id) => (
-              <label key={id} className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-medium text-ink-muted">
-                  {measurementFieldLabel(id)}
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={values[id] ?? ""}
-                  onChange={(e) => onValueChange(id, e.target.value)}
-                  className={inputClass}
-                />
-              </label>
-            ))}
-          </div>
+        {fields.length > 0 ? (
+          <GarmentFormFields fields={fields} values={values} onChange={onValueChange} />
         ) : (
           <p className="text-sm text-ink-muted">
             No measurement fields configured for this garment type.

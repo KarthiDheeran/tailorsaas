@@ -30,15 +30,17 @@ import {
 } from "@/lib/data/job-card-activity-db";
 import {
   createJobCardStageSlip,
+  getJobCardStageSlipsByIds,
   getJobCardStageSlipById,
   getJobCardStageSlipByScanCode,
+  getPendingJobCardStageSlip,
   getTalliedJobCardStageSlips,
   isMissingJobCardStageSlipsSchemaError,
   markJobCardStageSlipTallied,
   type CreateJobCardStageSlipInput,
   type JobCardStageSlip,
 } from "@/lib/data/job-card-stage-slips-db";
-import { getAllOrders } from "@/lib/data/orders-db";
+import { getAllOrders, getOrderById } from "@/lib/data/orders-db";
 import {
   getStaff,
   recordStaffPayment,
@@ -250,9 +252,6 @@ export async function createJobCardStageSlipAction(
   if (!(await isConfiguredWorkStage(data.stage))) {
     return { success: false, error: "Stage is required." };
   }
-  if (!data.staffId?.trim()) {
-    return { success: false, error: "Assign a worker before printing a stage job card." };
-  }
   if (
     data.wageRate !== undefined &&
     (!Number.isFinite(data.wageRate) || data.wageRate < 0)
@@ -261,34 +260,38 @@ export async function createJobCardStageSlipAction(
   }
 
   try {
-    await assertJobCardAvailableForStageSlip(createAdminClient(), {
-      orderId: data.orderId,
-      orderItemSerialNo: data.orderItemSerialNo,
-      unitNo: data.unitNo,
-      taskType: data.stage,
-      staffId: data.staffId,
-    });
+    if (data.staffId?.trim()) {
+      await assertJobCardAvailableForStageSlip(createAdminClient(), {
+        orderId: data.orderId,
+        orderItemSerialNo: data.orderItemSerialNo,
+        unitNo: data.unitNo,
+        taskType: data.stage,
+        staffId: data.staffId,
+      });
+    }
     const slip = await createJobCardStageSlip(supabase, data);
-    const jobCardId = await assignJobCardForStageSlip(createAdminClient(), {
-      orderId: slip.orderId,
-      orderItemSerialNo: slip.orderItemSerialNo,
-      unitNo: slip.unitNo,
-      taskType: slip.stage,
-      staffId: slip.staffId!,
-      wageRate: slip.wageRate,
-      wageAmount: slip.wageAmount,
-      notes: slip.notes,
-    });
-    await logJobCardActivityBestEffort({
-      jobCardId,
-      orderId: slip.orderId,
-      actionType: "Assigned",
-      fromStage: "Unassigned",
-      toStage: taskTypeToStage(slip.stage),
-      assignedStaffId: slip.staffId,
-      notes: `Stage card printed: ${slip.slipCode}`,
-      performedBy: guard.userId,
-    });
+    if (slip.staffId) {
+      const jobCardId = await assignJobCardForStageSlip(createAdminClient(), {
+        orderId: slip.orderId,
+        orderItemSerialNo: slip.orderItemSerialNo,
+        unitNo: slip.unitNo,
+        taskType: slip.stage,
+        staffId: slip.staffId,
+        wageRate: slip.wageRate,
+        wageAmount: slip.wageAmount,
+        notes: slip.notes,
+      });
+      await logJobCardActivityBestEffort({
+        jobCardId,
+        orderId: slip.orderId,
+        actionType: "Assigned",
+        fromStage: "Unassigned",
+        toStage: taskTypeToStage(slip.stage),
+        assignedStaffId: slip.staffId,
+        notes: `Stage card printed: ${slip.slipCode}`,
+        performedBy: guard.userId,
+      });
+    }
     return { success: true, data: slip };
   } catch (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) {
@@ -348,6 +351,54 @@ export async function confirmJobCardStageSlipTallyAction(
   return confirmStageSlipTally(slip, guard.userId);
 }
 
+/** Creates/reuses one Cutting then one Stitching slip for every garment unit. */
+export async function createProductionPrintBundleAction(
+  orderIds: string[]
+): Promise<ActionResult<JobCardStageSlip[]>> {
+  const uniqueOrderIds = Array.from(new Set(orderIds.filter(Boolean)));
+  if (uniqueOrderIds.length === 0) return { success: false, error: "Select at least one order." };
+
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    const slips: JobCardStageSlip[] = [];
+    for (const orderId of uniqueOrderIds) {
+      const order = await getOrderById(supabase, orderId);
+      if (!order || order.status === "Cancelled" || order.status === "Delivered") continue;
+      for (const item of order.items) {
+        for (let unitNo = 1; unitNo <= Math.max(1, item.qty); unitNo += 1) {
+          for (const stage of ["Cutting", "Stitching"] as const) {
+            const existing = await getPendingJobCardStageSlip(supabase, {
+              orderId,
+              orderItemSerialNo: item.serialNo,
+              unitNo,
+              stage,
+            });
+            slips.push(existing ?? await createJobCardStageSlip(supabase, {
+              orderId,
+              orderItemSerialNo: item.serialNo,
+              unitNo,
+              stage,
+            }));
+          }
+        }
+      }
+    }
+    return { success: true, data: slips };
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to create the production print bundle.") };
+  }
+}
+
+export async function getProductionPrintBundleAction(ids: string[]): Promise<JobCardStageSlip[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return [];
+  return getJobCardStageSlipsByIds(supabase, Array.from(new Set(ids.filter(Boolean))));
+}
+
 async function confirmStageSlipTally(
   slip: JobCardStageSlip,
   performedBy: string
@@ -361,12 +412,6 @@ async function confirmStageSlipTally(
     const admin = createAdminClient();
     const todayIso = new Date().toISOString().slice(0, 10);
     const finalStage = await getFinalWorkStage(admin);
-    if (!finalStage) {
-      return {
-        success: false,
-        error: "Configure one active final production stage in Settings > Work Stages.",
-      };
-    }
     const completion = await completeJobCardStageSlip(
       admin,
       {
@@ -377,7 +422,10 @@ async function confirmStageSlipTally(
         staffId: slip.staffId,
         wageRate: slip.wageRate,
         wageAmount: slip.wageAmount,
-        isFinalStage: finalStage.stageKey === slip.stage,
+        // This shop moves cards to Ready manually after Stitching. A final
+        // stage is therefore optional; when one is configured it still keeps
+        // the established automatic-ready behaviour.
+        isFinalStage: finalStage?.stageKey === slip.stage,
       },
       todayIso
     );

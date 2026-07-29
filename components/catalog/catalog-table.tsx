@@ -8,11 +8,13 @@ import { formatCurrency } from "@/lib/currency";
 
 export function CatalogTable({
   garmentTypes,
+  metadataFieldCounts = {},
   canManage = true,
   onEdit,
   onToggleActive,
 }: {
   garmentTypes: CatalogGarmentType[];
+  metadataFieldCounts?: Record<string, number>;
   canManage?: boolean;
   onEdit: (garment: CatalogGarmentType) => void;
   onToggleActive: (garment: CatalogGarmentType) => void;
@@ -39,6 +41,7 @@ export function CatalogTable({
               {t("catalog.garmentTypes")}
             </th>
             <th className="whitespace-nowrap px-5 py-3">Code</th>
+            <th className="whitespace-nowrap px-5 py-3">Section</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">
               {t("catalog.basePrice")}
             </th>
@@ -76,12 +79,17 @@ export function CatalogTable({
                   </span>
                 )}
               </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                <span className="inline-flex rounded-full border border-primary/15 bg-primary-tint px-2.5 py-1 text-xs font-semibold text-primary-strong">
+                  {garment.section}
+                </span>
+              </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
                 {formatCurrency(garment.basePrice)}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
-                {garment.measurementFieldIds.length}{" "}
-                {garment.measurementFieldIds.length === 1
+                {metadataFieldCounts[garment.id] ?? garment.measurementFieldIds.length}{" "}
+                {(metadataFieldCounts[garment.id] ?? garment.measurementFieldIds.length) === 1
                   ? t("catalog.field")
                   : t("catalog.fields")}
               </td>

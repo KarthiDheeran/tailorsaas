@@ -179,9 +179,7 @@ export function StageJobCardPrintModal({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            <span>
-              Assign to <span className="text-red-600">*</span>
-            </span>
+            <span>Assign to <span className="font-normal text-ink-muted">(optional)</span></span>
             <span className="relative block">
               <select
                 value={staffId}
@@ -242,7 +240,7 @@ export function StageJobCardPrintModal({
           <button
             type="button"
             onClick={createPrintout}
-            disabled={saving || !selectedItem || !staffId}
+            disabled={saving || !selectedItem}
             className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}

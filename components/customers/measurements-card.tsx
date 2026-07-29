@@ -10,6 +10,7 @@ import {
   type CatalogGarmentType,
 } from "@/lib/catalog";
 import type { Customer, GarmentMeasurement } from "@/lib/types";
+import { historicalGarmentValueText } from "@/lib/garment-form-runtime";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 
@@ -55,7 +56,12 @@ function orderedFilledEntries(
   return [...knownOrder, ...unknownKeys]
     .filter((key, index, keys) => keys.indexOf(key) === index)
     .map((key) => [key, measurement.values[key]] as const)
-    .filter(([, value]) => value?.trim());
+    .filter(([, value]) =>
+      value !== null &&
+      value !== undefined &&
+      (typeof value !== "string" || value.trim() !== "") &&
+      (!Array.isArray(value) || value.length > 0)
+    );
 }
 
 export function MeasurementsCard({
@@ -135,7 +141,7 @@ export function MeasurementsCard({
                             {measurementFieldLabel(id)}
                           </dt>
                           <dd className="text-[15px] font-bold text-ink">
-                            {value}
+                            {historicalGarmentValueText(value)}
                           </dd>
                         </div>
                       ))}

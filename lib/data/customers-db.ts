@@ -219,7 +219,7 @@ const CUSTOMER_MEASUREMENTS_COLUMNS = "customer_id, values, notes, updated_at";
 
 interface CustomerMeasurementsRow {
   customer_id: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   notes: string | null;
   updated_at: string;
 }
@@ -263,7 +263,7 @@ export async function saveCustomerMeasurements(
   supabase: SupabaseClient,
   data: {
     customerId: string;
-    values: Record<string, string>;
+    values: Record<string, unknown>;
     notes?: string;
     source?: string;
   }
@@ -307,7 +307,7 @@ interface GarmentMeasurementRow {
   id: string;
   customer_id: string;
   garment_type: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fit_notes: string | null;
   notes: string | null;
   updated_at: string;
@@ -372,7 +372,7 @@ export async function getGarmentMeasurementDraftSeed(
   supabase: SupabaseClient,
   customerId: string,
   garmentType: string
-): Promise<{ values: Record<string, string>; fitNotes: string; notes: string }> {
+): Promise<{ values: Record<string, unknown>; fitNotes: string; notes: string }> {
   const [customerMeasurements, persisted] = await Promise.all([
     getCustomerMeasurements(supabase, customerId),
     getGarmentMeasurement(supabase, customerId, garmentType),
@@ -394,7 +394,7 @@ export async function saveGarmentMeasurement(
   data: {
     customerId: string;
     garmentType: string;
-    values: Record<string, string>;
+    values: Record<string, unknown>;
     fitNotes?: string;
     notes?: string;
     source?: string;
@@ -430,7 +430,7 @@ export async function saveGarmentMeasurement(
 interface CustomerMeasurementRevisionRow {
   id: string;
   customer_id: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   notes: string | null;
   source: string | null;
   created_at: string;
@@ -440,7 +440,7 @@ interface GarmentMeasurementRevisionRow {
   id: string;
   customer_id: string;
   garment_type: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   fit_notes: string | null;
   notes: string | null;
   source: string | null;
@@ -486,7 +486,7 @@ async function insertCustomerMeasurementRevision(
   supabase: SupabaseClient,
   data: {
     customerId: string;
-    values: Record<string, string>;
+    values: Record<string, unknown>;
     notes?: string | null;
     source?: string;
   }
@@ -505,7 +505,7 @@ async function insertGarmentMeasurementRevision(
   data: {
     customerId: string;
     garmentType: string;
-    values: Record<string, string>;
+    values: Record<string, unknown>;
     fitNotes?: string;
     notes?: string;
     source?: string;

@@ -19,6 +19,12 @@ import {
   updateOrderStatus,
 } from "@/lib/data/orders-db";
 import { recomputeOrderTotals } from "@/lib/data/order-totals-db";
+import { getGarmentTypeConfigurations } from "@/lib/data/catalog-fields-db";
+import {
+  buildFieldSchemaSnapshot,
+  resolveRuntimeGarmentFields,
+  validateGarmentFieldValues,
+} from "@/lib/garment-form-runtime";
 import {
   createCustomer,
   deleteCustomer,
@@ -51,6 +57,7 @@ import {
 } from "@/lib/data/order-attachments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
+import { isGarmentSection, type GarmentSection } from "@/lib/catalog";
 import type {
   Customer,
   Gender,
@@ -211,7 +218,7 @@ function parseOrderScanCode(rawCode: string):
     const token = code.slice(tokenPrefix.length).trim();
     return token ? { kind: "scan-token", value: token } : undefined;
   }
-  if (/^ORD-\d{4}-\d{3,}$/.test(code)) {
+  if (/^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+)$/.test(code)) {
     return { kind: "order-number", value: code };
   }
   return undefined;
@@ -250,11 +257,11 @@ export interface HistoricalMeasurementSnapshot {
   itemId?: string;
   serialNo: number;
   garmentName: string;
-  measurements: Record<string, string>;
+  measurements: Record<string, unknown>;
 }
 
 export interface MeasurementPickerData {
-  seed: { values: Record<string, string>; fitNotes: string; notes: string };
+  seed: { values: Record<string, unknown>; fitNotes: string; notes: string };
   history: HistoricalMeasurementSnapshot[];
 }
 
@@ -289,7 +296,9 @@ export async function getMeasurementPickerDataAction(
           (item) =>
             item.garmentTypeId === garmentTypeId &&
             item.measurements &&
-            Object.values(item.measurements).some((value) => value.trim() !== "")
+            Object.values(item.measurements).some((value) =>
+              typeof value === "string" ? value.trim() !== "" : value !== null
+            )
         )
         .map((item) => ({
           orderId: order.id,
@@ -326,7 +335,9 @@ export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
           (item) =>
             item.garmentTypeId === garmentTypeId &&
             item.measurements &&
-            Object.values(item.measurements).some((value) => value.trim() !== "")
+          Object.values(item.measurements).some((value) =>
+            typeof value === "string" ? value.trim() !== "" : value !== null
+          )
         )
         .map((item) => ({
           orderId: order.id,
@@ -345,11 +356,13 @@ export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
 // Non-mutating preview of the next order number for New Order's header — the
 // real number is (re)computed by createOrderAction itself at save time, same
 // as before this phase.
-export async function generateNextOrderNumberAction(): Promise<string> {
+export async function generateNextOrderNumberAction(
+  orderSection: GarmentSection | ""
+): Promise<string> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
-  if (!guard.ok) return "";
-  return peekNextOrderNumber(supabase);
+  if (!guard.ok || !isGarmentSection(orderSection)) return "";
+  return peekNextOrderNumber(supabase, orderSection);
 }
 
 function validateOrderDates(data: {
@@ -382,8 +395,46 @@ function validateOrderDates(data: {
   return null;
 }
 
+async function validateAndSnapshotOrderItems(
+  supabase: ReturnType<typeof createServerClient>,
+  items: OrderItem[],
+  existingItems: OrderItem[] = []
+): Promise<{ items: OrderItem[]; error?: string }> {
+  const configurations = await getGarmentTypeConfigurations(
+    supabase,
+    items.map((item) => item.garmentTypeId ?? "")
+  );
+  const configurationById = new Map(configurations.map((configuration) => [configuration.garment.id, configuration]));
+  const existingById = new Map(existingItems.filter((item) => item.id).map((item) => [item.id!, item]));
+
+  const validatedItems: OrderItem[] = [];
+  for (const item of items) {
+    const configuration = item.garmentTypeId ? configurationById.get(item.garmentTypeId) : undefined;
+    const fields = configuration ? resolveRuntimeGarmentFields(configuration.fields, []) : null;
+    if (!fields || fields.length === 0) {
+      validatedItems.push({
+        ...item,
+        fieldSchemaSnapshot: item.fieldSchemaSnapshot ?? (item.id ? existingById.get(item.id)?.fieldSchemaSnapshot : undefined),
+      });
+      continue;
+    }
+
+    const existingMeasurements = item.id ? existingById.get(item.id)?.measurements ?? {} : {};
+    const allowedLegacyCodes = new Set(Object.keys(existingMeasurements));
+    const validation = validateGarmentFieldValues(fields, item.measurements ?? {}, allowedLegacyCodes);
+    if (validation.error) return { items: [], error: `Item ${item.serialNo}: ${validation.error}` };
+
+    validatedItems.push({
+      ...item,
+      fieldSchemaSnapshot: buildFieldSchemaSnapshot(fields, item.measurements ?? {}),
+    });
+  }
+  return { items: validatedItems };
+}
+
 export async function createOrderAction(data: {
   customerId: string;
+  orderSection: GarmentSection;
   orderDate: string;
   trialDate: string;
   deliveryDate: string;
@@ -395,12 +446,17 @@ export async function createOrderAction(data: {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
   if (!guard.ok) return { success: false, error: guard.error };
+  if (!isGarmentSection(data.orderSection)) {
+    return { success: false, error: "Select a valid order section." };
+  }
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
-  const order = await createOrder(supabase, { ...data, status: "In Progress" });
+  const prepared = await validateAndSnapshotOrderItems(supabase, data.items);
+  if (prepared.error) return { success: false, error: prepared.error };
+  const order = await createOrder(supabase, { ...data, items: prepared.items, status: "In Progress" });
   await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
@@ -415,6 +471,7 @@ export async function createOrderForNewCustomerAction(data: {
     gender?: Gender;
   };
   order: {
+    orderSection: GarmentSection;
     orderDate: string;
     trialDate: string;
     deliveryDate: string;
@@ -427,6 +484,9 @@ export async function createOrderForNewCustomerAction(data: {
   const supabase = createServerClient();
   const orderGuard = await requireServerPermission(supabase, "orders.create");
   if (!orderGuard.ok) return { success: false, error: orderGuard.error };
+  if (!isGarmentSection(data.order.orderSection)) {
+    return { success: false, error: "Select a valid order section." };
+  }
   const customerGuard = await requireServerPermission(supabase, "customers.create");
   if (!customerGuard.ok) return { success: false, error: customerGuard.error };
   if (!data.customer.name.trim()) return { success: false, error: "Name is required." };
@@ -467,10 +527,14 @@ export async function createOrderForNewCustomerAction(data: {
     throw error;
   }
 
+  const prepared = await validateAndSnapshotOrderItems(supabase, data.order.items);
+  if (prepared.error) return { success: false, error: prepared.error };
+
   let order: Order;
   try {
     order = await createOrder(supabase, {
       ...data.order,
+      items: prepared.items,
       customerId: customer.id,
       status: "In Progress",
     });
@@ -502,7 +566,11 @@ export async function updateOrderAction(
   }
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
-  const order = await updateOrder(supabase, id, data);
+  const existingOrder = await getOrderById(supabase, id);
+  if (!existingOrder) return { success: false, error: "Order not found." };
+  const prepared = await validateAndSnapshotOrderItems(supabase, data.items, existingOrder.items);
+  if (prepared.error) return { success: false, error: prepared.error };
+  const order = await updateOrder(supabase, id, { ...data, items: prepared.items });
   if (!order) return { success: false, error: "Order not found." };
   await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);

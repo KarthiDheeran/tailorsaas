@@ -45,6 +45,10 @@ import { FabricInfo } from "@/components/job-cards/fabric-info";
 import { CustomerFabricDrawer } from "@/components/job-cards/customer-fabric-drawer";
 import { StockConsumptionDrawer } from "@/components/job-cards/stock-consumption-drawer";
 import { measurementFieldLabel } from "@/lib/catalog";
+import {
+  historicalGarmentValueText,
+  resolveHistoricalGarmentDisplayFields,
+} from "@/lib/garment-form-runtime";
 
 const FILTERS: { label: string; value: JobCardStage | "all" | "active" | "delayed" }[] = [
   { label: "Active", value: "active" },
@@ -61,10 +65,6 @@ const STAGE_FILTERS: (JobCardStage | "all")[] = [
   "Unassigned",
   "Cutting",
   "Stitching",
-  "Embroidery",
-  "Finishing",
-  "Trial",
-  "Alteration",
   "Ready",
   "Delivered",
   "Cancelled",
@@ -210,6 +210,20 @@ const MEASUREMENT_NOTE_KEYS = new Set([
 function measurementEntries(card: JobCard) {
   const values = card.item.measurements;
   if (!values) return { entries: [], notes: "" };
+  const historicalFields = resolveHistoricalGarmentDisplayFields({
+    measurements: values,
+    fieldSchemaSnapshot: card.item.fieldSchemaSnapshot,
+  });
+  if (card.item.fieldSchemaSnapshot) {
+    return {
+      entries: historicalFields.map((field) => ({
+        key: field.code,
+        label: field.unit ? `${field.label} (${field.unit})` : field.label,
+        value: historicalGarmentValueText(field.value),
+      })),
+      notes: typeof values[MEASUREMENT_NOTES_KEY] === "string" ? values[MEASUREMENT_NOTES_KEY].trim() : "",
+    };
+  }
   const entries: { key: string; label: string; value: string }[] = [];
   let notes = "";
   for (const [key, value] of Object.entries(values)) {

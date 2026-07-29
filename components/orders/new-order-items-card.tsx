@@ -8,13 +8,26 @@ import {
   type HistoricalMeasurementSnapshot,
   type MeasurementPickerData,
 } from "@/app/(shell)/orders/actions";
+import { getGarmentTypeConfigurationAction } from "@/app/(shell)/catalog/actions";
 import {
   getAddOnsForGarment,
   calculateGarmentAmount,
   measurementFieldLabel,
+  type CatalogGarmentTypeField,
   type CatalogAddOn,
   type CatalogGarmentType,
+  type GarmentTypeConfiguration,
+  type GarmentSection,
 } from "@/lib/catalog";
+import {
+  createGarmentFieldDraft,
+  resolveRuntimeGarmentFields,
+  serializeGarmentFieldDraft,
+  type GarmentFieldValue,
+  type GarmentFieldDraft,
+  type RuntimeGarmentField,
+} from "@/lib/garment-form-runtime";
+import { GarmentFormFields } from "@/components/orders/garment-form-fields";
 import type {
   AlterationChargeType,
   Order,
@@ -53,6 +66,14 @@ function garmentMeasurementFields(
   }));
 }
 
+function legacyStringMeasurementValues(values: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) =>
+      typeof value === "string" ? [[key, value]] : []
+    )
+  );
+}
+
 // Phase 6B: Catalog data is now fetched once, at the page level
 // (app/(shell)/orders/new/page.tsx), and threaded down as plain arrays -
 // every lookup below is a pure, synchronous find() over that already-
@@ -85,6 +106,9 @@ export interface DraftItem {
   alterationRequiredChange: string;
   alterationChargeType: AlterationChargeType;
   linkedOriginalOrderId: string;
+  // Typed field draft shared by New Order and Edit Order. The legacy
+  // `measurement` draft remains during rollout for customer-profile updates.
+  typedFieldDraft?: GarmentFieldDraft;
   // null = no order-item snapshot in this draft yet. New Order may copy
   // customer defaults here as the starting snapshot; Edit Order keeps null
   // for old items that truly have no saved snapshot.
@@ -151,12 +175,13 @@ export function orderItemToDraftItem(
     alterationRequiredChange: item.alterationRequiredChange ?? "",
     alterationChargeType: item.alterationChargeType ?? "Paid",
     linkedOriginalOrderId: item.linkedOriginalOrderId ?? "",
+    typedFieldDraft: createGarmentFieldDraft(item.measurements ?? {}, []),
     measurement: item.measurements
       ? {
           garmentType: item.particular,
-          values: measurementValuesOnly(item.measurements),
+          values: legacyStringMeasurementValues(item.measurements),
           fitNotes: "",
-          notes: measurementNotesFromValues(item.measurements),
+          notes: measurementNotesFromValues(legacyStringMeasurementValues(item.measurements)),
           updateCustomerMeasurements: false,
           hasCustomerDefaultMeasurements: false,
         }
@@ -196,7 +221,7 @@ type ItemModalMode = "add" | "edit";
 type PreviousMeasurementOption = {
   id: string;
   label: string;
-  values: Record<string, string>;
+  values: Record<string, unknown>;
   notes?: string;
 };
 
@@ -207,6 +232,32 @@ type FloatingMenuPosition = {
   maxHeight: number;
   placement: "top" | "bottom";
 };
+
+function mergeAddOnInstructionNames(
+  existing: string,
+  addOnName: string | null,
+  knownAddOnNames: string[]
+): string {
+  const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const namesByNormalizedValue = new Map(
+    knownAddOnNames.map((name) => [normalize(name), name.trim()])
+  );
+  const selectedNames = new Set<string>();
+  const manualLines: string[] = [];
+
+  for (const rawLine of existing.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const withoutLegacyPrefix = line.replace(/^add-on:\s*/i, "").trim();
+    const canonicalName = namesByNormalizedValue.get(normalize(withoutLegacyPrefix));
+    if (canonicalName) selectedNames.add(canonicalName);
+    else manualLines.push(line);
+  }
+
+  if (addOnName?.trim()) selectedNames.add(addOnName.trim());
+  const addOnLine = Array.from(selectedNames).join(" ");
+  return [...manualLines, addOnLine].filter(Boolean).join("\n");
+}
 
 function configuredDraftItems(items: DraftItem[]): Array<{ item: DraftItem; index: number }> {
   return items
@@ -227,6 +278,8 @@ function ConfigureItemModal({
   draft,
   garment,
   addOns,
+  preloadedConfiguration,
+  configurationsPreloaded,
   customerId,
   excludeOrderId,
   autoSnapshotDefaultMeasurements,
@@ -237,17 +290,18 @@ function ConfigureItemModal({
   draft: DraftItem;
   garment: CatalogGarmentType;
   addOns: CatalogAddOn[];
+  preloadedConfiguration?: GarmentTypeConfiguration;
+  configurationsPreloaded: boolean;
   customerId: string | null;
   excludeOrderId?: string;
   autoSnapshotDefaultMeasurements: boolean;
   onCancel: () => void;
   onSave: (draft: DraftItem) => void;
 }) {
-  const firstMeasurementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const firstMeasurementRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const footerRef = useRef<HTMLDivElement | null>(null);
-  const measurementInputRefs = useRef<Array<HTMLInputElement | HTMLTextAreaElement | null>>([]);
   const previousMeasurementsRef = useRef<HTMLDivElement | null>(null);
   const addOnsComboboxRef = useRef<HTMLDivElement | null>(null);
   const addOnsInputRef = useRef<HTMLInputElement | null>(null);
@@ -255,8 +309,50 @@ function ConfigureItemModal({
   const addOnOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const previousMeasurementsListId = useId();
   const addOnsListId = useId();
-  const fields = garmentMeasurementFields(garment);
+  const fields = useMemo(() => garmentMeasurementFields(garment), [garment]);
+  const [metadataFields, setMetadataFields] = useState<CatalogGarmentTypeField[] | null>(
+    preloadedConfiguration?.fields ?? null
+  );
+  const [metadataLoading, setMetadataLoading] = useState(!configurationsPreloaded);
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(draft.addOnIds);
+  const legacyRuntimeFields = useMemo<RuntimeGarmentField[]>(
+    () =>
+      fields.map((field, index) => ({
+        code: field.key,
+        name: field.label,
+        fieldType: "measurement",
+        inputType: "number",
+        sectionId: null,
+        sectionName: "Measurements",
+        sectionOrder: 0,
+        displayOrder: index,
+        required: false,
+        unit: "inch",
+        placeholder: null,
+        options: [],
+        min: null,
+        max: null,
+        decimalPlaces: 2,
+        defaultValue: null,
+      })),
+    [fields]
+  );
+  const runtimeFields = useMemo(
+    () => resolveRuntimeGarmentFields(metadataFields, []) ?? legacyRuntimeFields,
+    [legacyRuntimeFields, metadataFields]
+  );
+  const runtimeDraftFields = useMemo(
+    () => runtimeFields.map((field) => ({ code: field.code, inputType: field.inputType })),
+    [runtimeFields]
+  );
+  const [typedFieldDraft, setTypedFieldDraft] = useState<GarmentFieldDraft>(() =>
+    createGarmentFieldDraft(
+      draft.typedFieldDraft
+        ? serializeGarmentFieldDraft(draft.typedFieldDraft)
+        : draft.measurement?.values ?? {},
+      runtimeDraftFields
+    )
+  );
   const [measurement, setMeasurement] = useState<GarmentMeasurementDraft>(
     draft.measurement ?? {
       garmentType: garment.name,
@@ -269,7 +365,7 @@ function ConfigureItemModal({
   );
   const [history, setHistory] = useState<HistoricalMeasurementSnapshot[]>([]);
   const [defaultSeed, setDefaultSeed] = useState<{
-    values: Record<string, string>;
+    values: Record<string, unknown>;
     fitNotes: string;
     notes: string;
   } | null>(null);
@@ -283,20 +379,31 @@ function ConfigureItemModal({
   const [addOnsOpen, setAddOnsOpen] = useState(false);
   const [activeAddOnIndex, setActiveAddOnIndex] = useState(0);
   const [addOnsPosition, setAddOnsPosition] = useState<FloatingMenuPosition | null>(null);
-
-  const addOnOptions = getAddOnsForGarment(garment, addOns).filter(
-    (addOn) => addOn.isActive
+  const addOnOptions = useMemo(
+    () => getAddOnsForGarment(garment, addOns).filter((addOn) => addOn.isActive),
+    [addOns, garment]
+  );
+  const addOnInstructionNames = useMemo(
+    () => addOnOptions.map((addOn) => addOn.name),
+    [addOnOptions]
   );
   const defaultHasMeasurements =
     defaultSeed !== null &&
-    (Object.values(defaultSeed.values).some((value) => value.trim() !== "") ||
+    (Object.values(defaultSeed.values).some(
+      (value) =>
+        value !== null &&
+        value !== undefined &&
+        (typeof value !== "string" || value.trim() !== "") &&
+        (!Array.isArray(value) || value.length > 0)
+    ) ||
       defaultSeed.notes.trim() !== "");
-  const selectedAddOnsForModal = addOnOptions.filter((addOn) =>
-    selectedAddOnIds.includes(addOn.id)
+  const nonInstructionFields = useMemo(
+    () => runtimeFields.filter((field) => field.fieldType !== "instruction"),
+    [runtimeFields]
   );
-  const selectedAddOnsTotal = selectedAddOnsForModal.reduce(
-    (sum, addOn) => sum + addOn.defaultPrice,
-    0
+  const instructionFields = useMemo(
+    () => runtimeFields.filter((field) => field.fieldType === "instruction"),
+    [runtimeFields]
   );
   const filteredAddOnOptions = useMemo(() => {
     const query = addOnSearch.trim().toLowerCase();
@@ -341,6 +448,17 @@ function ConfigureItemModal({
   useEffect(() => {
     firstMeasurementRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setTypedFieldDraft(
+      createGarmentFieldDraft(
+        draft.typedFieldDraft
+          ? serializeGarmentFieldDraft(draft.typedFieldDraft)
+          : draft.measurement?.values ?? {},
+        runtimeDraftFields
+      )
+    );
+  }, [draft.measurement, draft.typedFieldDraft, garment.id, runtimeDraftFields]);
 
   useEffect(() => {
     function handleDocumentKeyDown(event: KeyboardEvent) {
@@ -441,6 +559,42 @@ function ConfigureItemModal({
   }, [addOnsOpen, addOnSearch, filteredAddOnOptions.length]);
 
   useEffect(() => {
+    if (configurationsPreloaded) {
+      setMetadataFields(preloadedConfiguration?.fields ?? null);
+      setMetadataLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setMetadataLoading(true);
+    getGarmentTypeConfigurationAction(garment.id)
+      .then((configuration) => {
+        if (!cancelled) setMetadataFields(configuration?.fields ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setMetadataFields(null);
+      })
+      .finally(() => {
+        if (!cancelled) setMetadataLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [configurationsPreloaded, garment.id, preloadedConfiguration]);
+
+  useEffect(() => {
+    setTypedFieldDraft((current) => {
+      const value = current.typedValues.final_instructions;
+      if (typeof value !== "string") return current;
+      const normalized = mergeAddOnInstructionNames(value, null, addOnInstructionNames);
+      return normalized === value
+        ? current
+        : { ...current, typedValues: { ...current.typedValues, final_instructions: normalized } };
+    });
+    setMeasurement((current) => {
+      const normalized = mergeAddOnInstructionNames(current.notes, null, addOnInstructionNames);
+      return normalized === current.notes ? current : { ...current, notes: normalized };
+    });
+  }, [addOnInstructionNames]);
+
+  useEffect(() => {
     if (activePreviousMeasurementIndex >= previousMeasurementOptions.length) {
       setActivePreviousMeasurementIndex(0);
     }
@@ -493,13 +647,45 @@ function ConfigureItemModal({
       setDefaultSeed(seed);
       setHistory(snapshots);
       setLoadingHistory(false);
-      if (!draft.measurement && autoSnapshotDefaultMeasurements) {
+      if (!draft.measurement && !draft.typedFieldDraft && autoSnapshotDefaultMeasurements) {
+        const latestSnapshot = snapshots[0];
+        const latestHasMeasurements = latestSnapshot && Object.values(latestSnapshot.measurements).some(
+          (value) =>
+            value !== null &&
+            value !== undefined &&
+            (typeof value !== "string" || value.trim() !== "") &&
+            (!Array.isArray(value) || value.length > 0)
+        );
+        if (latestSnapshot && latestHasMeasurements) {
+          const latestLegacyValues = legacyStringMeasurementValues(latestSnapshot.measurements);
+          setMeasurement({
+            garmentType: garment.name,
+            values: measurementValuesOnly(latestLegacyValues),
+            fitNotes: "",
+            notes: measurementNotesFromValues(latestLegacyValues),
+            updateCustomerMeasurements: false,
+            hasCustomerDefaultMeasurements: false,
+          });
+          setTypedFieldDraft(
+            createGarmentFieldDraft(latestSnapshot.measurements, runtimeDraftFields)
+          );
+          setSelectedPreviousMeasurement(
+            `history:${latestSnapshot.itemId ?? `${latestSnapshot.orderId}-${latestSnapshot.serialNo}`}`
+          );
+          return;
+        }
+
         const seedHasMeasurements =
-          Object.values(seed.values).some((value) => value.trim() !== "") ||
-          seed.notes.trim() !== "";
+          Object.values(seed.values).some(
+            (value) =>
+              value !== null &&
+              value !== undefined &&
+              (typeof value !== "string" || value.trim() !== "") &&
+              (!Array.isArray(value) || value.length > 0)
+          ) || seed.notes.trim() !== "";
         const seededDraft: GarmentMeasurementDraft = {
           garmentType: garment.name,
-          values: seed.values,
+          values: legacyStringMeasurementValues(seed.values),
           fitNotes: seed.fitNotes,
           notes: seed.notes,
           updateCustomerMeasurements: false,
@@ -507,6 +693,9 @@ function ConfigureItemModal({
         };
         if (seedHasMeasurements) {
           setMeasurement(seededDraft);
+          setTypedFieldDraft(
+            createGarmentFieldDraft(seed.values, runtimeDraftFields)
+          );
           setSelectedPreviousMeasurement("customer-default");
         }
       }
@@ -521,40 +710,73 @@ function ConfigureItemModal({
     excludeOrderId,
     garment.id,
     garment.name,
+    runtimeDraftFields,
   ]);
 
   function toggleAddOn(id: string) {
+    const alreadySelected = selectedAddOnIds.includes(id);
+    const addOn = addOnOptions.find((candidate) => candidate.id === id);
     setSelectedAddOnIds((current) =>
       current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]
     );
+
+    // Add-ons / Extras are the source of billable extras. Keep their names in
+    // one readable instruction line without changing manual notes on removal.
+    if (!alreadySelected && addOn) {
+      if (runtimeDraftFields.some((field) => field.code === "final_instructions")) {
+        setTypedFieldDraft((current) => ({
+          ...current,
+          typedValues: {
+            ...current.typedValues,
+            final_instructions: mergeAddOnInstructionNames(
+              typeof current.typedValues.final_instructions === "string"
+                ? current.typedValues.final_instructions
+                : "",
+              addOn.name,
+              addOnInstructionNames
+            ),
+          },
+        }));
+      } else {
+        setMeasurement((current) => ({
+          ...current,
+          notes: mergeAddOnInstructionNames(
+            current.notes,
+            addOn.name,
+            addOnInstructionNames
+          ),
+        }));
+      }
+    }
   }
 
-  function loadMeasurementValues(values: Record<string, string>, notes?: string) {
+  function loadMeasurementValues(values: Record<string, unknown>, notes?: string) {
+    const legacyValues = legacyStringMeasurementValues(values);
+    setTypedFieldDraft(
+      createGarmentFieldDraft(values, runtimeDraftFields)
+    );
     setMeasurement((current) => ({
       ...current,
-      values: measurementValuesOnly(values),
-      notes: measurementNotesFromValues(values) || notes || "",
+      values: measurementValuesOnly(legacyValues),
+      notes: measurementNotesFromValues(legacyValues) || notes || "",
     }));
     window.setTimeout(() => firstMeasurementRef.current?.focus(), 0);
+  }
+
+  function handleGarmentFieldChange(code: string, value: GarmentFieldValue) {
+    setTypedFieldDraft((current) => ({
+      ...current,
+      typedValues: {
+        ...current.typedValues,
+        [code]: value,
+      },
+    }));
   }
 
   function handlePreviousMeasurementSelect(option: PreviousMeasurementOption) {
     setSelectedPreviousMeasurement(option.id);
     loadMeasurementValues(option.values, option.notes);
     setPreviousMeasurementsOpen(false);
-  }
-
-  function focusMeasurementAt(index: number) {
-    measurementInputRefs.current[index]?.focus();
-  }
-
-  function handleMeasurementInputKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement>,
-    index: number
-  ) {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    event.preventDefault();
-    focusMeasurementAt(index + 1);
   }
 
   function handleAddOnsInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -660,6 +882,7 @@ function ConfigureItemModal({
       ...draft,
       garmentTypeId: garment.id,
       addOnIds: selectedAddOnIds,
+      typedFieldDraft,
       measurement: hasMeasurementContent || measurement.updateCustomerMeasurements
         ? measurement
         : null,
@@ -800,77 +1023,26 @@ function ConfigureItemModal({
                 )}
               </div>
 
-              <section>
-                <h4 className="mb-2 text-[15px] font-semibold text-ink">Measurements</h4>
-                {fields.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-3 lg:grid-cols-4">
-                    {fields.map(({ key, label }, index) => (
-                      <label key={key} className="flex flex-col gap-1">
-                        <span className="text-[13px] font-medium text-ink-muted">{label}</span>
-                        <input
-                          ref={(node) => {
-                            if (index === 0) firstMeasurementRef.current = node;
-                            measurementInputRefs.current[index] = node;
-                          }}
-                          type="text"
-                          inputMode="decimal"
-                          value={measurement.values[key] ?? ""}
-                          onFocus={(event) => event.currentTarget.select()}
-                          onKeyDown={(event) => handleMeasurementInputKeyDown(event, index)}
-                          onChange={(event) =>
-                            setMeasurement((current) => ({
-                              ...current,
-                              values: { ...current.values, [key]: event.target.value },
-                            }))
-                          }
-                          className="h-9 w-full min-w-0 rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                        />
-                      </label>
-                    ))}
-                  </div>
+              <section className="space-y-5">
+                {metadataLoading ? (
+                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
+                ) : nonInstructionFields.length > 0 ? (
+                  <GarmentFormFields
+                    fields={nonInstructionFields}
+                    values={typedFieldDraft.typedValues}
+                    onChange={handleGarmentFieldChange}
+                  />
                 ) : (
                   <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
-                    No standard measurement fields for this garment.
+                    No configured measurements or style fields for this garment.
                   </p>
                 )}
-              </section>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <section>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[13px] font-medium text-ink-muted">Notes</span>
-                    <textarea
-                      ref={(node) => {
-                        if (fields.length === 0) firstMeasurementRef.current = node;
-                      }}
-                      value={measurement.notes}
-                      onChange={(event) =>
-                        setMeasurement((current) => ({ ...current, notes: event.target.value }))
-                      }
-                      rows={2}
-                      className="h-[60px] resize-none rounded-md border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                    />
-                  </label>
-                  <label className="mt-2 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={measurement.updateCustomerMeasurements ?? false}
-                      onChange={(event) =>
-                        setMeasurement((current) => ({
-                          ...current,
-                          updateCustomerMeasurements: event.target.checked,
-                        }))
-                      }
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
-                    />
-                    <span className="truncate text-[13px] font-medium text-ink-muted">
-                      Save as customer&apos;s default {garment.name} measurements
-                    </span>
-                  </label>
-                </section>
-
-                <section>
-                  <h4 className="mb-1 text-[13px] font-medium text-ink-muted">Add-ons</h4>
+                <section className="border-t border-border-soft pt-4">
+                  <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
+                  <p className="mb-2 text-sm text-ink-muted">
+                    Selected extras are added to Final Instructions for the tailor.
+                  </p>
                   {addOnOptions.length === 0 ? (
                     <p className="rounded-md bg-surface px-3 py-2 text-sm text-ink-muted">
                       No add-ons configured for this garment.
@@ -884,6 +1056,7 @@ function ConfigureItemModal({
                         aria-expanded={addOnsOpen}
                         aria-controls={addOnsListId}
                         aria-autocomplete="list"
+                        aria-label="Search or select add-ons"
                         placeholder="Search or select add-ons"
                         value={addOnSearch}
                         onFocus={() => setAddOnsOpen(true)}
@@ -893,54 +1066,38 @@ function ConfigureItemModal({
                           setActiveAddOnIndex(0);
                         }}
                         onKeyDown={handleAddOnsInputKeyDown}
-                        className="h-9 w-full rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                        className="h-10 w-full rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                       />
                     </div>
                   )}
-                  <div className="mt-1.5 min-h-7">
-                    {selectedAddOnsForModal.length === 0 ? (
-                      <p className="text-sm text-ink-muted">Selected: None</p>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {selectedAddOnsForModal.slice(0, 3).map((addOn) => (
-                          <button
-                            key={addOn.id}
-                            type="button"
-                            onClick={() => toggleAddOn(addOn.id)}
-                            className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-primary/20 bg-primary-tint px-2 py-0.5 text-xs font-medium text-primary-strong"
-                            title={`Remove ${addOn.name}`}
-                          >
-                            <span className="truncate">
-                              {addOn.name} · +{formatCurrency(addOn.defaultPrice)}
-                            </span>
-                            <span aria-hidden="true">×</span>
-                          </button>
-                        ))}
-                        {selectedAddOnsForModal.length > 3 && (
-                          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-muted">
-                            +{selectedAddOnsForModal.length - 3} more
-                          </span>
-                        )}
-                        <span className="text-sm text-ink-muted">
-                          {selectedAddOnsForModal.length} add-ons · +{formatCurrency(selectedAddOnsTotal)}
-                        </span>
-                      </div>
-                    )}
-                    {selectedAddOnsForModal.length > 0 && selectedAddOnsForModal.length <= 3 && (
-                      <p className="sr-only">
-                        Selected: {selectedAddOnsForModal.length} add-ons, +
-                        {formatCurrency(selectedAddOnsTotal)}
-                      </p>
-                    )}
-                    {selectedAddOnsForModal.length > 0 && selectedAddOnsForModal.length > 3 && (
-                      <p className="sr-only">
-                        Selected: {selectedAddOnsForModal.length} add-ons, +
-                        {formatCurrency(selectedAddOnsTotal)}
-                      </p>
-                    )}
-                  </div>
                 </section>
-              </div>
+
+                <section className="border-t border-border-soft pt-4">
+                  <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
+                  {!metadataLoading && instructionFields.length > 0 && (
+                    <GarmentFormFields
+                      fields={instructionFields}
+                      values={typedFieldDraft.typedValues}
+                      onChange={handleGarmentFieldChange}
+                      showSectionHeadings={false}
+                    />
+                  )}
+                  <label className="mt-3 flex flex-col gap-1">
+                    <span className="text-[13px] font-medium text-ink-muted">Notes</span>
+                    <textarea
+                      ref={(node) => {
+                        if (fields.length === 0) firstMeasurementRef.current = node;
+                      }}
+                      value={measurement.notes}
+                      onChange={(event) =>
+                        setMeasurement((current) => ({ ...current, notes: event.target.value }))
+                      }
+                      rows={2}
+                      className="h-[60px] resize-none rounded-md border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                    />
+                  </label>
+                </section>
+              </section>
 
             </div>
 
@@ -1040,9 +1197,12 @@ export function NewOrderItemsCard({
   onItemsChange,
   garmentTypes,
   addOns,
+  garmentConfigurations = [],
+  garmentConfigurationsLoaded = false,
   paymentStrip,
   autoSnapshotDefaultMeasurements = false,
   focusFirstGarmentRequest = 0,
+  garmentSection,
   excludeOrderId,
   garmentSelectorTarget,
 }: {
@@ -1051,10 +1211,13 @@ export function NewOrderItemsCard({
   onItemsChange: (items: DraftItem[]) => void;
   garmentTypes: CatalogGarmentType[];
   addOns: CatalogAddOn[];
+  garmentConfigurations?: GarmentTypeConfiguration[];
+  garmentConfigurationsLoaded?: boolean;
   paymentStrip?: ReactNode;
   previousOrders?: Order[];
   autoSnapshotDefaultMeasurements?: boolean;
   focusFirstGarmentRequest?: number;
+  garmentSection?: GarmentSection | null;
   excludeOrderId?: string;
   garmentSelectorTarget?: HTMLElement | null;
 }) {
@@ -1063,8 +1226,11 @@ export function NewOrderItemsCard({
   const qtyInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const rateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const activeGarments = useMemo(
-    () => sortGarmentsForKeyboard(garmentTypes),
-    [garmentTypes]
+    () =>
+      sortGarmentsForKeyboard(
+        garmentSection ? garmentTypes.filter((garment) => garment.section === garmentSection) : []
+      ),
+    [garmentSection, garmentTypes]
   );
   const rows = configuredDraftItems(items);
   const [modal, setModal] = useState<null | {
@@ -1117,6 +1283,8 @@ export function NewOrderItemsCard({
       <GarmentTypeCombobox
         value=""
         garments={activeGarments}
+        disabled={!garmentSection}
+        placeholder={garmentSection ? "Select garment type" : "Select order section first"}
         inputRef={(node) => {
           selectorRef.current = node;
         }}
@@ -1126,7 +1294,6 @@ export function NewOrderItemsCard({
       />
     </label>
   );
-
   return (
     <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -1277,6 +1444,10 @@ export function NewOrderItemsCard({
             draft={modal.draft}
             garment={garment}
             addOns={addOns}
+            preloadedConfiguration={garmentConfigurations.find(
+              (configuration) => configuration.garment.id === garment.id
+            )}
+            configurationsPreloaded={garmentConfigurationsLoaded}
             customerId={customerId}
             excludeOrderId={excludeOrderId}
             autoSnapshotDefaultMeasurements={autoSnapshotDefaultMeasurements}
@@ -1331,8 +1502,24 @@ export function computeOrderItems(
     // Only snapshot measurements onto the item when the shopkeeper actually
     // opened/filled the modal for this row (it.measurement !== null) - not
     // silently pulling in auto-seeded baseline values they never confirmed.
+    // A New Order must submit only the visible/runtime-configured keys. Older
+    // customer defaults can include retired fields (for example `hip` after
+    // Pant was reconfigured to Height + Waist); keeping those hidden keys in
+    // a new payload would correctly fail the server's metadata validation.
+    // Edit Order has its own path that preserves historical passthrough keys.
+    const serializedMeasurementValues = it.typedFieldDraft
+      ? it.typedFieldDraft.typedValues
+      : it.measurement
+        ? measurementValuesOnly(it.measurement.values)
+        : {};
+    const measurementNotes = it.measurement?.notes.trim() ?? "";
     const hasMeasurements =
-      it.measurement && countFilledFields(it.measurement) > 0;
+      Object.values(serializedMeasurementValues).some((value) => {
+        if (value === null || value === undefined) return false;
+        if (typeof value === "string") return value.trim() !== "";
+        if (Array.isArray(value)) return value.length > 0;
+        return true;
+      }) || Boolean(measurementNotes);
     return {
       id: it.orderItemId,
       serialNo: i + 1,
@@ -1349,9 +1536,9 @@ export function computeOrderItems(
       amount: finalRate * it.qty,
       measurements: hasMeasurements
         ? {
-            ...measurementValuesOnly(it.measurement!.values),
-            ...(it.measurement!.notes.trim()
-              ? { [MEASUREMENT_NOTES_KEY]: it.measurement!.notes.trim() }
+            ...serializedMeasurementValues,
+            ...(measurementNotes
+              ? { [MEASUREMENT_NOTES_KEY]: measurementNotes }
               : {}),
           }
         : undefined,
@@ -1403,6 +1590,8 @@ function GarmentTypeCombobox({
   onChange,
   onSelected,
   inputClassName,
+  disabled = false,
+  placeholder,
 }: {
   value: string;
   garments: CatalogGarmentType[];
@@ -1411,6 +1600,8 @@ function GarmentTypeCombobox({
   onChange: (garmentTypeId: string) => void;
   onSelected: () => void;
   inputClassName?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   const { t } = useLanguage();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1470,6 +1661,7 @@ function GarmentTypeCombobox({
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (disabled) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
@@ -1522,8 +1714,10 @@ function GarmentTypeCombobox({
             : undefined
         }
         autoComplete="off"
+        disabled={disabled}
         value={inputValue}
         onFocus={() => {
+          if (disabled) return;
           setOpen(true);
           setQuery("");
           setError(null);
@@ -1536,8 +1730,8 @@ function GarmentTypeCombobox({
           setActiveIndex(0);
         }}
         onKeyDown={handleInputKeyDown}
-        placeholder={t("common.selectEllipsis")}
-        className={`${inputClass} ${inputClassName ?? ""}`}
+        placeholder={placeholder ?? t("common.selectEllipsis")}
+        className={`${inputClass} ${inputClassName ?? ""} ${disabled ? "cursor-not-allowed bg-surface text-ink-muted" : ""}`}
       />
       {open && (
         <div

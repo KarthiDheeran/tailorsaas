@@ -9,7 +9,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:garment-runtime": "tsc -p tsconfig.garment-runtime-tests.json && node --test .runtime-test-dist/tests/garment-form-runtime.test.js",
+    "audit:garment-metadata": "node --env-file=.env.local scripts/audit-garment-metadata.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
