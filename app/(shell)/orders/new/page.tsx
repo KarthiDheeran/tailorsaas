@@ -1619,18 +1619,6 @@ function NewOrderPageContent() {
                 {submitAttempted && errors.orderSection && (
                   <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
                 )}
-                <label className="mt-4 flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-muted">Measurements taken by <span className="font-normal">(optional)</span></span>
-                  <select
-                    value={measurementTakenByOperatorId}
-                    onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Not specified</option>
-                    {measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} · {staff.staff_number}</option>)}
-                  </select>
-                  <span className="text-xs text-[#64748B]">Choose the person who took the measurements. This can be different from the staff member using the desktop.</span>
-                </label>
                 <div ref={setGarmentSelectorTarget} className="mt-4" />
               </div>
               </div>
@@ -1752,6 +1740,7 @@ function NewOrderPageContent() {
               <div className="space-y-4">
                 <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.orderDate")}</span><input type="date" required value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20" /></label>
                 <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span></span><input type="date" required value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className={cn("h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20", submitAttempted && errors.deliveryDate && "border-chip-red-fg")} />{submitAttempted && errors.deliveryDate && <p className="text-xs text-chip-red-fg">{errors.deliveryDate}</p>}</label>
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">Measurements taken by <span className="font-normal text-ink-muted">(optional)</span></span><select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} · {staff.staff_number}</option>)}</select><span className="text-xs text-[#64748B]">Can be different from the desktop operator.</span></label>
               </div>
             </div>
             <NewOrderSummaryPanel
