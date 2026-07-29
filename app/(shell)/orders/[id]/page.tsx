@@ -42,10 +42,6 @@ import {
 } from "@/components/orders/orders-table";
 import { PaymentHistoryList } from "@/components/orders/payment-history-list";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
-import {
-  StageJobCardPrintModal,
-  type StageJobCardPrintTarget,
-} from "@/components/orders/stage-job-card-print-modal";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -383,7 +379,6 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [returningToOrders, setReturningToOrders] = useState(false);
   const [openingEdit, setOpeningEdit] = useState(false);
   const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
-  const [stagePrintTarget, setStagePrintTarget] = useState<StageJobCardPrintTarget | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
@@ -592,14 +587,13 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
               </Link>
             )}
             {canPrintJobCard && (
-              <button
-                type="button"
-                onClick={() => setStagePrintTarget({ serialNo: order.items[0]?.serialNo ?? 1 })}
+              <Link
+                href="/job-cards/production-print"
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                <FileText className="h-3.5 w-3.5" />
-                Print Stage Job Card
-              </button>
+                <Printer className="h-3.5 w-3.5" />
+                Production Print
+              </Link>
             )}
           </div>
         </div>
@@ -684,47 +678,6 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary">
                           {item.addOns.length} add-ons
                         </span>
-                      )}
-                      {canPrintJobCard && itemJobCards.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {itemJobCards.map((card) => (
-                            <button
-                              key={card.id}
-                              type="button"
-                              onClick={() =>
-                                setStagePrintTarget({
-                                  serialNo: card.item.serialNo,
-                                })
-                              }
-                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                              Print Stage Card
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {canPrintJobCard && itemJobCards.length === 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Array.from({ length: Math.max(1, item.qty) }, (_, unitIndex) => {
-                            const unitNo = unitIndex + 1;
-                            return (
-                              <button
-                                key={unitNo}
-                                type="button"
-                                onClick={() =>
-                                  setStagePrintTarget({
-                                    serialNo: item.serialNo,
-                                  })
-                                }
-                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                                Print Stage Card
-                              </button>
-                            );
-                          })}
-                        </div>
                       )}
                     </div>
                     <div className="space-y-4 p-4">
@@ -980,6 +933,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                   {order.updatedAt ? formatDate(order.updatedAt.slice(0, 10)) : "-"}
                 </span>
               </div>
+              {order.createdByOperatorName && <div className="flex items-center justify-between gap-3"><span className="text-ink-muted">Order created by</span><span className="font-medium text-ink">{order.createdByOperatorName}</span></div>}
+              {order.measurementTakenByOperatorName && <div className="flex items-center justify-between gap-3"><span className="text-ink-muted">Measurements by</span><span className="font-medium text-ink">{order.measurementTakenByOperatorName}</span></div>}
+              {order.deliveredByOperatorName && <div className="flex items-center justify-between gap-3"><span className="text-ink-muted">Delivered by</span><span className="font-medium text-ink">{order.deliveredByOperatorName}</span></div>}
               <div className="flex items-center justify-between">
                 <span className="text-ink-muted">Current status</span>
                 <OrderStatusEditor order={order} onStatusChange={refreshOrder} />
@@ -1011,13 +967,6 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
         />
       )}
 
-      {stagePrintTarget && (
-        <StageJobCardPrintModal
-          order={order}
-          target={stagePrintTarget}
-          onClose={() => setStagePrintTarget(null)}
-        />
-      )}
     </div>
   );
 }

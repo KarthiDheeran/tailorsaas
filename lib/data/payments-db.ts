@@ -15,7 +15,7 @@ import type { Payment, PaymentMode, PaymentType } from "@/lib/types";
 // ---------------------------------------------------------------------------
 
 const PAYMENT_COLUMNS =
-  "id, order_id, amount, payment_date, payment_mode, payment_type, notes, recorded_by, voided, voided_at, voided_by, void_reason, created_at";
+  "id, order_id, amount, payment_date, payment_mode, payment_type, notes, recorded_by, received_by_operator_name, voided, voided_at, voided_by, void_reason, created_at";
 
 interface PaymentRow {
   id: string;
@@ -26,6 +26,7 @@ interface PaymentRow {
   payment_type: PaymentType;
   notes: string | null;
   recorded_by: string | null;
+  received_by_operator_name?: string | null;
   voided: boolean;
   voided_at: string | null;
   voided_by: string | null;
@@ -43,6 +44,7 @@ function mapPayment(row: PaymentRow): Payment {
     paymentType: row.payment_type,
     notes: row.notes ?? undefined,
     recordedBy: row.recorded_by ?? undefined,
+    receivedByOperatorName: row.received_by_operator_name?.trim() ? row.received_by_operator_name : undefined,
     voided: row.voided,
     voidedAt: row.voided_at ?? undefined,
     voidedBy: row.voided_by ?? undefined,

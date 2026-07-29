@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ClipboardList,
   MoreVertical,
-  Printer,
   Search,
   Shirt,
   UserRound,
@@ -15,6 +14,7 @@ import {
 import {
   getJobCardActivityLogsAction,
   getJobCardsPageDataAction,
+  markOrderReadyWithBinAction,
   syncMissingJobCardsAction,
   transferJobCardAction,
 } from "@/app/(shell)/job-cards/actions";
@@ -23,9 +23,9 @@ import {
 } from "@/app/(shell)/inventory/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { buildJobCards, type JobCard, type JobCardStage } from "@/lib/job-cards";
-import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import type {
   CustomerFabric,
   CustomerFabricStatus,
@@ -99,17 +99,6 @@ function StageBadge({ stage }: { stage: JobCardStage }) {
       {stage === "Unassigned" ? "Not Ready" : stage}
     </span>
   );
-}
-
-function jobCardPrintUrl(card: JobCard) {
-  const params = new URLSearchParams();
-  if (card.persisted) {
-    params.set("jobCardId", card.id);
-  } else {
-    params.set("orderItemSerialNo", String(card.item.serialNo));
-    params.set("unitNo", String(card.unitNo));
-  }
-  return `/orders/${card.orderId}/job-cards/print?${params.toString()}`;
 }
 
 function isActiveCard(card: JobCard) {
@@ -261,6 +250,7 @@ function JobCardsContent() {
   const [detailsCard, setDetailsCard] = useState<JobCard | null>(null);
   const [historyCard, setHistoryCard] = useState<JobCard | null>(null);
   const [transferCard, setTransferCard] = useState<JobCard | null>(null);
+  const [readyCard, setReadyCard] = useState<JobCard | null>(null);
   const [fabricCard, setFabricCard] = useState<JobCard | null>(null);
   const [stockCard, setStockCard] = useState<JobCard | null>(null);
   const [openMenuCardId, setOpenMenuCardId] = useState<string | null>(null);
@@ -439,7 +429,6 @@ function JobCardsContent() {
         </div>
       </div>
       {canManageStaff && <JobCardTabs active="cards" />}
-
       {loadError && (
         <div className="mt-5">
           <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
@@ -636,15 +625,15 @@ function JobCardsContent() {
                     </td>
                     <td className="w-[190px] whitespace-nowrap px-4 py-3 text-right">
                       <div className="relative flex items-center justify-end gap-2">
-                        <Link
-                          href={jobCardPrintUrl(card)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-10 items-center gap-1.5 rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint"
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                          Print Job Card
-                        </Link>
+                        {!['Ready', 'Delivered', 'Cancelled'].includes(card.orderStatus) && (
+                          <button
+                            type="button"
+                            onClick={() => setReadyCard(card)}
+                            className="inline-flex h-10 items-center rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint"
+                          >
+                            Mark Order Ready
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() =>
@@ -674,15 +663,6 @@ function JobCardsContent() {
                               >
                                 View Details
                               </button>
-                              <Link
-                                href={jobCardPrintUrl(card)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => setOpenMenuCardId(null)}
-                                className="block px-3 py-2 text-xs font-medium text-ink hover:bg-surface"
-                              >
-                                Print Job Card
-                              </Link>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -809,6 +789,66 @@ function JobCardsContent() {
           }}
         />
       )}
+      {readyCard && (
+        <MarkOrderReadyModal
+          card={readyCard}
+          onClose={() => setReadyCard(null)}
+          onSaved={() => {
+            setReadyCard(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function MarkOrderReadyModal({
+  card,
+  onClose,
+  onSaved,
+}: {
+  card: JobCard;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [bin, setBin] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    const result = await markOrderReadyWithBinAction(card.orderId, bin);
+    setSaving(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4">
+      <button type="button" aria-label="Close ready order dialog" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="mark-order-ready-title" className="relative w-full max-w-md rounded-2xl border border-border-soft bg-white shadow-xl">
+        <div className="border-b border-border-soft px-5 py-4">
+          <h2 id="mark-order-ready-title" className="text-lg font-bold text-ink">Mark Order Ready</h2>
+          <p className="mt-1 text-sm text-ink-muted">{card.orderNumber} · all garments are kept together in one cover.</p>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          <label className="block text-sm font-semibold text-ink">
+            Cover / Bin location <span className="font-normal text-ink-muted">(optional)</span>
+            <input autoFocus value={bin} onChange={(event) => setBin(event.target.value)} placeholder="Example: Rack B-02" className="mt-1.5 h-11 w-full rounded-lg border border-border px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <p className="text-xs text-ink-muted">Delivery staff will see this location after scanning the customer receipt.</p>
+          {error && <p className="text-sm font-semibold text-chip-red-fg">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
+          <button type="button" disabled={saving} onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface">Cancel</button>
+          <button type="button" disabled={saving} onClick={() => void save()} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Saving…" : "Mark Ready"}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1207,15 +1247,6 @@ function JobCardDetailsDrawer({
           >
             History
           </button>
-          <Link
-            href={jobCardPrintUrl(card)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
-          >
-            <Printer className="h-4 w-4" />
-            Print Job Card
-          </Link>
         </div>
       </div>
     </div>

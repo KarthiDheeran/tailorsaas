@@ -242,6 +242,7 @@ export interface Payment {
   paymentType: PaymentType;
   notes?: string;
   recordedBy?: string;
+  receivedByOperatorName?: string;
   voided: boolean;
   voidedAt?: string;
   voidedBy?: string;
@@ -522,6 +523,11 @@ export interface Order {
   trialDate: string;
   deliveryDate: string;
   deliveryPromiseNote?: string;
+  deliveryBin?: string;
+  createdByOperatorName?: string;
+  measurementTakenByOperatorName?: string;
+  deliveredByOperatorName?: string;
+  deliveredAt?: string;
   items: OrderItem[];
   totalAmount: number;
   advancePaid: number;

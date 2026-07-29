@@ -298,6 +298,21 @@ function BillingSettingsContent() {
         </div>
 
         <div className="mb-5 mt-8 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Shared Desktop Operator</h2>
+          <p className="mt-1 text-sm text-ink-muted">Optional staff attribution for a shared shop computer.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3.5 text-sm font-medium text-ink-muted md:col-span-2">
+            <input type="checkbox" checked={settings.requireActiveOperator} onChange={(e) => patch("requireActiveOperator", e.target.checked)} disabled={!enabled || !canManage} className="h-4 w-4 accent-primary" />
+            Require active operator on shared desktop
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Idle lock (minutes)</span>
+            <input type="number" min={5} max={240} value={settings.operatorIdleMinutes} onChange={(e) => patchNumber("operatorIdleMinutes", e.target.value)} disabled={!enabled || !canManage || !settings.requireActiveOperator} className={inputClass} />
+          </label>
+        </div>
+
+        <div className="mb-5 mt-8 border-b border-border-soft pb-2">
           <h2 className="text-base font-semibold text-ink">Print Footer</h2>
         </div>
         <div className="grid grid-cols-1 gap-4">

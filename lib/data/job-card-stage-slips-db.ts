@@ -283,6 +283,37 @@ export async function getPendingJobCardStageSlip(
   return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
 }
 
+/**
+ * Binds an unassigned printed slip to the worker who actually completed it.
+ * The scan screen uses this immediately before tallying, so payroll is based
+ * on the selected worker's rate instead of requiring assignment at print time.
+ */
+export async function assignJobCardStageSlipForTally(
+  supabase: SupabaseClient,
+  input: {
+    id: string;
+    staffId: string;
+    staffName: string;
+    wageRate: number;
+    wageAmount: number;
+  }
+): Promise<JobCardStageSlip | undefined> {
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .update({
+      staff_id: input.staffId,
+      staff_name: input.staffName,
+      wage_rate: input.wageRate,
+      wage_amount: input.wageAmount,
+    })
+    .eq("id", input.id)
+    .is("tallied_at", null)
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+}
+
 export async function getJobCardStageSlipsByIds(
   supabase: SupabaseClient,
   ids: string[]

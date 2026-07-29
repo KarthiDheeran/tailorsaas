@@ -10,6 +10,11 @@ export type NavigationShortcut = {
   enabled: boolean;
 };
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
 /**
  * Provides app-wide Alt shortcuts for primary navigation. The mapping is
  * deliberately kept separate from page-specific shortcuts (for example,
@@ -32,6 +37,7 @@ export function useGlobalNavigationShortcuts(shortcuts: NavigationShortcut[]) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+      if (isEditableTarget(event.target)) return;
 
       const shortcut = shortcutsRef.current.find(
         (item) => item.enabled && item.key === event.key.toLowerCase()

@@ -32,10 +32,6 @@ import {
   getPaymentsForOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
-import {
-  StageJobCardPrintModal,
-  type StageJobCardPrintTarget,
-} from "@/components/orders/stage-job-card-print-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
@@ -209,7 +205,6 @@ export function OrderDetailsDrawer({
   const canViewPayments = hasPermission("orders.viewPayments");
   const canRecordPayment = hasPermission("orders.recordPayment");
   const canEdit = hasPermission("orders.edit");
-  const canPrintJobCard = hasPermission("orders.printJobCard");
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<OrderFinancialAdjustment[]>([]);
@@ -217,7 +212,6 @@ export function OrderDetailsDrawer({
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [openingEdit, setOpeningEdit] = useState(false);
   const [openingFullOrder, setOpeningFullOrder] = useState(false);
-  const [stagePrintTarget, setStagePrintTarget] = useState<StageJobCardPrintTarget | null>(null);
   const orderId = order?.id;
 
   useEffect(() => {
@@ -349,6 +343,17 @@ export function OrderDetailsDrawer({
                 )}
               </div>
 
+              {(order.createdByOperatorName || order.measurementTakenByOperatorName || order.deliveredByOperatorName) && (
+                <div className="rounded-lg border border-border-soft bg-surface p-3">
+                  <p className="text-[13px] font-semibold text-ink">Staff activity</p>
+                  <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                    {order.createdByOperatorName && <p className="text-ink-muted">Order created by <span className="font-semibold text-ink">{order.createdByOperatorName}</span></p>}
+                    {order.measurementTakenByOperatorName && <p className="text-ink-muted">Measurements by <span className="font-semibold text-ink">{order.measurementTakenByOperatorName}</span></p>}
+                    {order.deliveredByOperatorName && <p className="text-ink-muted">Delivered by <span className="font-semibold text-ink">{order.deliveredByOperatorName}</span></p>}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="mb-2 text-[13px] font-medium text-ink-muted">
                   {t("orders.items")}
@@ -364,9 +369,6 @@ export function OrderDetailsDrawer({
                             <th className="px-3 py-2 text-right">{t("common.rate")}</th>
                             <th className="px-3 py-2 text-right">{t("common.amount")}</th>
                           </>
-                        )}
-                        {canPrintJobCard && (
-                          <th className="px-3 py-2 text-right">Print</th>
                         )}
                       </tr>
                     </thead>
@@ -403,19 +405,6 @@ export function OrderDetailsDrawer({
                                 {formatCurrency(item.amount)}
                               </td>
                             </>
-                          )}
-                          {canPrintJobCard && (
-                            <td className="px-3 py-2 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setStagePrintTarget({ serialNo: item.serialNo })}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-                                aria-label={`Print stage job card for ${item.particular}`}
-                                title={`Print stage job card for ${item.particular}`}
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
                           )}
                         </tr>
                       ))}
@@ -559,13 +548,6 @@ export function OrderDetailsDrawer({
             handlePaymentChanged(result);
             setShowRecordModal(false);
           }}
-        />
-      )}
-      {order && stagePrintTarget && (
-        <StageJobCardPrintModal
-          order={order}
-          target={stagePrintTarget}
-          onClose={() => setStagePrintTarget(null)}
         />
       )}
     </>

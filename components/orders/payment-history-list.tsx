@@ -103,6 +103,9 @@ function PaymentRow({
           <p className="mt-1 text-xs text-ink-muted">
             {formatDate(payment.paymentDate)} · {payment.paymentMode}
           </p>
+          {payment.receivedByOperatorName && (
+            <p className="mt-1 text-xs text-ink-muted">Collected by {payment.receivedByOperatorName}</p>
+          )}
           {payment.notes && (
             <p className="mt-1 text-xs text-ink-muted">{payment.notes}</p>
           )}

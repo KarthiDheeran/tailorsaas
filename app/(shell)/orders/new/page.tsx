@@ -73,6 +73,7 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
+import { getActiveOperatorStaffAction, getOperatorModeAction } from "@/app/(shell)/settings/operator-actions";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -113,6 +114,7 @@ const CUSTOMER_BROWSER_CACHE_KEY = "tailorsaas:new-order-customers:v1";
 const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
+type MeasurementStaffOption = { id: string; name: string; staff_number: string };
 
 function customerMatchesSearch(customer: Customer, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -341,6 +343,20 @@ function NewOrderPageContent() {
   const [leavingToOrders, setLeavingToOrders] = useState(false);
   const [garmentFocusRequest, setGarmentFocusRequest] = useState(0);
   const [orderSection, setOrderSection] = useState<GarmentSection | "">("");
+  const [measurementStaff, setMeasurementStaff] = useState<MeasurementStaffOption[]>([]);
+  const [measurementTakenByOperatorId, setMeasurementTakenByOperatorId] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getActiveOperatorStaffAction(), getOperatorModeAction()]).then(([staffResult, mode]) => {
+      if (cancelled) return;
+      if (staffResult.success) setMeasurementStaff(staffResult.data);
+      if (mode.operator) setMeasurementTakenByOperatorId((current) => current || mode.operator!.id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
   // once here and threaded down to NewOrderItemsCard as props - every
@@ -1085,6 +1101,7 @@ function NewOrderPageContent() {
         items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
         advancePaid,
         paymentMode,
+        measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
       });
     } else {
       const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
@@ -1112,6 +1129,7 @@ function NewOrderPageContent() {
           items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
           advancePaid,
           paymentMode,
+          measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
         },
       });
     }
@@ -1601,6 +1619,18 @@ function NewOrderPageContent() {
                 {submitAttempted && errors.orderSection && (
                   <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
                 )}
+                <label className="mt-4 flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">Measurements taken by <span className="font-normal">(optional)</span></span>
+                  <select
+                    value={measurementTakenByOperatorId}
+                    onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Not specified</option>
+                    {measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} · {staff.staff_number}</option>)}
+                  </select>
+                  <span className="text-xs text-[#64748B]">Choose the person who took the measurements. This can be different from the staff member using the desktop.</span>
+                </label>
                 <div ref={setGarmentSelectorTarget} className="mt-4" />
               </div>
               </div>

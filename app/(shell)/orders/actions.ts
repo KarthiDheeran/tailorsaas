@@ -19,6 +19,13 @@ import {
   updateOrderStatus,
 } from "@/lib/data/orders-db";
 import { recomputeOrderTotals } from "@/lib/data/order-totals-db";
+import {
+  recordDeliveryOperatorAttribution,
+  recordOrderOperatorAttribution,
+  recordPaymentOperatorAttribution,
+} from "@/lib/data/operator-attribution-db";
+import { requireActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
+import type { ActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
 import { getGarmentTypeConfigurations } from "@/lib/data/catalog-fields-db";
 import {
   buildFieldSchemaSnapshot,
@@ -110,6 +117,21 @@ function availableOrderStatusesFor(permissions: Permission[]): OrderStatus[] {
 type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+async function resolveMeasurementTaker(
+  staffId?: string,
+): Promise<{ operator?: Pick<ActiveSharedDesktopOperator, "id" | "name">; error?: string }> {
+  if (!staffId) return {};
+  const { data, error } = await createAdminClient()
+    .from("staff")
+    .select("id,name,status")
+    .eq("id", staffId)
+    .maybeSingle();
+  if (error || !data || data.status !== "Active") {
+    return { error: "Choose an active staff member for measurements." };
+  }
+  return { operator: { id: data.id, name: data.name } };
+}
 
 const ORDER_ATTACHMENT_TYPES: OrderAttachmentType[] = [
   "Design Reference",
@@ -442,10 +464,15 @@ export async function createOrderAction(data: {
   items: OrderItem[];
   advancePaid: number;
   paymentMode: PaymentMode;
+  measurementTakenByOperatorId?: string;
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
   if (!guard.ok) return { success: false, error: guard.error };
+  const operatorGuard = await requireActiveSharedDesktopOperator();
+  if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
+  const measurementTaker = await resolveMeasurementTaker(data.measurementTakenByOperatorId);
+  if (measurementTaker.error) return { success: false, error: measurementTaker.error };
   if (!isGarmentSection(data.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
@@ -457,6 +484,12 @@ export async function createOrderAction(data: {
   const prepared = await validateAndSnapshotOrderItems(supabase, data.items);
   if (prepared.error) return { success: false, error: prepared.error };
   const order = await createOrder(supabase, { ...data, items: prepared.items, status: "In Progress" });
+  await recordOrderOperatorAttribution(
+    createAdminClient(),
+    order.id,
+    operatorGuard.operator,
+    measurementTaker.operator ?? operatorGuard.operator,
+  );
   await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
@@ -479,11 +512,16 @@ export async function createOrderForNewCustomerAction(data: {
     items: OrderItem[];
     advancePaid: number;
     paymentMode: PaymentMode;
+    measurementTakenByOperatorId?: string;
   };
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
   const orderGuard = await requireServerPermission(supabase, "orders.create");
   if (!orderGuard.ok) return { success: false, error: orderGuard.error };
+  const operatorGuard = await requireActiveSharedDesktopOperator();
+  if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
+  const measurementTaker = await resolveMeasurementTaker(data.order.measurementTakenByOperatorId);
+  if (measurementTaker.error) return { success: false, error: measurementTaker.error };
   if (!isGarmentSection(data.order.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
@@ -542,6 +580,12 @@ export async function createOrderForNewCustomerAction(data: {
     await deleteCustomer(createAdminClient(), customer.id);
     throw error;
   }
+  await recordOrderOperatorAttribution(
+    createAdminClient(),
+    order.id,
+    operatorGuard.operator,
+    measurementTaker.operator ?? operatorGuard.operator,
+  );
   await trySyncJobCardsForOrder(supabase, order.id);
   await recomputeOrderTotals(createAdminClient(), order.id);
   return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
@@ -589,8 +633,15 @@ export async function updateOrderStatusAction(
   if (!availableOrderStatusesFor(permissions).includes(status)) {
     return { success: false, error: "You don't have permission to set this status." };
   }
+  const operatorGuard = status === "Delivered"
+    ? await requireActiveSharedDesktopOperator()
+    : { ok: true as const, operator: undefined };
+  if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
   const order = await updateOrderStatus(supabase, id, status);
   if (!order) return { success: false, error: "Order not found." };
+  if (status === "Delivered") {
+    await recordDeliveryOperatorAttribution(createAdminClient(), order.id, operatorGuard.operator);
+  }
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
 }
@@ -791,9 +842,12 @@ export async function recordPaymentAction(data: {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.recordPayment");
   if (!guard.ok) return { success: false, error: guard.error };
+  const operatorGuard = await requireActiveSharedDesktopOperator();
+  if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
 
   try {
-    await recordPayment(supabase, data);
+    const paymentId = await recordPayment(supabase, data);
+    await recordPaymentOperatorAttribution(createAdminClient(), paymentId, operatorGuard.operator);
     await recomputeOrderTotals(createAdminClient(), data.orderId);
   } catch (err) {
     return {

@@ -5,6 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 
 export const CLOSE_TRANSIENT_OVERLAYS_EVENT = "tailorsaas:close-transient-overlays";
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
 export function useGlobalNewOrderShortcut(enabled: boolean) {
   const router = useRouter();
   const pathname = usePathname();
@@ -18,7 +23,8 @@ export function useGlobalNewOrderShortcut(enabled: boolean) {
     if (!enabled) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (!event.altKey || event.key.toLowerCase() !== "n") return;
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.key.toLowerCase() !== "n") return;
+      if (isEditableTarget(event.target)) return;
 
       event.preventDefault();
 

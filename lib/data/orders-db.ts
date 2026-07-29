@@ -85,8 +85,8 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 
 const ORDER_COLUMNS = `
   id, order_number, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-  delivery_date, delivery_promise_note, total_amount, advance_paid, balance, payment_mode, status,
-  payment_status, created_at, updated_at,
+  delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+  payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
 `;
 
@@ -108,6 +108,11 @@ interface OrderRow {
   trial_date: string | null;
   delivery_date: string;
   delivery_promise_note?: string | null;
+  delivery_bin?: string | null;
+  created_by_operator_name?: string | null;
+  measurement_taken_by_operator_name?: string | null;
+  delivered_by_operator_name?: string | null;
+  delivered_at?: string | null;
   total_amount: number;
   advance_paid: number;
   balance: number;
@@ -133,6 +138,11 @@ function mapOrder(row: OrderRow): Order {
     deliveryPromiseNote: row.delivery_promise_note?.trim()
       ? row.delivery_promise_note
       : undefined,
+    deliveryBin: row.delivery_bin?.trim() ? row.delivery_bin : undefined,
+    createdByOperatorName: row.created_by_operator_name?.trim() ? row.created_by_operator_name : undefined,
+    measurementTakenByOperatorName: row.measurement_taken_by_operator_name?.trim() ? row.measurement_taken_by_operator_name : undefined,
+    deliveredByOperatorName: row.delivered_by_operator_name?.trim() ? row.delivered_by_operator_name : undefined,
+    deliveredAt: row.delivered_at ?? undefined,
     items: [...row.order_items]
       .sort((a, b) => a.serial_no - b.serial_no)
       .map(mapOrderItem),
@@ -154,7 +164,12 @@ function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
     candidate.code === "PGRST204" ||
     message.includes("scan_token") ||
     message.includes("invoice_number") ||
-    message.includes("delivery_promise_note")
+    message.includes("delivery_promise_note") ||
+    message.includes("delivery_bin") ||
+    message.includes("created_by_operator_name") ||
+    message.includes("measurement_taken_by_operator_name") ||
+    message.includes("delivered_by_operator_name") ||
+    message.includes("delivered_at")
   );
 }
 

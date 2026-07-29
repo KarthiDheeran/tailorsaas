@@ -15,6 +15,8 @@ export interface ShopBillingSettings {
   taxLabel: string;
   taxRatePercent: number;
   pricesIncludeTax: boolean;
+  requireActiveOperator: boolean;
+  operatorIdleMinutes: number;
   footerNote: string;
 }
 
@@ -33,11 +35,13 @@ interface ShopBillingSettingsRow {
   tax_label?: string | null;
   tax_rate_percent?: number | null;
   prices_include_tax?: boolean | null;
+  require_active_operator?: boolean | null;
+  operator_idle_minutes?: number | null;
   footer_note: string;
 }
 
 const SETTINGS_COLUMNS =
-  "shop_name,tagline,phone,email,address,gstin,receipt_prefix,invoice_prefix,next_invoice_sequence,invoice_sequence_year,tax_enabled,tax_label,tax_rate_percent,prices_include_tax,footer_note";
+  "shop_name,tagline,phone,email,address,gstin,receipt_prefix,invoice_prefix,next_invoice_sequence,invoice_sequence_year,tax_enabled,tax_label,tax_rate_percent,prices_include_tax,require_active_operator,operator_idle_minutes,footer_note";
 
 const LEGACY_SETTINGS_COLUMNS =
   "shop_name,tagline,phone,email,address,gstin,receipt_prefix,footer_note";
@@ -53,6 +57,8 @@ export const DEFAULT_SHOP_BILLING_SETTINGS: ShopBillingSettings = {
   taxLabel: "GST",
   taxRatePercent: 0,
   pricesIncludeTax: false,
+  requireActiveOperator: false,
+  operatorIdleMinutes: 30,
   footerNote: "Please bring this receipt during pickup.",
 };
 
@@ -74,6 +80,8 @@ function isMissingInvoiceBillingSchemaError(error: unknown): boolean {
   return (
     candidate.code === "PGRST204" ||
     message.includes("invoice_prefix") ||
+    message.includes("require_active_operator") ||
+    message.includes("operator_idle_minutes") ||
     message.includes("tax_enabled") ||
     message.includes("tax_rate_percent")
   );
@@ -127,6 +135,8 @@ export async function upsertShopBillingSettings(
       tax_label: settings.taxLabel.trim(),
       tax_rate_percent: settings.taxRatePercent,
       prices_include_tax: settings.pricesIncludeTax,
+      require_active_operator: settings.requireActiveOperator,
+      operator_idle_minutes: settings.operatorIdleMinutes,
       footer_note: settings.footerNote.trim(),
       updated_at: new Date().toISOString(),
     })
@@ -156,6 +166,8 @@ function mapSettings(row: ShopBillingSettingsRow): ShopBillingSettings {
       row.tax_rate_percent ?? DEFAULT_SHOP_BILLING_SETTINGS.taxRatePercent,
     pricesIncludeTax:
       row.prices_include_tax ?? DEFAULT_SHOP_BILLING_SETTINGS.pricesIncludeTax,
+    requireActiveOperator: row.require_active_operator ?? false,
+    operatorIdleMinutes: row.operator_idle_minutes ?? 30,
     footerNote: row.footer_note,
   };
 }

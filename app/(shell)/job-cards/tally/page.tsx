@@ -15,15 +15,16 @@ import {
   X,
 } from "lucide-react";
 import {
-  confirmJobCardStageSlipTallyAction,
+  getQuickTallyStaffAction,
   getTalliedJobCardStageSlipsAction,
-  previewJobCardStageSlipAction,
+  quickTallyJobCardStageSlipAction,
 } from "@/app/(shell)/job-cards/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { formatCurrency } from "@/lib/currency";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
+import type { Staff } from "@/lib/types";
 
 function todayIso() {
   const now = new Date();
@@ -69,24 +70,22 @@ function TallyContent() {
   const [tallyDate, setTallyDate] = useState(todayIso);
   const [message, setMessage] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [pendingSlip, setPendingSlip] = useState<JobCardStageSlip | null>(null);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [sessionActive, setSessionActive] = useState(false);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [sessionPayable, setSessionPayable] = useState(0);
+  const [scanState, setScanState] = useState<"idle" | "success" | "error" | "duplicate">("idle");
   const [loadingTallies, setLoadingTallies] = useState(true);
-  const pendingLabourAddOnsTotal = useMemo(
-    () =>
-      (pendingSlip?.labourAddOnsSnapshot ?? []).reduce(
-        (sum, addOn) => sum + Number(addOn.amount ?? 0),
-        0
-      ),
-    [pendingSlip]
-  );
 
   useEffect(() => {
     let cancelled = false;
     setLoadingTallies(true);
-    getTalliedJobCardStageSlipsAction()
-      .then((slips) => {
-        if (!cancelled) setScanned(slips);
+    Promise.all([getTalliedJobCardStageSlipsAction(), getQuickTallyStaffAction()])
+      .then(([slips, staffMembers]) => {
+        if (cancelled) return;
+        setScanned(slips);
+        setStaff(staffMembers);
       })
       .catch(() => {
         if (!cancelled) setMessage("Could not load previous tally scans.");
@@ -125,36 +124,48 @@ function TallyContent() {
     () => totals.reduce((sum, row) => sum + row.amount, 0),
     [totals]
   );
-  const latestLiveSlip = pendingSlip ?? visibleSlips[0];
-  const hasLiveScanFailure = Boolean(message) && !pendingSlip && !message.includes("recorded for") && !message.startsWith("Already tallied");
+  const latestLiveSlip = visibleSlips[0];
+  const hasLiveScanFailure = scanState === "error" || scanState === "duplicate";
 
   async function scan(rawCode = code) {
     const trimmed = rawCode.trim();
     if (!trimmed || isScanning) return;
+    if (!sessionActive || !selectedStaffId) {
+      setScanState("error");
+      setMessage("Select a staff member and start the scan session first.");
+      return;
+    }
     setIsScanning(true);
     setMessage("");
-    const result = await previewJobCardStageSlipAction(trimmed);
-    setIsScanning(false);
-    setCode("");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    setScanState("idle");
+    try {
+      const result = await quickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
 
     if (!result.success) {
+      setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
       setMessage(result.error);
       return;
     }
 
     setScanned((current) => {
-      if (current.some((slip) => slip.id === result.data.id)) {
-        const dateText = result.data.talliedAt
-          ? formatDate(localDateKey(result.data.talliedAt))
-          : "an earlier tally";
-        setMessage(`Already tallied on ${dateText}.`);
-        if (result.data.talliedAt) setTallyDate(localDateKey(result.data.talliedAt));
-        return current;
-      }
-      setPendingSlip(result.data);
-      return current;
+      if (current.some((slip) => slip.id === result.data.id)) return current;
+      return [result.data, ...current];
     });
+    if (result.data.talliedAt) setTallyDate(localDateKey(result.data.talliedAt));
+    setSessionCount((count) => count + 1);
+    setSessionPayable((amount) => amount + result.data.wageAmount);
+    setScanState("success");
+    setMessage(
+      `${result.data.slipCode} completed — ${formatCurrency(result.data.wageAmount)} added to ${result.data.staffName}.`
+    );
+    } catch {
+      setScanState("error");
+      setMessage("The scan could not be recorded. Please try the same barcode again.");
+    } finally {
+      setIsScanning(false);
+      setCode("");
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    }
   }
 
   useEffect(() => {
@@ -165,27 +176,25 @@ function TallyContent() {
     window.history.replaceState({}, "", "/job-cards/tally");
   }, [searchParams]);
 
-  async function confirmTally() {
-    if (!pendingSlip || isConfirming) return;
-    setIsConfirming(true);
-    setMessage("");
-    const result = await confirmJobCardStageSlipTallyAction(pendingSlip.id);
-    setIsConfirming(false);
-    if (!result.success) {
-      setMessage(result.error);
+  function startSession() {
+    if (!selectedStaffId) {
+      setScanState("error");
+      setMessage("Select a staff member before starting the scan session.");
       return;
     }
-    setPendingSlip(null);
-    setScanned((current) => {
-      if (current.some((slip) => slip.id === result.data.id)) return current;
-      if (result.data.talliedAt) setTallyDate(localDateKey(result.data.talliedAt));
-      setMessage(
-        `${result.data.slipCode} - ${result.data.orderNumber} - ${result.data.garmentType} - ${result.data.stage} recorded for ${result.data.staffName}.`
-      );
-      // TODO: Play a local success notification here if audio feedback is introduced.
-      return [result.data, ...current];
-    });
+    setSessionActive(true);
+    setSessionCount(0);
+    setSessionPayable(0);
+    setScanState("idle");
+    setMessage("");
     window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function changeStaff() {
+    setSessionActive(false);
+    setCode("");
+    setScanState("idle");
+    setMessage("");
   }
 
   return (
@@ -210,7 +219,7 @@ function TallyContent() {
           </div>
         </div>
         <form
-          className="grid gap-3 lg:grid-cols-[180px_minmax(280px,1fr)_164px]"
+          className="grid gap-3 xl:grid-cols-[180px_240px_auto_minmax(280px,1fr)]"
           onSubmit={(event) => {
             event.preventDefault();
             void scan();
@@ -226,6 +235,37 @@ function TallyContent() {
             />
           </label>
           <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+            Staff member
+            <select
+              value={selectedStaffId}
+              disabled={sessionActive || isScanning}
+              onChange={(event) => setSelectedStaffId(event.target.value)}
+              className="h-12 rounded-[10px] border border-border bg-white px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface"
+            >
+              <option value="">Select staff</option>
+              {staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+            </select>
+          </label>
+          {sessionActive ? (
+            <button
+              type="button"
+              onClick={changeStaff}
+              disabled={isScanning}
+              className="mt-5 flex h-12 items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface"
+            >
+              Change Staff
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={startSession}
+              disabled={!selectedStaffId || isScanning}
+              className="mt-5 flex h-12 items-center justify-center rounded-[10px] bg-primary px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Start Scanning
+            </button>
+          )}
+          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
             Scan Barcode / Slip Code
             <span className="relative block">
             <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
@@ -233,31 +273,54 @@ function TallyContent() {
               ref={inputRef}
               value={code}
               onChange={(event) => setCode(event.target.value)}
-              autoFocus
+              disabled={!sessionActive || isScanning}
               placeholder="Scan barcode or enter slip code"
-              className="h-12 w-full rounded-[10px] border border-border pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="h-12 w-full rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface"
             />
             </span>
           </label>
-          <button
-            type="submit"
-            disabled={isScanning || !code.trim()}
-            className="mt-5 flex h-12 items-center justify-center gap-2 rounded-[10px] bg-primary px-4 text-sm font-semibold text-white shadow-sm transition-shadow hover:bg-primary-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 lg:mt-5"
-          >
-            {isScanning && <Loader2 className="h-4 w-4 animate-spin" />}
-            {!isScanning && <QrCode className="h-4 w-4" aria-hidden="true" />}
-            Scan Job Card
-          </button>
         </form>
-        {message && <p className="mt-3 text-sm font-semibold text-ink-muted">{message}</p>}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2.5 text-sm">
+          <p className="font-medium text-ink-muted">
+            {sessionActive
+              ? `Scanning for ${staff.find((member) => member.id === selectedStaffId)?.name ?? "selected staff"}. Staff is locked until you choose Change Staff.`
+              : "Select a staff member, then start scanning. Each barcode is recorded immediately."}
+          </p>
+          {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} slips · {formatCurrency(sessionPayable)}</p>}
+        </div>
+        {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-green-700" : scanState === "duplicate" ? "text-orange-700" : "text-red-700"}`}>{message}</p>}
         {loadingTallies && <p className="mt-3 text-sm text-ink-muted">Loading saved scans...</p>}
       </section>
+
+      {isScanning && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 px-4"
+          role="status"
+          aria-live="assertive"
+          aria-label="Recording tally scan"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-border-soft bg-white p-6 text-center shadow-xl">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary-tint text-primary">
+              <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+            </span>
+            <h2 className="mt-4 text-lg font-bold text-ink">Recording scan…</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Updating the job card and worker payable. Please wait before scanning the next barcode.
+            </p>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface">
+              <div className="h-full w-2/3 animate-pulse rounded-full bg-primary" />
+            </div>
+          </div>
+        </div>
+      )}
 
       <section
         aria-live="polite"
         className={`mt-3 rounded-2xl border p-[18px] shadow-sm transition-all duration-200 ${
           hasLiveScanFailure
-            ? "border-red-200 bg-red-50"
+            ? scanState === "duplicate"
+              ? "border-orange-200 bg-orange-50"
+              : "border-red-200 bg-red-50"
             : latestLiveSlip
               ? "border-green-200 bg-[#ECFDF5] shadow-[0_4px_14px_rgba(22,163,74,0.10)]"
               : "border-border-soft bg-surface"
@@ -267,12 +330,12 @@ function TallyContent() {
           <div className="flex min-h-[74px] flex-col justify-center gap-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 text-red-600"><X className="h-5 w-5" aria-hidden="true" /></span>
-                <h2 className="text-lg font-bold text-red-800">Live Scan Status</h2>
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${scanState === "duplicate" ? "bg-orange-100 text-orange-600" : "bg-red-100 text-red-600"}`}><X className="h-5 w-5" aria-hidden="true" /></span>
+                <h2 className={`text-lg font-bold ${scanState === "duplicate" ? "text-orange-800" : "text-red-800"}`}>Live Scan Status</h2>
               </div>
-              <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700">FAILED</span>
+              <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${scanState === "duplicate" ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}>{scanState === "duplicate" ? "ALREADY TALLIED" : "FAILED"}</span>
             </div>
-            <p className="text-sm font-medium text-red-700">{message}</p>
+            <p className={`text-sm font-medium ${scanState === "duplicate" ? "text-orange-700" : "text-red-700"}`}>{message}</p>
           </div>
         ) : latestLiveSlip ? (
           <div className="animate-[pulse_200ms_ease-out]">
@@ -401,99 +464,6 @@ function TallyContent() {
           </div>
         </div>
       </section>
-      {pendingSlip && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4 py-6">
-          <button
-            type="button"
-            aria-label="Cancel tally confirmation"
-            className="absolute inset-0 cursor-default"
-            onClick={() => {
-              if (!isConfirming) setPendingSlip(null);
-            }}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-tally-title"
-            className="relative w-full max-w-lg rounded-xl border border-border-soft bg-white shadow-xl"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border-soft px-5 py-4">
-              <div>
-                <h2 id="confirm-tally-title" className="text-lg font-semibold text-ink">
-                  Confirm Job Card Tally
-                </h2>
-                <p className="text-sm font-semibold text-primary">{pendingSlip.slipCode}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isConfirming) setPendingSlip(null);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-3 px-5 py-4 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <Info label="Order" value={pendingSlip.orderNumber} />
-                <Info label="Garment" value={`${pendingSlip.garmentType} - Unit ${pendingSlip.unitNo}`} />
-                <Info label="Stage" value={pendingSlip.stage} />
-                <Info label="Worker" value={pendingSlip.staffName} />
-              </div>
-              <div className="rounded-lg border border-border-soft bg-surface px-3 py-2">
-                <p className="text-xs font-semibold text-ink-muted">Payable Breakdown</p>
-                <div className="mt-2 space-y-1.5">
-                  <BreakdownRow
-                    label={`${pendingSlip.stage} base work`}
-                    value={formatCurrency(pendingSlip.wageRate)}
-                  />
-                  {(pendingSlip.labourAddOnsSnapshot ?? []).map((addOn) => (
-                    <BreakdownRow
-                      key={addOn.key}
-                      label={`Extra work - ${addOn.label}`}
-                      value={formatCurrency(addOn.amount)}
-                    />
-                  ))}
-                  {pendingLabourAddOnsTotal === 0 && (
-                    <p className="text-xs text-ink-muted">No extra add-on labour for this stage.</p>
-                  )}
-                  <div className="border-t border-border-soft pt-1.5">
-                    <BreakdownRow
-                      label="Total payable"
-                      value={formatCurrency(pendingSlip.wageAmount)}
-                      strong
-                    />
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-ink-muted">
-                Confirm only after receiving this stage job card from the worker.
-              </p>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
-              <button
-                type="button"
-                disabled={isConfirming}
-                onClick={() => setPendingSlip(null)}
-                className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isConfirming}
-                onClick={() => void confirmTally()}
-                className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isConfirming && <Loader2 className="h-4 w-4 animate-spin" />}
-                Confirm Tally
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -520,34 +490,6 @@ function LiveScanField({
       <p className={`mt-1 truncate text-base font-bold ${emphasis ? "text-primary text-[18px]" : subdued ? "text-ink-muted" : "text-ink"}`} title={value}>
         {value}
       </p>
-    </div>
-  );
-}
-
-function BreakdownRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className={strong ? "font-semibold text-ink" : "text-ink-muted"}>{label}</span>
-      <span className={strong ? "text-lg font-bold text-primary" : "font-semibold text-ink"}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold text-ink-muted">{label}</p>
-      <p className="mt-0.5 font-semibold text-ink">{value}</p>
     </div>
   );
 }

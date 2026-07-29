@@ -136,6 +136,9 @@ function validateBillingSettings(input: ShopBillingSettings): string | null {
   if (input.taxRatePercent < 0 || input.taxRatePercent > 100) {
     return "Tax rate must be between 0 and 100.";
   }
+  if (!Number.isInteger(input.operatorIdleMinutes) || input.operatorIdleMinutes < 5 || input.operatorIdleMinutes > 240) {
+    return "Operator idle lock must be between 5 and 240 minutes.";
+  }
   if (!input.footerNote.trim()) return "Footer note is required.";
   if (input.email?.trim() && !input.email.includes("@")) return "Enter a valid email address.";
   return null;

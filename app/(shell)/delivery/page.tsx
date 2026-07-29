@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
+  Barcode,
   ClipboardList,
   FileText,
   IndianRupee,
@@ -12,7 +13,9 @@ import {
 } from "lucide-react";
 import {
   getDeliveryDeskOrdersAction,
+  getQuickDeliveryOrderAction,
   markOrderDeliveredAction,
+  quickCollectAndDeliverAction,
   type DeliveryDeskOrder,
 } from "@/app/(shell)/delivery/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -28,7 +31,7 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/currency";
-import type { Order } from "@/lib/types";
+import type { Order, PaymentMode } from "@/lib/types";
 import { isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
 type DeliveryFilter = "all" | "ready" | "due" | "balance" | "clear";
@@ -100,6 +103,13 @@ function DeliveryDeskContent() {
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const quickScanRef = useRef<HTMLInputElement | null>(null);
+  const [quickCode, setQuickCode] = useState("");
+  const [quickOrder, setQuickOrder] = useState<DeliveryDeskOrder | null>(null);
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickPaymentMode, setQuickPaymentMode] = useState<PaymentMode>("Cash");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickMessage, setQuickMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +194,54 @@ function DeliveryDeskContent() {
     });
   }
 
+  async function scanQuickDelivery() {
+    const value = quickCode.trim();
+    if (!value || quickBusy) return;
+    setQuickBusy(true);
+    setQuickMessage("");
+    try {
+      const result = await getQuickDeliveryOrderAction(value);
+      if (!result.success) {
+        setQuickOrder(null);
+        setQuickMessage(result.error);
+        return;
+      }
+      setQuickOrder(result.data);
+      setQuickAmount(String(Math.max(0, result.data.order.balance)));
+      setQuickCode("");
+    } finally {
+      setQuickBusy(false);
+      window.setTimeout(() => quickScanRef.current?.focus(), 0);
+    }
+  }
+
+  async function collectAndDeliver() {
+    if (!quickOrder || quickBusy) return;
+    const amount = Number(quickAmount || 0);
+    setQuickBusy(true);
+    setQuickMessage("");
+    try {
+      const result = await quickCollectAndDeliverAction({
+        orderId: quickOrder.order.id,
+        amount,
+        paymentMode: quickPaymentMode,
+        notes: "Quick delivery scan",
+      });
+      if (!result.success) {
+        setQuickMessage(result.error);
+        return;
+      }
+      removeOrder(result.data.id);
+      setQuickMessage(`${result.data.orderNumber} collected and delivered successfully.`);
+      setQuickOrder(null);
+      setQuickAmount("");
+      setQuickCode("");
+    } finally {
+      setQuickBusy(false);
+      window.setTimeout(() => quickScanRef.current?.focus(), 0);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -201,6 +259,38 @@ function DeliveryDeskContent() {
           Orders
         </Link>
       </div>
+
+      <section className="mb-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><Barcode className="h-5 w-5 text-primary" />Quick Delivery Scan</h2>
+            <p className="mt-0.5 text-sm text-ink-muted">Scan the customer receipt, collect any balance, and deliver the full cover.</p>
+          </div>
+          {quickBusy && <span className="rounded-full bg-primary-tint px-3 py-1 text-sm font-semibold text-primary">Processing…</span>}
+        </div>
+        <form onSubmit={(event) => { event.preventDefault(); void scanQuickDelivery(); }} className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <label className="relative block min-w-0 flex-1">
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Receipt barcode / Order number</span>
+            <Barcode className="pointer-events-none absolute bottom-3 left-3 h-4 w-4 text-ink-faint" />
+            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter M-1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface" />
+          </label>
+          <button type="submit" disabled={quickBusy || !quickCode.trim()} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Find Order</button>
+        </form>
+        {quickMessage && <p className={`mt-3 text-sm font-semibold ${quickOrder ? "text-primary" : quickMessage.includes("successfully") ? "text-green-700" : "text-chip-red-fg"}`}>{quickMessage}</p>}
+        {quickOrder && (
+          <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 lg:grid-cols-[minmax(0,1fr)_140px_150px_auto] lg:items-end">
+            <div>
+              <p className="font-bold text-primary">{quickOrder.order.orderNumber} · {customerLabel(quickOrder)}</p>
+              <p className="mt-1 text-sm text-ink-muted">{itemsLabel(quickOrder.order)}</p>
+              <p className="mt-1 text-sm font-semibold text-ink">Cover location: <span className="text-primary">{quickOrder.order.deliveryBin ?? "Not specified"}</span></p>
+              <p className="mt-1 text-sm text-ink-muted">Outstanding balance: <span className="font-bold text-ink">{money(quickOrder.order.balance)}</span></p>
+            </div>
+            <label className="block text-xs font-semibold text-ink-muted">Collected amount<input type="number" min="0" max={quickOrder.order.balance} step="0.01" value={quickAmount} onChange={(event) => setQuickAmount(event.target.value)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-right text-sm font-semibold text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+            <label className="block text-xs font-semibold text-ink-muted">Payment mode<select value={quickPaymentMode} onChange={(event) => setQuickPaymentMode(event.target.value as PaymentMode)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{["Cash", "GPay", "UPI", "Card", "Bank Transfer", "Cheque"].map((mode) => <option key={mode}>{mode}</option>)}</select></label>
+            <button type="button" onClick={() => void collectAndDeliver()} disabled={quickBusy} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Collect & Deliver</button>
+          </div>
+        )}
+      </section>
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DeliveryStatCard icon={Truck} label="Ready for handover" value={String(stats.ready)} tone="green" />

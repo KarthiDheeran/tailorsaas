@@ -27,6 +27,7 @@ import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { GlobalSearchButton } from "@/components/layout/global-search";
+import { ActiveOperatorControl } from "@/components/layout/active-operator-control";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { CLOSE_TRANSIENT_OVERLAYS_EVENT } from "@/hooks/use-global-new-order-shortcut";
 import { cn } from "@/lib/utils";
@@ -430,6 +431,7 @@ export function DesktopTopNav() {
         </nav>
 
         <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <ActiveOperatorControl />
           <div className="w-10 min-[1536px]:w-[180px] 2xl:w-[280px]">
             <GlobalSearchButton enableShortcut />
           </div>
