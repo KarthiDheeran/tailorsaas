@@ -57,13 +57,14 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import { clearNewOrderCatalogReference } from "@/lib/new-order-reference-browser-cache";
 
 function isCatalogTab(value: string | null): value is CatalogTab {
   return value === "garment-types" || value === "fields" || value === "sections" || value === "addons" || value === "work-stages";
 }
 
 function CatalogPageContent() {
-  const { hasPermission } = useCurrentUser();
+  const { hasPermission, currentUserId } = useCurrentUser();
   const { t } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
@@ -159,6 +160,7 @@ function CatalogPageContent() {
       legacyMeasurementFieldIds
     );
     if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
       setEditingGarment(null);
       setIsAddingGarment(false);
       setGarmentConfiguration(null);
@@ -172,6 +174,7 @@ function CatalogPageContent() {
       ? await updateGarmentTypeAction(editingGarment.id, data)
       : await createGarmentTypeAction(data);
     if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
       setEditingGarment(null);
       setIsAddingGarment(false);
       setRefreshKey((key) => key + 1);
@@ -191,20 +194,29 @@ function CatalogPageContent() {
 
   async function handleSaveSection(id: string | null, data: CatalogSectionInput) {
     const result = id ? await updateCatalogSectionAction(id, data) : await createCatalogSectionAction(data);
-    if (result.success) setRefreshKey((key) => key + 1);
+    if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
+      setRefreshKey((key) => key + 1);
+    }
     return result;
   }
 
   async function handleSaveField(id: string | null, data: import("@/lib/catalog").CatalogFieldInput) {
     const result = id ? await updateCatalogFieldAction(id, data) : await createCatalogFieldAction(data);
-    if (result.success) setRefreshKey((key) => key + 1);
+    if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
+      setRefreshKey((key) => key + 1);
+    }
     return result;
   }
 
   async function handleToggleField(field: CatalogField) {
     const result = await setCatalogFieldActiveAction(field.id, !field.isActive);
     if (!result.success) window.alert(result.error);
-    else setRefreshKey((key) => key + 1);
+    else {
+      clearNewOrderCatalogReference(currentUserId);
+      setRefreshKey((key) => key + 1);
+    }
   }
 
   async function handleToggleGarmentActive(garment: CatalogGarmentType) {
@@ -213,6 +225,7 @@ function CatalogPageContent() {
       window.alert(result.error);
       return;
     }
+    clearNewOrderCatalogReference(currentUserId);
     setRefreshKey((k) => k + 1);
   }
 
@@ -221,6 +234,7 @@ function CatalogPageContent() {
       ? await updateAddOnAction(editingAddOn.id, data)
       : await createAddOnAction(data);
     if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
       setEditingAddOn(null);
       setIsAddingAddOn(false);
       setRefreshKey((k) => k + 1);
@@ -233,6 +247,7 @@ function CatalogPageContent() {
       ? await updateWorkStageAction(editingWorkStage.id, data)
       : await createWorkStageAction(data);
     if (result.success) {
+      clearNewOrderCatalogReference(currentUserId);
       setEditingWorkStage(null);
       setIsAddingWorkStage(false);
       setRefreshKey((k) => k + 1);
@@ -246,6 +261,7 @@ function CatalogPageContent() {
       window.alert(result.error);
       return;
     }
+    clearNewOrderCatalogReference(currentUserId);
     setRefreshKey((k) => k + 1);
   }
 
@@ -255,6 +271,7 @@ function CatalogPageContent() {
       window.alert(result.error);
       return;
     }
+    clearNewOrderCatalogReference(currentUserId);
     setRefreshKey((k) => k + 1);
   }
 
@@ -264,6 +281,7 @@ function CatalogPageContent() {
       window.alert(result.error);
       return;
     }
+    clearNewOrderCatalogReference(currentUserId);
     setRefreshKey((k) => k + 1);
   }
 

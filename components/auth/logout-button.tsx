@@ -22,6 +22,21 @@ export function LogoutButton({
     setLoading(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    try {
+      const keysToRemove: string[] = [];
+      for (let index = 0; index < window.sessionStorage.length; index += 1) {
+        const key = window.sessionStorage.key(index);
+        if (
+          key?.startsWith("newlook:new-order:") ||
+          key?.startsWith("tailorsaas:new-order-customers:")
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+    } catch {
+      // Storage cleanup is best effort; sign-out itself must not be blocked.
+    }
     router.push("/login");
     router.refresh();
   }

@@ -15,6 +15,7 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
+import { clearNewOrderBillingSettings } from "@/lib/new-order-reference-browser-cache";
 
 const inputClass =
   "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint";
@@ -22,7 +23,7 @@ const textareaClass =
   "rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint";
 
 function BillingSettingsContent() {
-  const { hasPermission } = useCurrentUser();
+  const { hasPermission, currentUserId } = useCurrentUser();
   const canManage = hasPermission("settings.manageShop");
   const [settings, setSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
@@ -77,6 +78,7 @@ function BillingSettingsContent() {
       return;
     }
     setSettings(result.data);
+    clearNewOrderBillingSettings(currentUserId);
     setSaved(true);
   }
 

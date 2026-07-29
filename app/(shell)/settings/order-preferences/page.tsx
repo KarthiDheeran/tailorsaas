@@ -15,9 +15,10 @@ import {
   DEFAULT_SHOP_ORDER_PREFERENCES,
   type ShopOrderPreferences,
 } from "@/lib/data/shop-order-preferences-db";
+import { clearNewOrderPreferences } from "@/lib/new-order-reference-browser-cache";
 
 function OrderPreferencesContent() {
-  const { hasPermission } = useCurrentUser();
+  const { hasPermission, currentUserId } = useCurrentUser();
   const canManage = hasPermission("settings.manageShop");
   const [preferences, setPreferences] = useState<ShopOrderPreferences>(DEFAULT_SHOP_ORDER_PREFERENCES);
   const [enabled, setEnabled] = useState(true);
@@ -53,6 +54,7 @@ function OrderPreferencesContent() {
       return;
     }
     setPreferences(result.data);
+    clearNewOrderPreferences(currentUserId);
     setSaved(true);
   }
 

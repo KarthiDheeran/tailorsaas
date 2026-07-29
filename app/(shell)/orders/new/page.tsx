@@ -82,9 +82,13 @@ import {
 } from "@/lib/data/shop-billing-settings-db";
 import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import {
-  readGarmentConfigurationCache,
-  writeGarmentConfigurationCache,
-} from "@/lib/garment-configuration-browser-cache";
+  readNewOrderBillingSettings,
+  readNewOrderCatalogReference,
+  readNewOrderPreferences,
+  writeNewOrderBillingSettings,
+  writeNewOrderCatalogReference,
+  writeNewOrderPreferences,
+} from "@/lib/new-order-reference-browser-cache";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -110,11 +114,14 @@ const ORDER_SECTION_OPTIONS = GARMENT_SECTIONS.map((section, index) => ({
 const CUSTOMER_SEARCH_DEBOUNCE_MS = 250;
 const CUSTOMER_SEARCH_MIN_LENGTH = 2;
 const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
-const CUSTOMER_BROWSER_CACHE_KEY = "tailorsaas:new-order-customers:v1";
 const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
 type MeasurementStaffOption = { id: string; name: string; staff_number: string };
+
+function customerBrowserCacheKey(scopeId: string | undefined) {
+  return `tailorsaas:new-order-customers:${scopeId ?? "anonymous"}:v2`;
+}
 
 function customerMatchesSearch(customer: Customer, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -283,7 +290,11 @@ function NewOrderPageContent() {
   const orderSectionRef = useRef<HTMLInputElement>(null);
   const customerResultButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const deliveryDateWasEditedRef = useRef(false);
-  const { hasPermission } = useCurrentUser();
+  const {
+    hasPermission,
+    currentUserId,
+    isLoading: isCurrentUserLoading,
+  } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
   const canCreateCustomers = hasPermission("customers.create");
   const canPrintReceipt = hasPermission("orders.printCustomerReceipt");
@@ -329,14 +340,24 @@ function NewOrderPageContent() {
   >([]);
 
   useEffect(() => {
+    if (isCurrentUserLoading) return;
     let cancelled = false;
+    const cached = readNewOrderBillingSettings(currentUserId);
+    if (cached) {
+      setBillingSettings(cached);
+      return () => {
+        cancelled = true;
+      };
+    }
     getOrderPricingBillingSettingsAction().then((settings) => {
-      if (!cancelled) setBillingSettings(settings);
+      if (cancelled) return;
+      setBillingSettings(settings);
+      writeNewOrderBillingSettings(currentUserId, settings);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUserId, isCurrentUserLoading]);
   const [attachmentUploadCount, setAttachmentUploadCount] = useState(0);
   const [repeatCopyMessage, setRepeatCopyMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -368,42 +389,47 @@ function NewOrderPageContent() {
   const [garmentConfigurationsLoaded, setGarmentConfigurationsLoaded] = useState(false);
 
   useEffect(() => {
+    if (isCurrentUserLoading) return;
     let cancelled = false;
-    Promise.all([getActiveGarmentTypesAction(), getAddOnsAction()]).then(
-      async ([garments, allAddOns]) => {
-        const garmentIds = garments.map((garment) => garment.id);
-        const cachedConfigurations = readGarmentConfigurationCache();
-        const cacheCoversActiveGarments =
-          cachedConfigurations !== null &&
-          garmentIds.every((id) => cachedConfigurations.some((item) => item.garment.id === id));
+    const cached = readNewOrderCatalogReference(currentUserId);
+    if (
+      cached &&
+      Array.isArray(cached.garmentTypes) &&
+      Array.isArray(cached.addOns) &&
+      Array.isArray(cached.configurations)
+    ) {
+      setGarmentTypes(cached.garmentTypes);
+      setAddOns(cached.addOns);
+      setGarmentConfigurations(cached.configurations);
+      setGarmentConfigurationsLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
 
-        if (cacheCoversActiveGarments) {
-          if (cancelled) return;
-          setGarmentTypes(garments);
-          setAddOns(allAddOns);
-          setGarmentConfigurations(cachedConfigurations);
-          setGarmentConfigurationsLoaded(true);
-          getGarmentTypeConfigurationsAction(garmentIds).then((freshConfigurations) => {
-            if (cancelled) return;
-            setGarmentConfigurations(freshConfigurations);
-            writeGarmentConfigurationCache(freshConfigurations);
-          });
-          return;
-        }
-
-        const configurations = await getGarmentTypeConfigurationsAction(garmentIds);
+    Promise.all([getActiveGarmentTypesAction(), getAddOnsAction()])
+      .then(async ([garments, allAddOns]) => {
+        const configurations = await getGarmentTypeConfigurationsAction(
+          garments.map((garment) => garment.id)
+        );
         if (cancelled) return;
         setGarmentTypes(garments);
         setAddOns(allAddOns);
         setGarmentConfigurations(configurations);
         setGarmentConfigurationsLoaded(true);
-        writeGarmentConfigurationCache(configurations);
-      }
-    );
+        writeNewOrderCatalogReference(currentUserId, {
+          garmentTypes: garments,
+          addOns: allAddOns,
+          configurations,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setGarmentConfigurationsLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUserId, isCurrentUserLoading]);
 
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
   const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
@@ -424,9 +450,12 @@ function NewOrderPageContent() {
   }, [prefillCustomerId]);
 
   useEffect(() => {
+    if (isCurrentUserLoading) return;
     let cancelled = false;
+    const cacheKey = customerBrowserCacheKey(currentUserId);
+    setCachedCustomers(null);
     try {
-      const cached = window.sessionStorage.getItem(CUSTOMER_BROWSER_CACHE_KEY);
+      const cached = window.sessionStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached) as CustomerBrowserCache;
         if (Array.isArray(parsed.customers) && Date.now() - parsed.savedAt < CUSTOMER_BROWSER_CACHE_TTL_MS) {
@@ -446,7 +475,7 @@ function NewOrderPageContent() {
         setCachedCustomers(customers);
         try {
           window.sessionStorage.setItem(
-            CUSTOMER_BROWSER_CACHE_KEY,
+            cacheKey,
             JSON.stringify({ savedAt: Date.now(), customers } satisfies CustomerBrowserCache)
           );
         } catch {
@@ -458,7 +487,7 @@ function NewOrderPageContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUserId, isCurrentUserLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -556,7 +585,7 @@ function NewOrderPageContent() {
               const next = [...results, ...(current ?? []).filter((customer) => !resultIds.has(customer.id))];
               try {
                 window.sessionStorage.setItem(
-                  CUSTOMER_BROWSER_CACHE_KEY,
+                  customerBrowserCacheKey(currentUserId),
                   JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
                 );
               } catch {
@@ -598,14 +627,24 @@ function NewOrderPageContent() {
   }, []);
 
   useEffect(() => {
+    if (isCurrentUserLoading) return;
     let cancelled = false;
+    const cached = readNewOrderPreferences(currentUserId);
+    if (cached) {
+      setDefaultDeliveryLeadDays(cached.defaultDeliveryLeadDays);
+      return () => {
+        cancelled = true;
+      };
+    }
     getNewOrderPreferencesAction().then((preferences) => {
-      if (!cancelled) setDefaultDeliveryLeadDays(preferences.defaultDeliveryLeadDays);
+      if (cancelled) return;
+      setDefaultDeliveryLeadDays(preferences.defaultDeliveryLeadDays);
+      writeNewOrderPreferences(currentUserId, preferences);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUserId, isCurrentUserLoading]);
 
   useEffect(() => {
     if (defaultDeliveryLeadDays === null || deliveryDateWasEditedRef.current) return;
@@ -913,7 +952,7 @@ function NewOrderPageContent() {
       const next = [customer, ...(current ?? []).filter((item) => item.id !== customer.id)];
       try {
         window.sessionStorage.setItem(
-          CUSTOMER_BROWSER_CACHE_KEY,
+          customerBrowserCacheKey(currentUserId),
           JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
         );
       } catch {
