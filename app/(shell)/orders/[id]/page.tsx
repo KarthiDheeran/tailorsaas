@@ -5,7 +5,6 @@ import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import {
   ChevronLeft,
-  FileText,
   Loader2,
   Pencil,
   Printer,
