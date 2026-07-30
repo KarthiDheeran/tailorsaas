@@ -89,7 +89,7 @@ export function MeasurementsCard({
         <div className="flex items-center gap-2">
           <Link
             href={`/customers/${customer.id}/measurements/print`}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <Printer className="h-3.5 w-3.5" />
             Print
@@ -102,7 +102,7 @@ export function MeasurementsCard({
                 router.push(`/customers/${customer.id}/measurements`);
               }}
               disabled={openingEditor}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Pencil className="h-3.5 w-3.5" />
               {openingEditor ? "Opening..." : t("customers.editMeasurements")}

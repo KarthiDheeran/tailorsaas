@@ -123,7 +123,7 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
               "h-9 rounded-lg border px-3 text-sm font-medium transition-colors print:hidden",
               lowStockOnly
                 ? "border-primary bg-primary-tint text-primary"
-                : "border-border bg-white text-ink-muted hover:bg-surface"
+                : "border-border bg-white text-ink-muted hover:bg-surface-muted"
             )}
           >
             {t("reports.lowStockOnly")}
@@ -188,7 +188,7 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
           </thead>
           <tbody className="text-[13px]">
             {report.rows.map((row) => (
-              <tr key={row.item.id} className="border-t border-border-soft hover:bg-surface">
+              <tr key={row.item.id} className="border-t border-border-soft hover:bg-surface-muted">
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="font-medium text-ink">{row.item.name}</div>
                   {row.item.sku && <div className="text-xs text-ink-muted">{row.item.sku}</div>}

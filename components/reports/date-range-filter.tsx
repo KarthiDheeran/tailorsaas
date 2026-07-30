@@ -46,7 +46,7 @@ export function DateRangeFilter({
             "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
             preset === p.key
               ? "border-primary bg-primary-tint text-primary"
-              : "border-border bg-white text-ink-muted hover:bg-surface"
+              : "border-border bg-white text-ink-muted hover:bg-surface-muted"
           )}
         >
           {t(p.labelKey)}

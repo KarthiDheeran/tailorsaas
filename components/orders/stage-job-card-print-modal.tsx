@@ -149,7 +149,7 @@ export function StageJobCardPrintModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -210,7 +210,7 @@ export function StageJobCardPrintModal({
             />
           </label>
 
-          <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-sm sm:col-span-2">
+          <div className="rounded-lg border border-border-soft bg-surface-muted px-3 py-2 text-sm sm:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-semibold text-ink">Worker add-ons for {stage}</p>
               <p className="font-bold text-primary">+₹{stageAddOnTotal}</p>
@@ -227,13 +227,13 @@ export function StageJobCardPrintModal({
           </div>
         </div>
 
-        {error && <p className="px-5 pb-2 text-sm font-semibold text-red-700">{error}</p>}
+        {error && <p className="px-5 pb-2 text-sm font-semibold text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface"
+            className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface-muted"
           >
             Cancel
           </button>

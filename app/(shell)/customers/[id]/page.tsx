@@ -126,7 +126,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
           {canViewPayments && (
             <Link
               href={`/customers/${customer.id}/statement`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               title="Customer Statement"
             >
               <FileText className="h-3.5 w-3.5" />
@@ -135,7 +135,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
           {canEdit && (
             <Link
               href={`/customers/${customer.id}/edit`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               title="Edit Customer Details"
             >
               <Pencil className="h-3.5 w-3.5" />

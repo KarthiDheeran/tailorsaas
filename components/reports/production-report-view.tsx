@@ -31,15 +31,15 @@ const EMPTY_REPORT: ProductionReport = {
 };
 
 const STAGE_STYLES: Record<JobCardStage, string> = {
-  Unassigned: "bg-chip-info text-chip-info-fg",
+  Unassigned: "bg-warning-soft text-warning",
   Cutting: "bg-chip-blue text-chip-blue-fg",
   Stitching: "bg-chip-blue text-chip-blue-fg",
   Embroidery: "bg-chip-blue text-chip-blue-fg",
-  Finishing: "bg-chip-purple text-chip-purple-fg",
+  Finishing: "bg-chip-blue text-chip-blue-fg",
   Trial: "bg-chip-info text-chip-info-fg",
   Alteration: "bg-chip-red text-chip-red-fg",
   Delayed: "bg-chip-red text-chip-red-fg",
-  Ready: "bg-chip-purple text-chip-purple-fg",
+  Ready: "bg-chip-mint text-chip-mint-fg",
   Delivered: "bg-chip-mint text-chip-mint-fg",
   Cancelled: "bg-chip-info text-chip-info-fg",
 };
@@ -206,7 +206,7 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
           </thead>
           <tbody className="text-[13px]">
             {report.rows.map((card) => (
-              <tr key={card.id} className="border-t border-border-soft hover:bg-surface">
+              <tr key={card.id} className="border-t border-border-soft hover:bg-surface-muted">
                 <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                   {card.jobCardNumber}
                 </td>

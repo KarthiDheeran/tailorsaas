@@ -93,7 +93,7 @@ export function CustomerFabricDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -107,7 +107,7 @@ export function CustomerFabricDrawer({
             </div>
           )}
           {(!card.fabricSource || card.fabricSource === "Not specified") && (
-            <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+            <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
               Fabric Source will be set to Customer provided after customer fabric is recorded.
             </div>
           )}
@@ -124,7 +124,7 @@ export function CustomerFabricDrawer({
               </div>
             </div>
           )}
-          <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+          <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
             Linked to <span className="font-semibold text-ink">{card.orderNumber}</span>
           </div>
 
@@ -189,7 +189,7 @@ export function CustomerFabricDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             Cancel
           </button>

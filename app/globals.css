@@ -2,16 +2,308 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root,
+  [data-theme="modern"] {
+    --app-bg: 245 247 246;
+    --surface: 255 255 255;
+    --surface-muted: 245 247 246;
+    --primary: 31 107 87;
+    --primary-hover: 24 87 70;
+    --primary-soft: 234 244 240;
+    --text-primary: 17 24 39;
+    --text-secondary: 102 112 133;
+    --text-muted: 152 162 179;
+    --border: 226 231 229;
+    --border-strong: 174 183 179;
+    --success: 22 131 93;
+    --success-soft: 232 246 239;
+    --warning: 182 92 0;
+    --warning-soft: 255 241 221;
+    --danger: 201 54 43;
+    --danger-soft: 253 236 234;
+    --info: 37 99 168;
+    --info-soft: 234 242 251;
+  }
+
+  [data-theme="classic"] {
+    --app-bg: 243 244 246;
+    --surface: 255 255 255;
+    --surface-muted: 229 231 235;
+    --primary: 20 90 70;
+    --primary-hover: 15 71 56;
+    --primary-soft: 221 238 232;
+    --text-primary: 0 0 0;
+    --text-secondary: 55 65 81;
+    --text-muted: 75 85 99;
+    --border: 156 163 175;
+    --border-strong: 107 114 128;
+    --success: 15 107 70;
+    --success-soft: 221 242 232;
+    --warning: 154 74 0;
+    --warning-soft: 255 225 179;
+    --danger: 180 35 24;
+    --danger-soft: 250 219 216;
+    --info: 23 78 140;
+    --info-soft: 220 233 247;
+    --input-border: 107 114 128;
+    --table-header: 229 231 235;
+    --table-header-text: 17 24 39;
+    --row-hover: 243 244 246;
+    --selected-bg: 221 238 232;
+  }
+
+  [data-theme="classic-dark"] {
+    --app-bg: 17 24 39;
+    --surface: 24 33 47;
+    --surface-elevated: 31 41 55;
+    --surface-muted: 38 50 68;
+    --work-surface: 248 250 252;
+    --work-surface-muted: 243 244 246;
+    --work-text-primary: 17 24 39;
+    --work-text-secondary: 75 85 99;
+    --work-border: 107 114 128;
+    --work-border-strong: 75 85 99;
+    --primary: 42 157 120;
+    --primary-hover: 53 184 141;
+    --primary-soft: 23 60 50;
+    --text-primary: 249 250 251;
+    --text-secondary: 209 213 219;
+    --text-muted: 156 163 175;
+    --border: 82 96 113;
+    --border-strong: 113 128 150;
+    --success: 66 211 154;
+    --success-soft: 23 61 49;
+    --warning: 245 184 75;
+    --warning-soft: 73 54 23;
+    --danger: 248 113 113;
+    --danger-soft: 74 34 38;
+    --info: 96 165 250;
+    --info-soft: 29 53 83;
+    --input-bg: 255 255 255;
+    --input-text: 17 24 39;
+    --input-placeholder: 107 114 128;
+    --input-border: 100 116 139;
+    --input-disabled-bg: 229 231 235;
+    --input-disabled-text: 107 114 128;
+    --table-bg: 255 255 255;
+    --table-header: 217 222 229;
+    --table-header-text: 17 24 39;
+    --table-text: 17 24 39;
+    --table-text-secondary: 75 85 99;
+    --table-border: 107 114 128;
+    --table-border-strong: 75 85 99;
+    --row-hover: 243 244 246;
+    --selected-bg: 221 242 232;
+    color-scheme: dark;
+  }
+}
+
 body {
-  color: #111827;
-  background:
-    radial-gradient(circle at 88% -8%, rgba(253, 230, 138, 0.55), transparent 32rem),
-    radial-gradient(circle at 4% 20%, rgba(209, 250, 229, 0.52), transparent 34rem),
-    #f7f8f5;
-  background-attachment: fixed;
+  @apply bg-background text-ink;
   font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   font-size: 14px;
+}
+
+[data-theme="classic-dark"] .shadow-soft,
+[data-theme="classic"] .shadow-soft {
+  box-shadow: none;
+}
+
+[data-theme="classic-dark"] :where(.bg-white, .bg-white\/85, .bg-white\/90) {
+  background-color: rgb(var(--surface));
+}
+
+[data-theme="classic-dark"] main :where(.overflow-x-auto:has(table), .bg-white:has(table), .bg-white\/85:has(table), .bg-white\/90:has(table)) {
+  background-color: rgb(var(--table-bg));
+  color: rgb(var(--table-text));
+}
+
+[data-theme="classic-dark"] :where(.bg-white:has(input), .bg-white:has(select), .bg-white:has(textarea), .bg-white\/85:has(input), .bg-white\/90:has(input)) {
+  background-color: rgb(var(--work-surface));
+  color: rgb(var(--work-text-primary));
+}
+
+[data-theme="classic-dark"] :where(.bg-black\/20, .bg-black\/30, .bg-black\/40) {
+  background-color: rgb(0 0 0 / 0.68);
+}
+
+[data-theme="classic"] :where(.border-border-soft, .border-border),
+[data-theme="classic-dark"] :where(.border-border-soft, .border-border, .border-white\/80) {
+  border-color: rgb(var(--border));
+}
+
+[data-theme="classic-dark"] :where(.hover\:bg-white:hover, .hover\:bg-white\/70:hover) {
+  background-color: rgb(var(--surface-elevated));
+}
+
+[data-theme="classic-dark"] :where([role="dialog"].bg-white, [role="menu"].bg-white, [role="listbox"].bg-white, .fixed.inset-y-0.bg-white, .absolute.bg-white),
+[data-theme="classic-dark"] :where([role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper] *) :where(.bg-white, .bg-white\/85, .bg-white\/90) {
+  background-color: rgb(var(--work-surface));
+  color: rgb(var(--work-text-primary));
+}
+
+[data-theme="classic"] :where(input, select, textarea),
+[data-theme="classic-dark"] :where(input, select, textarea) {
+  border-color: rgb(var(--input-border, var(--border-strong)));
+}
+
+[data-theme="classic-dark"] :where(input, select, textarea) {
+  background-color: rgb(var(--input-bg));
+  color: rgb(var(--input-text));
+}
+
+[data-theme="classic-dark"] :where(input, select, textarea)::placeholder {
+  color: rgb(var(--input-placeholder));
+  opacity: 1;
+}
+
+[data-theme="classic"] :where(input, select, textarea):focus,
+[data-theme="classic-dark"] :where(input, select, textarea):focus {
+  border-color: rgb(var(--primary));
+  box-shadow: 0 0 0 2px rgb(var(--primary) / 0.36);
+}
+
+[data-theme="classic"] :where(input, select, textarea):disabled,
+[data-theme="classic-dark"] :where(input, select, textarea):disabled {
+  border-color: rgb(var(--border));
+  background-color: rgb(var(--surface-muted));
+  opacity: 1;
+}
+
+[data-theme="classic-dark"] :where(input, select, textarea):disabled {
+  background-color: rgb(var(--input-disabled-bg));
+  color: rgb(var(--input-disabled-text));
+}
+
+[data-theme="classic"] :where(input[type="checkbox"], input[type="radio"]),
+[data-theme="classic-dark"] :where(input[type="checkbox"], input[type="radio"]) {
+  accent-color: rgb(var(--primary));
+}
+
+[data-theme="classic-dark"] :where(option) {
+  background-color: rgb(var(--work-surface));
+  color: rgb(var(--work-text-primary));
+}
+
+[data-theme="classic"] main :where(table),
+[data-theme="classic-dark"] main :where(table) {
+  border: 1px solid rgb(var(--border-strong));
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-theme="classic-dark"] main :where(table) {
+  background-color: rgb(var(--table-bg));
+  border-color: rgb(var(--table-border-strong));
+  color: rgb(var(--table-text));
+}
+
+[data-theme="classic"] main :where(thead),
+[data-theme="classic-dark"] main :where(thead) {
+  background-color: rgb(var(--table-header));
+  color: rgb(var(--table-header-text));
+}
+
+[data-theme="classic"] main :where(th),
+[data-theme="classic-dark"] main :where(th) {
+  border-bottom: 1px solid rgb(var(--border-strong));
+  color: rgb(var(--table-header-text));
+  font-weight: 700;
+}
+
+[data-theme="classic-dark"] main :where(th) {
+  border-bottom-color: rgb(var(--table-border-strong));
+}
+
+[data-theme="classic"] main :where(th, td),
+[data-theme="classic-dark"] main :where(th, td) {
+  border-right: 1px solid rgb(var(--border));
+}
+
+[data-theme="classic-dark"] main :where(th, td) {
+  border-right-color: rgb(var(--table-border));
+}
+
+[data-theme="classic"] main :where(th:last-child, td:last-child),
+[data-theme="classic-dark"] main :where(th:last-child, td:last-child) {
+  border-right: 0;
+}
+
+[data-theme="classic"] main :where(tbody tr),
+[data-theme="classic-dark"] main :where(tbody tr) {
+  border-top-color: rgb(var(--border));
+}
+
+[data-theme="classic-dark"] main :where(tbody tr) {
+  background-color: rgb(var(--table-bg));
+  border-top-color: rgb(var(--table-border));
+  color: rgb(var(--table-text));
+}
+
+[data-theme="classic"] main :where(tbody tr:hover),
+[data-theme="classic-dark"] main :where(tbody tr:hover) {
+  background-color: rgb(var(--row-hover));
+}
+
+[data-theme="classic-dark"] main table :where(.text-ink, .text-text-primary) {
+  color: rgb(var(--table-text));
+}
+
+[data-theme="classic-dark"] main table :where(.text-ink-muted, .text-ink-faint, .text-text-secondary, .text-text-muted) {
+  color: rgb(var(--table-text-secondary));
+}
+
+[data-theme="classic-dark"] main table :where(.bg-surface-muted, .bg-surface-muted\/70) {
+  background-color: rgb(var(--work-surface-muted));
+}
+
+[data-theme="classic-dark"] main table :where(.bg-chip-mint, .bg-success-soft) {
+  background-color: rgb(221 242 232);
+}
+
+[data-theme="classic-dark"] main table :where(.text-chip-mint-fg, .text-success) {
+  color: rgb(15 107 70);
+}
+
+[data-theme="classic-dark"] main table :where(.bg-chip-blue, .bg-info-soft, .bg-chip-purple) {
+  background-color: rgb(220 233 247);
+}
+
+[data-theme="classic-dark"] main table :where(.text-chip-blue-fg, .text-info, .text-chip-purple-fg) {
+  color: rgb(23 78 140);
+}
+
+[data-theme="classic-dark"] main table :where(.bg-chip-peach, .bg-warning-soft) {
+  background-color: rgb(255 225 179);
+}
+
+[data-theme="classic-dark"] main table :where(.text-chip-peach-fg, .text-warning) {
+  color: rgb(154 74 0);
+}
+
+[data-theme="classic-dark"] main table :where(.bg-chip-red, .bg-danger-soft) {
+  background-color: rgb(250 219 216);
+}
+
+[data-theme="classic-dark"] main table :where(.text-chip-red-fg, .text-danger) {
+  color: rgb(180 35 24);
+}
+
+[data-theme="classic"] :where(.bg-primary-tint),
+[data-theme="classic-dark"] :where(.bg-primary-tint) {
+  background-color: rgb(var(--selected-bg));
+}
+
+[data-theme="classic"] :where(.rounded-2xl),
+[data-theme="classic-dark"] :where(.rounded-2xl) {
+  border-radius: 0.75rem;
+}
+
+[data-theme="classic"] :where(.rounded-xl),
+[data-theme="classic-dark"] :where(.rounded-xl) {
+  border-radius: 0.625rem;
 }
 
 @layer utilities {

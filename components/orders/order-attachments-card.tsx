@@ -59,7 +59,7 @@ export function OrderAttachmentsCard({
         {canEdit && (
           <Link
             href={`/orders/${order.id}/edit#attachments`}
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
           >
             <Pencil className="h-3.5 w-3.5" />
             Manage Attachments
@@ -84,7 +84,7 @@ export function OrderAttachmentsCard({
                     <span className="rounded-full bg-primary-tint px-2.5 py-1 text-xs font-semibold text-primary">
                       {attachment.attachmentType}
                     </span>
-                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted">
+                    <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted">
                       {attachment.orderItemId || attachment.orderItemSerialNo
                         ? itemLabel(order, attachment) ?? "Item unavailable"
                         : "Whole order"}
@@ -105,7 +105,7 @@ export function OrderAttachmentsCard({
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Open attachment"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
@@ -116,9 +116,9 @@ export function OrderAttachmentsCard({
                 <button
                   type="button"
                   onClick={() => setPreviewAttachment(attachment)}
-                  className="mt-3 block w-full overflow-hidden rounded-lg border border-border-soft bg-surface text-left transition-colors hover:bg-surface"
+                  className="mt-3 block w-full overflow-hidden rounded-lg border border-border-soft bg-surface-muted text-left transition-colors hover:bg-surface-muted"
                 >
-                  <div className="relative h-44 w-full bg-surface sm:h-56 lg:h-72">
+                  <div className="relative h-44 w-full bg-surface-muted sm:h-56 lg:h-72">
                     <Image
                       src={attachment.signedUrl}
                       alt={attachment.fileName}
@@ -155,12 +155,12 @@ export function OrderAttachmentsCard({
                 type="button"
                 onClick={() => setPreviewAttachment(null)}
                 aria-label="Close preview"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="relative h-[calc(100vh-8rem)] min-h-0 bg-surface">
+            <div className="relative h-[calc(100vh-8rem)] min-h-0 bg-surface-muted">
               <Image
                 src={previewAttachment.signedUrl}
                 alt={previewAttachment.fileName}

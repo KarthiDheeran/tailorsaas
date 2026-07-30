@@ -65,7 +65,7 @@ export function CatalogTable({
           {garmentTypes.map((garment) => (
             <tr
               key={garment.id}
-              className="border-t border-border-soft transition-colors hover:bg-surface"
+              className="border-t border-border-soft transition-colors hover:bg-surface-muted"
             >
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink">
                 {garment.name}
@@ -74,7 +74,7 @@ export function CatalogTable({
                 {garment.shortcutCode === null ? (
                   <span className="text-ink-faint">-</span>
                 ) : (
-                  <span className="inline-flex min-w-8 justify-center rounded-md border border-border-soft bg-surface px-2 py-1 font-mono text-xs font-semibold text-primary">
+                  <span className="inline-flex min-w-8 justify-center rounded-md border border-border-soft bg-surface-muted px-2 py-1 font-mono text-xs font-semibold text-primary">
                     {garment.shortcutCode}
                   </span>
                 )}
@@ -118,7 +118,7 @@ export function CatalogTable({
                       type="button"
                       title={t("catalog.editGarmentTypeTooltip")}
                       onClick={() => onEdit(garment)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -131,7 +131,7 @@ export function CatalogTable({
                       }
                       onClick={() => onToggleActive(garment)}
                       className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface",
+                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted",
                         garment.isActive
                           ? "hover:text-chip-red-fg"
                           : "hover:text-chip-mint-fg"

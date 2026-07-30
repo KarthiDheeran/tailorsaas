@@ -219,7 +219,7 @@ export function StaffForm({
                   "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
                   status === s
                     ? "border-primary bg-primary text-white"
-                    : "border-border bg-white text-ink hover:bg-surface"
+                    : "border-border bg-white text-ink hover:bg-surface-muted"
                 )}
               >
                 {s === "Active" ? t("common.active") : s === "Inactive" ? t("common.inactive") : s}
@@ -239,7 +239,7 @@ export function StaffForm({
                   "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
                   paymentType === payType
                     ? "border-primary bg-primary text-white"
-                    : "border-border bg-white text-ink hover:bg-surface"
+                    : "border-border bg-white text-ink hover:bg-surface-muted"
                 )}
               >
                 {payType === "Salary" ? t("staff.monthlySalary") : t("staff.perPieceTask")}
@@ -274,9 +274,9 @@ export function StaffForm({
           </div>
           <div className="mt-2 overflow-x-auto rounded-lg border border-border-soft">
             <table className="min-w-full text-left text-sm">
-              <thead className="bg-surface text-xs font-semibold text-ink-muted">
+              <thead className="bg-surface-muted text-xs font-semibold text-ink-muted">
                 <tr>
-                  <th className="sticky left-0 z-10 min-w-[150px] bg-surface px-3 py-2">
+                  <th className="sticky left-0 z-10 min-w-[150px] bg-surface-muted px-3 py-2">
                     Garment
                   </th>
                   {workStages.map((stage) => (
@@ -330,7 +330,7 @@ export function StaffForm({
               </tbody>
             </table>
           </div>
-          <details className="mt-3 rounded-lg border border-border-soft bg-surface px-3 py-2">
+          <details className="mt-3 rounded-lg border border-border-soft bg-surface-muted px-3 py-2">
             <summary className="cursor-pointer text-xs font-semibold text-ink-muted">
               Legacy stage-only fallback rates
             </summary>

@@ -1,5 +1,7 @@
 import type { Config } from "tailwindcss";
 
+const token = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,34 +11,57 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        background: token("--app-bg"),
+        surface: token("--surface"),
+        "surface-muted": token("--surface-muted"),
         primary: {
-          DEFAULT: "#1F6B57",
-          dark: "#185344",
-          tint: "#E5F0EC",
+          DEFAULT: token("--primary"),
+          dark: token("--primary-hover"),
+          hover: token("--primary-hover"),
+          tint: token("--primary-soft"),
         },
-        surface: "#F7F8F5",
-        "input-fill": "#F8FAFC",
+        success: {
+          DEFAULT: token("--success"),
+          soft: token("--success-soft"),
+        },
+        warning: {
+          DEFAULT: token("--warning"),
+          soft: token("--warning-soft"),
+        },
+        danger: {
+          DEFAULT: token("--danger"),
+          soft: token("--danger-soft"),
+        },
+        info: {
+          DEFAULT: token("--info"),
+          soft: token("--info-soft"),
+        },
+        "input-fill": token("--surface"),
         border: {
-          DEFAULT: "#D1D5DB",
-          soft: "#E5E7EB",
+          DEFAULT: token("--border"),
+          soft: token("--border"),
+          strong: token("--border-strong"),
         },
         ink: {
-          DEFAULT: "#111827",
-          muted: "#4B5563",
-          faint: "#6B7280",
+          DEFAULT: token("--text-primary"),
+          muted: token("--text-secondary"),
+          faint: token("--text-muted"),
         },
-        "chip-peach": "#FFEDD5",
-        "chip-peach-fg": "#9A3412",
-        "chip-mint": "#DCFCE7",
-        "chip-mint-fg": "#166534",
-        "chip-red": "#FEE2E2",
-        "chip-red-fg": "#B91C1C",
-        "chip-info": "#E2E8F0",
-        "chip-info-fg": "#334155",
-        "chip-blue": "#DBEAFE",
-        "chip-blue-fg": "#1D4ED8",
-        "chip-purple": "#EDE9FE",
-        "chip-purple-fg": "#6D28D9",
+        "text-primary": token("--text-primary"),
+        "text-secondary": token("--text-secondary"),
+        "text-muted": token("--text-muted"),
+        "chip-peach": token("--warning-soft"),
+        "chip-peach-fg": token("--warning"),
+        "chip-mint": token("--success-soft"),
+        "chip-mint-fg": token("--success"),
+        "chip-red": token("--danger-soft"),
+        "chip-red-fg": token("--danger"),
+        "chip-info": token("--surface-muted"),
+        "chip-info-fg": token("--text-secondary"),
+        "chip-blue": token("--info-soft"),
+        "chip-blue-fg": token("--info"),
+        "chip-purple": token("--info-soft"),
+        "chip-purple-fg": token("--info"),
       },
       boxShadow: {
         soft: "0 1px 2px rgba(17, 24, 39, 0.04)",

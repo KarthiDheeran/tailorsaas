@@ -104,7 +104,7 @@ function ReminderInbox({
         </div>
         <Link
           href="/settings/communication-templates"
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-ink-muted hover:bg-surface"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-ink-muted hover:bg-surface-muted"
         >
           <Settings className="h-3.5 w-3.5" />
           Templates
@@ -183,7 +183,7 @@ function ReminderInbox({
                     {pendingEventKey === event.eventKey ? "Saving..." : "WhatsApp"}
                   </a>
                 ) : event.customerPhone && !event.whatsappEnabled ? (
-                  <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-ink-faint">
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 text-xs font-semibold text-ink-faint">
                     <WhatsAppIcon className="h-3.5 w-3.5" />
                     WhatsApp off
                   </span>
@@ -424,7 +424,7 @@ function CommunicationsContent() {
                   filteredMessages.map((message) => {
                     const href = contextHref(message);
                     return (
-                      <tr key={message.id} className="align-top hover:bg-surface">
+                      <tr key={message.id} className="align-top hover:bg-surface-muted">
                         <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                           {formatDateTime(message.sentAt)}
                         </td>
@@ -585,7 +585,7 @@ function QuickWhatsAppComposer({
               setManualMessage("");
             }}
             disabled={!needsOrder || customerOrders.length === 0}
-            className={selectClassName("text-ink disabled:bg-surface disabled:text-ink-faint")}
+            className={selectClassName("text-ink disabled:bg-surface-muted disabled:text-ink-faint")}
           >
             <option value="">{needsOrder ? "Select order" : "No order needed"}</option>
             {customerOrders.map((order) => (

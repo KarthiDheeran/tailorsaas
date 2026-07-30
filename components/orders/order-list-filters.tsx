@@ -145,7 +145,7 @@ export function OrderListFilters({
                 <button
                   type="button"
                   onMouseDown={() => handleSelect(c)}
-                  className="block w-full px-4 py-3 text-left text-sm hover:bg-surface"
+                  className="block w-full px-4 py-3 text-left text-sm hover:bg-surface-muted"
                 >
                   <span className="font-medium text-ink">{c.name}</span>
                   <span className="text-ink-muted"> — {c.phone}</span>

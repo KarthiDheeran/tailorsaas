@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface p-4 sm:p-6 lg:p-8">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6 lg:p-8">
         <div className="w-full max-w-md">
           <LoadingState label="Loading workspace..." />
         </div>
@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen bg-background">
       <MobileNav />
       <DesktopTopNav />
       <OrderScanProvider enabled={canScanOrders} />

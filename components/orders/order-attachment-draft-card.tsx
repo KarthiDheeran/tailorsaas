@@ -322,7 +322,7 @@ export function OrderAttachmentDraftCard({
           : cn(
               "rounded-xl border border-border-soft bg-white shadow-soft",
               inlineSummary
-                ? "flex h-full flex-col rounded-2xl border-[#DCE5EA] p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:min-h-[96px] lg:p-4"
+                ? "flex h-full flex-col rounded-2xl border-border p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:min-h-[96px] lg:p-4"
                 : "p-3"
             )
       )}
@@ -330,12 +330,12 @@ export function OrderAttachmentDraftCard({
       <div className="flex w-full flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {inlineSummary && (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
               <FileUp className="h-5 w-5" aria-hidden="true" />
             </span>
           )}
           <div className="min-w-0">
-            <span className={cn("font-semibold text-ink", inlineSummary ? "whitespace-nowrap text-[20px] font-bold tracking-tight text-[#111827]" : "text-[13px]")}>
+            <span className={cn("font-semibold text-ink", inlineSummary ? "whitespace-nowrap text-[20px] font-bold tracking-tight text-ink" : "text-[13px]")}>
               {inlineSummary ? "Attachments" : `Photos - ${attachmentCount}`}
             </span>
           </div>
@@ -347,7 +347,7 @@ export function OrderAttachmentDraftCard({
                   type="button"
                   onClick={attachment.onPreview}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface",
+                    "flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface-muted",
                     index > 0 && "-ml-2"
                   )}
                   title={attachment.name}
@@ -381,8 +381,8 @@ export function OrderAttachmentDraftCard({
             className={cn(
               "shrink-0 border bg-white font-semibold transition-colors",
               inlineSummary
-                ? "inline-flex h-[42px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-[#0F766E] px-4 text-sm text-[#0F766E] hover:bg-[#ECFDF5] focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/30"
-                : "h-8 rounded-md border-border px-2.5 text-xs text-ink hover:bg-surface"
+                ? "inline-flex h-[42px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-primary px-4 text-sm text-primary hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
+                : "h-8 rounded-md border-border px-2.5 text-xs text-ink hover:bg-surface-muted"
             )}
           >
             {inlineSummary && <FileUp className="h-4 w-4" aria-hidden="true" />}
@@ -391,7 +391,7 @@ export function OrderAttachmentDraftCard({
         )}
         <label
           className={cn(
-            "h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface",
+            "h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted",
             inlineSummary ? "hidden" : "flex"
           )}
         >
@@ -412,7 +412,7 @@ export function OrderAttachmentDraftCard({
 
       {inlineSummary && (
         <div className="mt-3 flex min-h-9 w-full flex-wrap items-center gap-2.5">
-          <span className="inline-flex h-[26px] shrink-0 items-center rounded-full border border-slate-200 bg-[#F8FAFC] px-2.5 text-[13px] font-semibold text-[#64748B]">
+          <span className="inline-flex h-[26px] shrink-0 items-center rounded-full border border-border-soft bg-surface-muted px-2.5 text-[13px] font-semibold text-ink-muted">
             {attachmentCount} {attachmentCount === 1 ? "file" : "files"}
           </span>
           {summaryAttachments.length > 0 ? (
@@ -423,7 +423,7 @@ export function OrderAttachmentDraftCard({
                   type="button"
                   onClick={attachment.onPreview}
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border-soft bg-surface",
+                    "flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border-soft bg-surface-muted",
                     index > 0 && "-ml-2"
                   )}
                   title={attachment.name}
@@ -442,8 +442,8 @@ export function OrderAttachmentDraftCard({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2.5 text-[15px] font-semibold text-[#334155]">
-              <FileUp className="h-4 w-4 shrink-0 text-[#0F766E]" aria-hidden="true" />
+            <div className="flex items-center gap-2.5 text-[15px] font-semibold text-ink">
+              <FileUp className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
               <span>No attachments added</span>
             </div>
           )}
@@ -466,7 +466,7 @@ export function OrderAttachmentDraftCard({
                 type="button"
                 onClick={attachment.onPreview}
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface",
+                  "flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface-muted",
                   index > 0 && "-ml-2"
                 )}
                 title={attachment.name}
@@ -497,7 +497,7 @@ export function OrderAttachmentDraftCard({
         <button
           type="button"
           onClick={() => setManagerOpen(true)}
-          className="h-8 shrink-0 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+          className="h-8 shrink-0 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted"
         >
           View/Edit
         </button>
@@ -513,14 +513,14 @@ export function OrderAttachmentDraftCard({
                 type="button"
                 onClick={() => setManagerOpen(false)}
                 aria-label="Close attachment manager"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="mb-3 flex justify-end">
-                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface">
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted">
                   <FileUp className="h-4 w-4" />
                   Add more files
                   <input
@@ -544,7 +544,7 @@ export function OrderAttachmentDraftCard({
                       key={attachment.id}
                       id={`attachment-${attachment.id}`}
                       tabIndex={-1}
-                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
+                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface-muted/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
                     >
                       <button
                         type="button"
@@ -554,7 +554,7 @@ export function OrderAttachmentDraftCard({
                           setPreview({ src: attachment.signedUrl, name: attachment.fileName })
                         }
                         disabled={!attachment.signedUrl || !isImage(attachment)}
-                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface disabled:cursor-default"
+                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface-muted disabled:cursor-default"
                       >
                         {isImage(attachment) && attachment.signedUrl ? (
                           <Image
@@ -580,7 +580,7 @@ export function OrderAttachmentDraftCard({
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Open attachment"
-                            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </a>
@@ -599,7 +599,7 @@ export function OrderAttachmentDraftCard({
                   {queued.map((attachment) => (
                     <div
                       key={attachment.id}
-                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
+                      className="grid items-center gap-2 rounded-lg border border-border-soft bg-surface-muted/40 p-2 sm:grid-cols-[56px_minmax(140px,1fr)_auto]"
                     >
                       <button
                         type="button"
@@ -608,7 +608,7 @@ export function OrderAttachmentDraftCard({
                           setPreview({ src: attachment.previewUrl, name: attachment.file.name })
                         }
                         disabled={!attachment.previewUrl}
-                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface disabled:cursor-default"
+                        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-border-soft bg-surface-muted disabled:cursor-default"
                       >
                         {attachment.previewUrl ? (
                           <Image
@@ -649,7 +649,7 @@ export function OrderAttachmentDraftCard({
               <button
                 type="button"
                 onClick={() => setManagerOpen(false)}
-                className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 Done
               </button>
@@ -669,12 +669,12 @@ export function OrderAttachmentDraftCard({
                 type="button"
                 onClick={() => setPreview(null)}
                 aria-label="Close preview"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="relative h-[calc(100vh-8rem)] min-h-0 bg-surface">
+            <div className="relative h-[calc(100vh-8rem)] min-h-0 bg-surface-muted">
               <Image
                 src={preview.src}
                 alt={preview.name}

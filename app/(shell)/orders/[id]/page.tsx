@@ -319,7 +319,7 @@ function MeasurementsSnapshotSection({
       </div>
 
       {invalid ? (
-        <p className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-sm text-ink-muted">
+        <p className="rounded-lg border border-border-soft bg-surface-muted px-3 py-2 text-sm text-ink-muted">
           Measurement details could not be loaded.
         </p>
       ) : (
@@ -555,7 +555,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 href={`/orders/${order.id}/edit`}
                 onClick={() => setOpeningEdit(true)}
                 aria-busy={openingEdit}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 {openingEdit ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -575,7 +575,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                   window.setTimeout(() => setOpeningPrint(null), 900);
                 }}
                 aria-busy={openingPrint === "receipt"}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 {openingPrint === "receipt" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -588,7 +588,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
             {canPrintJobCard && (
               <Link
                 href="/job-cards/production-print"
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 <Printer className="h-3.5 w-3.5" />
                 Production Print
@@ -752,7 +752,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                             {item.addOns.map((addOn) => (
                               <span
                                 key={addOn.key}
-                                className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted"
+                                className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted"
                               >
                                 {addOn.label} · {money(addOn.amount)}
                               </span>
@@ -888,7 +888,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                   <button
                     type="button"
                     onClick={() => setShowAdjustmentModal(true)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                    className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                     Adjustment

@@ -49,7 +49,7 @@ export function AddOnTable({
           {addOns.map((addOn) => (
             <tr
               key={addOn.id}
-              className="border-t border-border-soft transition-colors hover:bg-surface"
+              className="border-t border-border-soft transition-colors hover:bg-surface-muted"
             >
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink">
                 {addOn.name}
@@ -79,7 +79,7 @@ export function AddOnTable({
                       type="button"
                       title={t("catalog.editAddOnTooltip")}
                       onClick={() => onEdit(addOn)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -90,7 +90,7 @@ export function AddOnTable({
                       }
                       onClick={() => onToggleActive(addOn)}
                       className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface",
+                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted",
                         addOn.isActive
                           ? "hover:text-chip-red-fg"
                           : "hover:text-chip-mint-fg"

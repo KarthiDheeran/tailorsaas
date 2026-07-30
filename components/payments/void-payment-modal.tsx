@@ -67,7 +67,7 @@ export function VoidPaymentModal({
             type="button"
             onClick={onClose}
             aria-label={t("common.close")}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <X className="h-4 w-4" />
           </button>
@@ -95,7 +95,7 @@ export function VoidPaymentModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
           >
             {t("common.cancel")}
           </button>

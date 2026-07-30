@@ -262,7 +262,7 @@ export function GlobalSearchButton({
         onClick={openPalette}
         title={`Scan / Find (${shortcutLabel})`}
         className={cn(
-          "flex items-center gap-2 rounded-lg border border-border-soft bg-white text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink",
+          "flex items-center gap-2 rounded-lg border border-border-soft bg-white text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink",
           compact ? "h-10 w-10 justify-center" : "w-full justify-between px-3 py-2.5"
         )}
         aria-label={`Scan / Find (${shortcutLabel})`}
@@ -310,7 +310,7 @@ export function GlobalSearchButton({
               <button
                 type="button"
                 onClick={closePalette}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
                 aria-label="Close search"
               >
                 <X className="h-4 w-4" />
@@ -318,7 +318,7 @@ export function GlobalSearchButton({
             </div>
 
             <div className="min-h-[180px] overflow-y-auto py-2">
-              {entryError && <p className="px-4 pt-3 text-sm font-medium text-red-700">{entryError}</p>}
+              {entryError && <p className="px-4 pt-3 text-sm font-medium text-danger">{entryError}</p>}
               {query.trim().length < MIN_QUERY_LENGTH ? (
                 <p className="px-4 py-8 text-center text-sm text-ink-muted">
                   Scan a code, enter an order/job-card number, or type at least 2 characters to search.
@@ -352,7 +352,7 @@ export function GlobalSearchButton({
                               onClick={() => selectResult(result)}
                               className={cn(
                                 "flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors",
-                                active ? "bg-primary-tint" : "hover:bg-surface"
+                                active ? "bg-primary-tint" : "hover:bg-surface-muted"
                               )}
                             >
                               <span className="min-w-0">

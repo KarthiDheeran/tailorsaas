@@ -22,18 +22,18 @@ export function ReportStatCard({
         <span
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-lg",
-            isWarning ? "bg-chip-red" : "bg-primary-tint"
+            isWarning ? "bg-warning-soft" : "bg-primary-tint"
           )}
         >
           <Icon
-            className={cn("h-4 w-4", isWarning ? "text-chip-red-fg" : "text-primary")}
+            className={cn("h-4 w-4", isWarning ? "text-warning" : "text-primary")}
           />
         </span>
       </div>
       <p
         className={cn(
           "text-[26px] font-semibold",
-          isWarning ? "text-chip-red-fg" : "text-ink"
+          isWarning ? "text-warning" : "text-ink"
         )}
       >
         {value}

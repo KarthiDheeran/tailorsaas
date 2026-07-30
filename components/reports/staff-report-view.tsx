@@ -112,7 +112,7 @@ export function StaffReportView({ todayIso }: { todayIso: string }) {
           </thead>
           <tbody className="text-[13px]">
             {report.rows.map((row) => (
-              <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface">
+              <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface-muted">
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="font-medium text-ink">{row.staff.name}</div>
                   <div className="text-xs text-ink-muted">{row.staff.role}</div>

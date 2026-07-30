@@ -271,7 +271,7 @@ function InventoryContent() {
                     "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
                     lowStockOnly
                       ? "border-primary bg-primary-tint text-primary"
-                      : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
+                      : "border-border bg-white text-ink-muted hover:bg-surface-muted hover:text-ink"
                   )}
                 >
                   Low stock only
@@ -458,7 +458,7 @@ function StockTable({
           {items.map((item) => {
             const low = item.active && item.quantityOnHand <= item.reorderLevel;
             return (
-              <tr key={item.id} className="border-t border-border-soft hover:bg-surface">
+              <tr key={item.id} className="border-t border-border-soft hover:bg-surface-muted">
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="font-semibold text-ink">{item.name}</div>
                   <div className="text-xs text-ink-muted">{item.sku || "No SKU"}</div>
@@ -547,7 +547,7 @@ function CustomerFabricTable({
         </thead>
         <tbody className="text-[13px]">
           {rows.map((row) => (
-            <tr key={row.id} className="border-t border-border-soft hover:bg-surface">
+            <tr key={row.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3">
                 <div className="font-semibold text-ink">{row.customerName}</div>
                 <div className="text-xs text-ink-muted">{row.customerPhone || ""}</div>
@@ -703,7 +703,7 @@ function StockItemDrawer({
           }}
         />
       </div>
-      <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-xs text-ink-muted">
+      <div className="rounded-lg border border-border-soft bg-surface-muted px-3 py-2 text-xs text-ink-muted">
         {Number(purchaseCost) > 0 ? (
           <span>
             A Finance expense transaction will be recorded for{" "}
@@ -791,7 +791,7 @@ function StockAdjustDrawer({
 
   return (
     <InventoryDrawerShell title={`Adjust ${item.name}`} onClose={onClose} onSubmit={handleSubmit} saving={saving}>
-      <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+      <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
         Current stock: <span className="font-semibold text-ink">{numberValue(item.quantityOnHand)} {item.unit}</span>
       </div>
       <SelectField label="Movement" value={movementType} onChange={(value) => setMovementType(value as InventoryMovementType)} options={inventoryMovementTypes} />
@@ -817,7 +817,7 @@ function StockAdjustDrawer({
               options={paymentModes}
             />
           </div>
-          <div className="rounded-lg border border-border-soft bg-surface px-3 py-2 text-xs text-ink-muted">
+          <div className="rounded-lg border border-border-soft bg-surface-muted px-3 py-2 text-xs text-ink-muted">
             {Number(purchaseCost) > 0 ? (
               <span>
                 This stock-in will create a Finance expense for{" "}
@@ -933,7 +933,7 @@ function InventoryDrawerShell({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -944,7 +944,7 @@ function InventoryDrawerShell({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             Cancel
           </button>

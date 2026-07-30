@@ -84,7 +84,7 @@ function PaymentRow({
   return (
     <div
       className={`rounded-lg border border-border-soft p-3 ${
-        payment.voided ? "bg-surface opacity-70" : "bg-white"
+        payment.voided ? "bg-surface-muted opacity-70" : "bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -122,7 +122,7 @@ function PaymentRow({
             <Link
               href={`/orders/${order.id}/print/payment/${payment.id}`}
               title="Print payment receipt"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
             >
               <Printer className="h-3.5 w-3.5" />
             </Link>
@@ -140,7 +140,7 @@ function PaymentRow({
       </div>
 
       {canVoid && !payment.voided && voiding && (
-        <div className="mt-3 space-y-2 rounded-lg border border-border-soft bg-surface p-3">
+        <div className="mt-3 space-y-2 rounded-lg border border-border-soft bg-surface-muted p-3">
           <label className="block text-[12px] font-medium text-ink-muted">
             {t("orders.voidReason")}
           </label>

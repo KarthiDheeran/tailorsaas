@@ -240,7 +240,7 @@ export function NewCustomerForm({
                   isSubmitting && "cursor-not-allowed opacity-70",
                   gender === g
                     ? "border-primary bg-primary text-white"
-                    : "border-border bg-white text-ink hover:bg-surface"
+                    : "border-border bg-white text-ink hover:bg-surface-muted"
                 )}
               >
                 {g === "Male" ? t("common.male") : t("common.female")}
@@ -271,7 +271,7 @@ export function NewCustomerForm({
               type="button"
               onClick={onCancel}
               disabled={isSubmitting}
-              className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
             >
               {t("common.cancel")}
             </button>
@@ -282,7 +282,7 @@ export function NewCustomerForm({
                 type="button"
                 onClick={handleSecondarySubmit}
                 disabled={isSubmitting}
-                className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-lg border border-border bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {pendingAction === "secondary" ? "Saving..." : secondaryAction.label}
               </button>

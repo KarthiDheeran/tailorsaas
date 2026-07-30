@@ -98,7 +98,7 @@ export function AddUserDrawer({
             type="button"
             onClick={onCancel}
             aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <X className="h-4 w-4" />
           </button>
@@ -203,7 +203,7 @@ export function AddUserDrawer({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
             >
               Cancel
             </button>

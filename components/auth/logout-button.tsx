@@ -47,7 +47,7 @@ export function LogoutButton({
       onClick={handleLogout}
       disabled={loading}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-60",
+        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-60",
         compact ? "h-10 justify-center px-0" : "px-3 py-2.5",
         className
       )}

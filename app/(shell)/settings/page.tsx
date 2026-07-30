@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { DisplayThemeSetting } from "@/components/settings/display-theme-setting";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
 
@@ -125,6 +126,8 @@ function SettingsContent() {
           </p>
         </div>
       </div>
+
+      <DisplayThemeSetting />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visibleSections.map((section) => (

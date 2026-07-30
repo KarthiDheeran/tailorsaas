@@ -156,7 +156,7 @@ export function GarmentTypeDrawer({
             type="button"
             onClick={onCancel}
             aria-label={t("common.close")}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <X className="h-4 w-4" />
           </button>
@@ -300,7 +300,7 @@ export function GarmentTypeDrawer({
                   <button
                     type="button"
                     onClick={addCustomField}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-ink transition-colors hover:bg-surface"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-ink transition-colors hover:bg-surface-muted"
                     aria-label="Add custom field"
                   >
                     <Plus className="h-4 w-4" />
@@ -311,7 +311,7 @@ export function GarmentTypeDrawer({
                     {customFieldIds.map((id) => (
                       <span
                         key={id}
-                        className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-soft bg-surface px-3 py-1.5 text-sm text-ink"
+                        className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-soft bg-surface-muted px-3 py-1.5 text-sm text-ink"
                       >
                         <span className="min-w-0 truncate">
                           {customMeasurementFieldLabel(id)}
@@ -385,7 +385,7 @@ export function GarmentTypeDrawer({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
             >
               Cancel
             </button>

@@ -82,17 +82,17 @@ type DueFilter = (typeof DUE_FILTERS)[number];
 
 function StageBadge({ stage }: { stage: JobCardStage }) {
   const styles: Record<JobCardStage, string> = {
-    Unassigned: "border border-slate-200 bg-slate-100 text-slate-700",
-    Cutting: "border border-sky-200 bg-sky-50 text-sky-700",
-    Stitching: "border border-sky-200 bg-sky-50 text-sky-700",
+    Unassigned: "border border-warning/30 bg-warning-soft text-warning",
+    Cutting: "border border-info/30 bg-info-soft text-info",
+    Stitching: "border border-info/30 bg-info-soft text-info",
     Embroidery: "bg-chip-blue text-chip-blue-fg",
-    Finishing: "bg-chip-purple text-chip-purple-fg",
+    Finishing: "bg-chip-blue text-chip-blue-fg",
     Trial: "bg-chip-info text-chip-info-fg",
     Alteration: "bg-chip-red text-chip-red-fg",
-    Delayed: "border border-red-200 bg-red-50 text-red-700",
-    Ready: "border border-green-200 bg-green-50 text-green-700",
-    Delivered: "border border-blue-200 bg-blue-50 text-blue-700",
-    Cancelled: "border border-slate-300 bg-slate-50 text-slate-500",
+    Delayed: "border border-danger/30 bg-danger-soft text-danger",
+    Ready: "border border-success/30 bg-success-soft text-success",
+    Delivered: "border border-success/30 bg-success-soft text-success",
+    Cancelled: "border border-border bg-chip-info text-ink-faint",
   };
   return (
     <span className={cn("inline-flex h-[30px] items-center rounded-full px-3 text-[13px] font-semibold", styles[stage])}>
@@ -422,8 +422,8 @@ function JobCardsContent() {
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-7">
       <div className="mb-5">
         <div>
-          <h1 className="text-[30px] font-bold tracking-tight text-[#111827]">Job Cards</h1>
-          <p className="mt-1 text-[16px] text-[#64748B]">
+          <h1 className="text-[30px] font-bold tracking-tight text-ink">Job Cards</h1>
+          <p className="mt-1 text-[16px] text-ink-muted">
             Garment-level work cards for readiness, delays, and delivery tracking.
           </p>
         </div>
@@ -493,7 +493,7 @@ function JobCardsContent() {
                 onChange={(event) => setQuery(event.target.value)}
                 autoFocus
                 placeholder="Search job card, order, customer, phone, garment, worker..."
-                className="h-[50px] w-full rounded-[10px] border border-[#DCE5EA] bg-white pl-11 pr-4 text-base text-ink outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
+                className="h-[50px] w-full rounded-[10px] border border-border bg-white pl-11 pr-4 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
               />
             </label>
 
@@ -507,7 +507,7 @@ function JobCardsContent() {
                     "h-[42px] shrink-0 rounded-[9px] border px-3.5 text-[15px] font-medium transition-colors",
                     filter === option.value
                       ? "border-primary bg-primary-tint font-semibold text-primary"
-                      : "border-[#DCE5EA] bg-white text-ink hover:bg-[#F8FAFC]"
+                      : "border-border bg-white text-ink hover:bg-surface-muted"
                   )}
                 >
                   {option.label}
@@ -519,7 +519,7 @@ function JobCardsContent() {
               <Select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value as JobCardStage | "all")}
-                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
+                className="h-12 rounded-[10px] border-border text-[15px] focus:border-primary focus:ring-primary-tint"
               >
                 {STAGE_FILTERS.map((stage) => (
                   <option key={stage} value={stage}>
@@ -530,7 +530,7 @@ function JobCardsContent() {
               <Select
                 value={dueFilter}
                 onChange={(event) => setDueFilter(event.target.value as DueFilter)}
-                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
+                className="h-12 rounded-[10px] border-border text-[15px] focus:border-primary focus:ring-primary-tint"
               >
                 {DUE_FILTERS.map((option) => (
                   <option key={option} value={option}>
@@ -541,7 +541,7 @@ function JobCardsContent() {
               <Select
                 value={garmentFilter}
                 onChange={(event) => setGarmentFilter(event.target.value)}
-                className="h-12 rounded-[10px] border-[#DCE5EA] text-[15px] focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
+                className="h-12 rounded-[10px] border-border text-[15px] focus:border-primary focus:ring-primary-tint"
               >
                 <option value="all">Garment: All</option>
                 {garmentOptions.map((garment) => (
@@ -554,12 +554,12 @@ function JobCardsContent() {
           </div>
 
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-[#64748B]">{filteredCards.length} job card{filteredCards.length === 1 ? "" : "s"}</p>
+            <p className="text-sm font-medium text-ink-muted">{filteredCards.length} job card{filteredCards.length === 1 ? "" : "s"}</p>
           </div>
-          <div className="overflow-visible rounded-[14px] border border-[#DCE5EA] bg-white shadow-soft">
+          <div className="overflow-visible rounded-[14px] border border-border bg-white shadow-soft">
             <table className="w-full table-fixed text-left">
-              <thead className="bg-[#F8FAFC] text-[14px] font-bold text-[#475569]">
-                <tr className="h-[50px] border-b border-[#DCE5EA]">
+              <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
+                <tr className="h-[50px] border-b border-border">
                   <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
                   <th className="w-[14%] whitespace-nowrap px-4 py-3">Job Card</th>
                   <th className="w-[18%] whitespace-nowrap px-4 py-3">Customer</th>
@@ -576,7 +576,7 @@ function JobCardsContent() {
                     key={card.id}
                     data-job-card-id={card.id}
                     className={cn(
-                      "h-[68px] border-t border-[#E8EEF2] text-[15px] transition-colors duration-150 hover:bg-[#F8FFFD]",
+                      "h-[68px] border-t border-border-soft text-[15px] transition-colors duration-150 hover:bg-surface-muted",
                       focusedJobCardId === card.id && "bg-primary-tint ring-2 ring-primary/30"
                     )}
                   >
@@ -639,7 +639,7 @@ function JobCardsContent() {
                           onClick={() =>
                             setOpenMenuCardId((current) => (current === card.id ? null : card.id))
                           }
-                          className="flex h-10 w-10 items-center justify-center rounded-[9px] border border-[#DCE5EA] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                          className="flex h-10 w-10 items-center justify-center rounded-[9px] border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                           aria-label="More actions"
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -659,7 +659,7 @@ function JobCardsContent() {
                                   setDetailsCard(card);
                                   setOpenMenuCardId(null);
                                 }}
-                                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+                                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
                               >
                                 View Details
                               </button>
@@ -669,7 +669,7 @@ function JobCardsContent() {
                                   setHistoryCard(card);
                                   setOpenMenuCardId(null);
                                 }}
-                                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+                                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
                               >
                                 History
                               </button>
@@ -681,7 +681,7 @@ function JobCardsContent() {
                                       setTransferCard(card);
                                       setOpenMenuCardId(null);
                                     }}
-                                    className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+                                    className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
                                   >
                                     Transfer Job Card
                                   </button>
@@ -845,7 +845,7 @@ function MarkOrderReadyModal({
           {error && <p className="text-sm font-semibold text-chip-red-fg">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
-          <button type="button" disabled={saving} onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface">Cancel</button>
+          <button type="button" disabled={saving} onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface-muted">Cancel</button>
           <button type="button" disabled={saving} onClick={() => void save()} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Saving…" : "Mark Ready"}</button>
         </div>
       </div>
@@ -925,7 +925,7 @@ function JobCardTransferModal({
             Transfer reason
             <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="e.g. Ramesh is unavailable today" className="rounded-lg border border-border px-3 py-2 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
-          <label className="flex items-start gap-3 rounded-xl border border-border-soft bg-surface p-3 text-sm text-ink">
+          <label className="flex items-start gap-3 rounded-xl border border-border-soft bg-surface-muted p-3 text-sm text-ink">
             <input type="checkbox" checked={recordAdvance} onChange={(event) => setRecordAdvance(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
             <span><span className="block font-semibold">Record advance already paid to {card.assignedTo}</span><span className="mt-0.5 block text-xs text-ink-muted">This is added to the previous tailor’s Paid / Advance ledger and offsets their future payable balance.</span></span>
           </label>
@@ -939,7 +939,7 @@ function JobCardTransferModal({
           <p className="rounded-lg bg-primary-tint px-3 py-2 text-xs text-primary">After transfer, print a replacement stage job card for the new tailor. Only that new slip should be tally-scanned.</p>
         </div>
         <div className="flex justify-end gap-2 border-t border-border-soft px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface">Cancel</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface-muted">Cancel</button>
           <button type="submit" disabled={saving} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Transferring..." : "Transfer Job Card"}</button>
         </div>
       </form>
@@ -992,7 +992,7 @@ function JobCardHistoryDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -1008,7 +1008,7 @@ function JobCardHistoryDrawer({
           {logs === undefined ? (
             <LoadingState label="Loading job card history..." />
           ) : logs === null ? (
-            <div className="rounded-lg border border-border-soft bg-surface px-3 py-4 text-sm text-ink-muted">
+            <div className="rounded-lg border border-border-soft bg-surface-muted px-3 py-4 text-sm text-ink-muted">
               Activity history is ready in the app, but the database migration has not been applied yet.
               Apply <span className="font-semibold text-ink">supabase/migrations/0016_job_card_activity.sql</span> to start saving production history.
             </div>
@@ -1028,7 +1028,7 @@ function JobCardHistoryDrawer({
                       </div>
                     </div>
                     {log.toStage && (
-                      <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted">
+                      <span className="rounded-full bg-surface-muted px-2 py-1 text-[11px] font-semibold text-ink-muted">
                         {log.toStage}
                       </span>
                     )}
@@ -1099,7 +1099,7 @@ function JobCardDetailsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -1227,14 +1227,14 @@ function JobCardDetailsDrawer({
               <button
                 type="button"
                 onClick={onRecordFabric}
-                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 {jobCardFabrics.length > 0 ? "Add Customer Fabric" : "Record Customer Fabric"}
               </button>
               <button
                 type="button"
                 onClick={onUseStock}
-                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 {stockMovements.length > 0 ? "Add More Shop Stock" : "Use Shop Stock"}
               </button>
@@ -1243,7 +1243,7 @@ function JobCardDetailsDrawer({
           <button
             type="button"
             onClick={onHistory}
-            className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
           >
             History
           </button>

@@ -34,7 +34,7 @@ export function OverdueOrdersList({
         <>
           <div className="overflow-x-auto">
             <table className="min-w-[820px] w-full text-left">
-              <thead className="bg-surface/70 text-[13px] font-semibold text-ink-muted">
+              <thead className="bg-surface-muted/70 text-[13px] font-semibold text-ink-muted">
                 <tr className="border-b border-border-soft">
                   <th className="whitespace-nowrap px-5 py-2.5">Order No</th>
                   <th className="whitespace-nowrap px-5 py-2.5">Customer</th>
@@ -57,7 +57,7 @@ export function OverdueOrdersList({
                   return (
                     <tr
                       key={order.id}
-                      className="border-t border-border-soft transition-colors hover:bg-surface"
+                      className="border-t border-border-soft transition-colors hover:bg-surface-muted"
                     >
                       <td className="whitespace-nowrap px-5 py-3">
                         <Link

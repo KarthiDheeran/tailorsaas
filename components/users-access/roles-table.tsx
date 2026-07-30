@@ -57,7 +57,7 @@ export function RolesTable({
             return (
               <tr
                 key={role.id}
-                className="border-t border-border-soft transition-colors hover:bg-surface"
+                className="border-t border-border-soft transition-colors hover:bg-surface-muted"
               >
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="font-semibold text-ink">{role.name}</div>
@@ -89,7 +89,7 @@ export function RolesTable({
                       type="button"
                       title={t("usersAccess.editRoleTooltip")}
                       onClick={() => onEdit(role)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -103,7 +103,7 @@ export function RolesTable({
                         }
                         disabled={!deletable}
                         onClick={() => onDelete(role)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-muted"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-chip-red-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-muted"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

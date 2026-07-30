@@ -17,7 +17,7 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 const inputClass =
-  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:cursor-not-allowed disabled:bg-surface disabled:text-ink-faint";
+  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-faint";
 
 // null role = create-new-custom-role mode. Editing an existing role branches
 // on its type: Admin is fully locked (always every permission — see
@@ -107,7 +107,7 @@ export function RoleEditDrawer({
             type="button"
             onClick={onCancel}
             aria-label={t("common.close")}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <X className="h-4 w-4" />
           </button>
@@ -158,7 +158,7 @@ export function RoleEditDrawer({
                   <button
                     type="button"
                     onClick={handleResetToDefault}
-                    className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-white px-3.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                    className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-white px-3.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
                     {t("usersAccess.resetToDefault")}
@@ -217,7 +217,7 @@ export function RoleEditDrawer({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
             >
               {t("common.cancel")}
             </button>

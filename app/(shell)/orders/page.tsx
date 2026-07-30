@@ -389,16 +389,16 @@ function OrdersPageContent() {
             type="button"
             onClick={() => setShowCreatedToast(false)}
             aria-label={t("orders.dismiss")}
-            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-surface hover:text-ink"
+            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-primary-tint via-white to-sky-50 px-5 py-4 shadow-soft sm:px-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-soft bg-white px-5 py-4 shadow-soft sm:px-6">
         <div>
-          <h1 className="text-[28px] font-bold tracking-tight text-slate-900">{t("orders.title")}</h1>
-          <p className="mt-0.5 text-sm font-medium text-slate-600">
+          <h1 className="text-[28px] font-bold tracking-tight text-ink">{t("orders.title")}</h1>
+          <p className="mt-0.5 text-sm font-medium text-ink-muted">
             {t("orders.subtitle")}
           </p>
         </div>
@@ -493,7 +493,7 @@ function OrdersPageContent() {
               )}
               <button
                 onClick={clearSelection}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               >
                 {t("orders.backToAllOrders")}
               </button>
@@ -532,7 +532,7 @@ function OrdersPageContent() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Previous page"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -546,7 +546,7 @@ function OrdersPageContent() {
                         "flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
                         n === page
                           ? "border-primary bg-primary text-white"
-                          : "border-border bg-white text-ink hover:bg-surface"
+                          : "border-border bg-white text-ink hover:bg-surface-muted"
                       )}
                     >
                       {n}
@@ -556,7 +556,7 @@ function OrdersPageContent() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Next page"
                 >
                   <ChevronRight className="h-4 w-4" />

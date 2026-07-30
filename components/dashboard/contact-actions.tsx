@@ -36,7 +36,7 @@ export function ContactActions({
         href={`tel:${phone}`}
         title={callTitle}
         aria-label={callTitle}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <Phone className="h-3.5 w-3.5" />
       </a>
@@ -47,7 +47,7 @@ export function ContactActions({
         onClick={logWhatsAppOpen}
         title={whatsappTitle}
         aria-label={whatsappTitle}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <WhatsAppIcon className="h-3.5 w-3.5" />
       </a>

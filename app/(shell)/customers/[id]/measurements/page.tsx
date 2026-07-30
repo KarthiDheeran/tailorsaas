@@ -356,7 +356,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
             href={`/customers/${params.id}/measurements/print?garmentType=${encodeURIComponent(
               selectedGarment.name
             )}`}
-            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <Printer className="h-4 w-4" />
             Print Measurements
@@ -391,7 +391,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
               <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
             </div>
           </label>
-          <div className="rounded-lg border border-border-soft bg-surface/60 px-3.5 py-2.5 text-sm text-ink-muted">
+          <div className="rounded-lg border border-border-soft bg-surface-muted/60 px-3.5 py-2.5 text-sm text-ink-muted">
             <span className="block text-[13px] font-medium">Last updated</span>
             <span className="font-semibold text-ink">
               {formatUpdatedAt(selectedMeasurement?.updatedAt)}
@@ -448,7 +448,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
               type="button"
               onClick={handleCopyMeasurements}
               disabled={!copySourceKey}
-              className="h-11 rounded-lg border border-border bg-white px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-11 rounded-lg border border-border bg-white px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60"
             >
               Copy Fields
             </button>
@@ -482,7 +482,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
                       pendingCopy.matchingFieldIds
                     )
                   }
-                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-chip-peach-fg shadow-sm transition-colors hover:bg-surface"
+                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-chip-peach-fg shadow-sm transition-colors hover:bg-surface-muted"
                 >
                   Continue
                 </button>

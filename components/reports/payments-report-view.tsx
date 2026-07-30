@@ -192,7 +192,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
               "h-9 rounded-lg border px-3 text-sm font-medium transition-colors print:hidden",
               pendingOnly
                 ? "border-primary bg-primary-tint text-primary"
-                : "border-border bg-white text-ink-muted hover:bg-surface"
+                : "border-border bg-white text-ink-muted hover:bg-surface-muted"
             )}
           >
             {t("reports.pendingOnly")}
@@ -204,7 +204,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
               "h-9 rounded-lg border px-3 text-sm font-medium transition-colors print:hidden",
               overdueOnly
                 ? "border-primary bg-primary-tint text-primary"
-                : "border-border bg-white text-ink-muted hover:bg-surface"
+                : "border-border bg-white text-ink-muted hover:bg-surface-muted"
             )}
           >
             {t("reports.overdueOnly")}

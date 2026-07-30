@@ -22,7 +22,7 @@ export function JobCardTabs({ active }: { active: JobCardTab }) {
             "relative -mb-px rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
             active === tab.value
               ? "border-b-2 border-primary text-primary"
-              : "text-ink-muted hover:bg-surface hover:text-ink"
+              : "text-ink-muted hover:bg-surface-muted hover:text-ink"
           )}
           aria-current={active === tab.value ? "page" : undefined}
         >

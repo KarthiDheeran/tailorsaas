@@ -38,7 +38,14 @@ import {
   updateRoleAction,
   updateUserProfileAction,
 } from "@/app/(shell)/users-access/actions";
+import { updateDisplayThemeAction } from "@/app/(shell)/settings/actions";
 import type { CreateUserInput } from "@/components/users-access/add-user-drawer";
+import {
+  DEFAULT_THEME,
+  isDisplayTheme,
+  THEME_COOKIE_NAME,
+  type DisplayTheme,
+} from "@/lib/theme";
 
 type ActionResult = { success: boolean; error?: string };
 
@@ -46,6 +53,7 @@ interface CurrentUserContextValue {
   currentUser: AppUser | undefined;
   currentUserId: string | undefined;
   currentRole: Role | undefined;
+  displayTheme: DisplayTheme;
   effectivePermissions: Permission[];
   // True until the first session + profile/role fetch resolves — consumers
   // (app-shell.tsx) use this to avoid a flash of "access denied" before real
@@ -67,6 +75,7 @@ interface CurrentUserContextValue {
   createRole: (input: RoleInput) => Promise<ActionResult>;
   updateRole: (id: string, input: RoleInput) => Promise<ActionResult>;
   deleteRole: (id: string) => Promise<ActionResult>;
+  setDisplayTheme: (theme: DisplayTheme) => Promise<ActionResult>;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasAllPermissions: (permissions: Permission[]) => boolean;
@@ -85,6 +94,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AppUser | undefined>(undefined);
   const [role, setRole] = useState<Role | undefined>(undefined);
   const [profileResolved, setProfileResolved] = useState(false);
+  const [displayTheme, setDisplayThemeState] = useState<DisplayTheme>(DEFAULT_THEME);
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const pathname = usePathname();
@@ -125,6 +135,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       if (!authUserId) {
         setProfile(undefined);
         setRole(undefined);
+        setDisplayThemeState(DEFAULT_THEME);
         setProfileResolved(true);
         return;
       }
@@ -136,7 +147,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         const joined = await supabase
           .from("profiles")
           .select(
-            "id, full_name, phone, role_id, active, must_change_password, staff_id, role:roles(id,name,description,type,permissions)"
+            "id, full_name, phone, role_id, active, must_change_password, staff_id, preferred_theme, role:roles(id,name,description,type,permissions)"
           )
           .eq("id", authUserId)
           .maybeSingle();
@@ -155,6 +166,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         setProfile(profileRow ?? undefined);
+        setDisplayThemeState(
+          isDisplayTheme(profileRow?.preferred_theme)
+            ? profileRow.preferred_theme
+            : DEFAULT_THEME
+        );
         const joinedRole = Array.isArray(profileRow?.role) ? profileRow.role[0] : profileRow?.role;
         const roleId = profileRow?.role_id;
         const resolvedRole = joinedRole
@@ -181,6 +197,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [authUserId, refreshTick]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = displayTheme;
+    document.cookie = `${THEME_COOKIE_NAME}=${displayTheme}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+  }, [displayTheme]);
 
   // Full roles list — Users & Access Roles tab, and the Users tab's role
   // dropdown/name lookup.
@@ -283,6 +304,26 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const setDisplayTheme = useCallback(
+    async (theme: DisplayTheme): Promise<ActionResult> => {
+      if (!isDisplayTheme(theme)) return { success: false, error: "Invalid theme." };
+      const previous = displayTheme;
+      setDisplayThemeState(theme);
+
+      const result = await updateDisplayThemeAction(theme);
+      if (!result.success) {
+        setDisplayThemeState(previous);
+        return { success: false, error: result.error };
+      }
+
+      setProfile((current) =>
+        current ? { ...current, preferred_theme: theme } : current
+      );
+      return { success: true };
+    },
+    [displayTheme]
+  );
+
   const isLoading = !authResolved || !profileResolved;
 
   const value = useMemo<CurrentUserContextValue>(() => {
@@ -296,6 +337,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       currentUser: profile,
       currentUserId: authUserId ?? undefined,
       currentRole: role,
+      displayTheme,
       effectivePermissions,
       isLoading,
       users,
@@ -306,6 +348,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       createRole,
       updateRole,
       deleteRole,
+      setDisplayTheme,
       hasPermission: (permission) => checkPermission(effectivePermissions, permission),
       hasAnyPermission: (permissions) =>
         checkAnyPermission(effectivePermissions, permissions),
@@ -316,6 +359,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     profile,
     authUserId,
     role,
+    displayTheme,
     isLoading,
     users,
     roles,
@@ -326,6 +370,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     createRole,
     updateRole,
     deleteRole,
+    setDisplayTheme,
   ]);
 
   return (

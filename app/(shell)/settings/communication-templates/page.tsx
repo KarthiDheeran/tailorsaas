@@ -117,7 +117,7 @@ function TemplatesContent() {
           {COMMUNICATION_TEMPLATE_PLACEHOLDERS.map((placeholder) => (
             <code
               key={placeholder}
-              className="rounded-md bg-surface px-2 py-1 text-xs text-ink-muted"
+              className="rounded-md bg-surface-muted px-2 py-1 text-xs text-ink-muted"
             >
               {"{{"}{placeholder}{"}}"}
             </code>
@@ -155,9 +155,9 @@ function TemplatesContent() {
                 disabled={!canManage || !enabled}
                 onChange={(event) => updateTemplate(index, { body: event.target.value })}
                 rows={5}
-                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-muted"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted disabled:text-ink-muted"
               />
-              <div className="mt-4 rounded-lg border border-border-soft bg-surface p-3">
+              <div className="mt-4 rounded-lg border border-border-soft bg-surface-muted p-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                   Channels
                 </div>

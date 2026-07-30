@@ -64,7 +64,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
               <tr
                 key={customer.id}
                 onClick={() => router.push(`/customers/${customer.id}`)}
-                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-surface"
+                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-surface-muted"
               >
                 <td className="whitespace-nowrap px-5 py-3">
                   <Link
@@ -106,7 +106,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                     <Link
                       href={`/customers/${customer.id}`}
                       title="View Profile"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <Eye className="h-3.5 w-3.5" />
                     </Link>
@@ -114,7 +114,7 @@ export function CustomersTable({ rows }: { rows: CustomerListRow[] }) {
                       <Link
                         href={`/orders/new?customerId=${customer.id}`}
                         title="Create Order"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </Link>

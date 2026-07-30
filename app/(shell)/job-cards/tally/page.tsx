@@ -55,10 +55,10 @@ function localTime(value?: string) {
 function stageChipClass(stage: string) {
   const normalized = stage.toLowerCase();
   if (normalized.includes("stitch")) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (normalized.includes("cut")) return "border-orange-200 bg-orange-50 text-orange-700";
-  if (normalized.includes("iron")) return "border-sky-200 bg-sky-50 text-sky-700";
+  if (normalized.includes("cut")) return "border-warning/30 bg-warning-soft text-warning";
+  if (normalized.includes("iron")) return "border-info/30 bg-info-soft text-info";
   if (normalized.includes("pack")) return "border-violet-200 bg-violet-50 text-violet-700";
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return "border-border-soft bg-chip-info text-ink-muted";
 }
 
 function TallyContent() {
@@ -240,7 +240,7 @@ function TallyContent() {
               value={selectedStaffId}
               disabled={sessionActive || isScanning}
               onChange={(event) => setSelectedStaffId(event.target.value)}
-              className="h-12 rounded-[10px] border border-border bg-white px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface"
+              className="h-12 rounded-[10px] border border-border bg-white px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted"
             >
               <option value="">Select staff</option>
               {staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
@@ -251,7 +251,7 @@ function TallyContent() {
               type="button"
               onClick={changeStaff}
               disabled={isScanning}
-              className="mt-5 flex h-12 items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface"
+              className="mt-5 flex h-12 items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface-muted"
             >
               Change Staff
             </button>
@@ -275,12 +275,12 @@ function TallyContent() {
               onChange={(event) => setCode(event.target.value)}
               disabled={!sessionActive || isScanning}
               placeholder="Scan barcode or enter slip code"
-              className="h-12 w-full rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface"
+              className="h-12 w-full rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted"
             />
             </span>
           </label>
         </form>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2.5 text-sm">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted px-3 py-2.5 text-sm">
           <p className="font-medium text-ink-muted">
             {sessionActive
               ? `Scanning for ${staff.find((member) => member.id === selectedStaffId)?.name ?? "selected staff"}. Staff is locked until you choose Change Staff.`
@@ -288,7 +288,7 @@ function TallyContent() {
           </p>
           {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} slips · {formatCurrency(sessionPayable)}</p>}
         </div>
-        {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-green-700" : scanState === "duplicate" ? "text-orange-700" : "text-red-700"}`}>{message}</p>}
+        {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-success" : scanState === "duplicate" ? "text-warning" : "text-danger"}`}>{message}</p>}
         {loadingTallies && <p className="mt-3 text-sm text-ink-muted">Loading saved scans...</p>}
       </section>
 
@@ -307,7 +307,7 @@ function TallyContent() {
             <p className="mt-1 text-sm text-ink-muted">
               Updating the job card and worker payable. Please wait before scanning the next barcode.
             </p>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface">
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-muted">
               <div className="h-full w-2/3 animate-pulse rounded-full bg-primary" />
             </div>
           </div>
@@ -319,32 +319,32 @@ function TallyContent() {
         className={`mt-3 rounded-2xl border p-[18px] shadow-sm transition-all duration-200 ${
           hasLiveScanFailure
             ? scanState === "duplicate"
-              ? "border-orange-200 bg-orange-50"
-              : "border-red-200 bg-red-50"
+              ? "border-warning/30 bg-warning-soft"
+              : "border-danger/30 bg-danger-soft"
             : latestLiveSlip
-              ? "border-green-200 bg-[#ECFDF5] shadow-[0_4px_14px_rgba(22,163,74,0.10)]"
-              : "border-border-soft bg-surface"
+              ? "border-success/30 bg-primary-tint shadow-[0_4px_14px_rgba(22,163,74,0.10)]"
+              : "border-border-soft bg-surface-muted"
         }`}
       >
         {hasLiveScanFailure ? (
           <div className="flex min-h-[74px] flex-col justify-center gap-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${scanState === "duplicate" ? "bg-orange-100 text-orange-600" : "bg-red-100 text-red-600"}`}><X className="h-5 w-5" aria-hidden="true" /></span>
-                <h2 className={`text-lg font-bold ${scanState === "duplicate" ? "text-orange-800" : "text-red-800"}`}>Live Scan Status</h2>
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${scanState === "duplicate" ? "bg-warning-soft text-warning" : "bg-danger-soft text-danger"}`}><X className="h-5 w-5" aria-hidden="true" /></span>
+                <h2 className={`text-lg font-bold ${scanState === "duplicate" ? "text-warning" : "text-danger"}`}>Live Scan Status</h2>
               </div>
-              <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${scanState === "duplicate" ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}>{scanState === "duplicate" ? "ALREADY TALLIED" : "FAILED"}</span>
+              <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${scanState === "duplicate" ? "bg-warning-soft text-warning" : "bg-danger-soft text-danger"}`}>{scanState === "duplicate" ? "ALREADY TALLIED" : "FAILED"}</span>
             </div>
-            <p className={`text-sm font-medium ${scanState === "duplicate" ? "text-orange-700" : "text-red-700"}`}>{message}</p>
+            <p className={`text-sm font-medium ${scanState === "duplicate" ? "text-warning" : "text-danger"}`}>{message}</p>
           </div>
         ) : latestLiveSlip ? (
           <div className="animate-[pulse_200ms_ease-out]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-100 text-green-600"><CheckCircle2 className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-success-soft text-success"><CheckCircle2 className="h-5 w-5" aria-hidden="true" /></span>
                 <h2 className="text-lg font-bold text-ink">Live Scan Status</h2>
               </div>
-              <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">SUCCESS</span>
+              <span className="inline-flex rounded-full bg-success-soft px-3 py-1 text-sm font-semibold text-success">SUCCESS</span>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <LiveScanField icon={<FileText />} label="Slip" value={latestLiveSlip.slipCode} />
@@ -355,7 +355,7 @@ function TallyContent() {
               <LiveScanField icon={<WalletCards />} label="Amount" value={formatCurrency(latestLiveSlip.wageAmount)} emphasis />
               <LiveScanField icon={<Clock3 />} label="Time" value={localTime(latestLiveSlip.talliedAt)} subdued />
             </div>
-            <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-green-700"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />Job Card scanned successfully. Worker payable has been updated.</p>
+            <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-success"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />Job Card scanned successfully. Worker payable has been updated.</p>
           </div>
         ) : (
           <div className="flex min-h-[74px] items-center gap-3 text-ink-muted">
@@ -367,7 +367,7 @@ function TallyContent() {
 
       <section className="mt-3 rounded-2xl border border-border-soft bg-white p-[18px] shadow-soft">
         <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-[#F8FFFD] px-4 shadow-sm">
+          <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-surface-muted px-4 shadow-sm">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-chip-mint text-primary"><QrCode className="h-5 w-5" /></span>
             <div><p className="text-sm font-medium text-ink-muted">Today&apos;s Scans</p><p className="text-[22px] font-bold text-ink">{visibleSlips.length}</p></div>
           </div>
@@ -380,7 +380,7 @@ function TallyContent() {
             <div><p className="text-sm font-medium text-ink-muted">Today&apos;s Payable</p><p className="text-[22px] font-bold text-primary">{formatCurrency(todayPayable)}</p></div>
           </div>
           <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-white px-4 shadow-sm">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-ink-muted"><Barcode className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-chip-info text-ink-muted"><Barcode className="h-5 w-5" /></span>
             <div><p className="text-sm font-medium text-ink-muted">Pending Scans</p><p className="text-[22px] font-bold text-ink-muted">—</p></div>
           </div>
         </div>
@@ -402,7 +402,7 @@ function TallyContent() {
                     <div><p className="text-xs font-medium text-ink-muted">Payable</p><p className="mt-0.5 text-lg font-bold text-primary">{formatCurrency(row.amount)}</p></div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-ink-muted">
-                    {Array.from(row.stages.entries()).map(([stage, count]) => <span key={stage} className="rounded-full bg-surface px-2 py-1">{stage} {count}</span>)}
+                    {Array.from(row.stages.entries()).map(([stage, count]) => <span key={stage} className="rounded-full bg-surface-muted px-2 py-1">{stage} {count}</span>)}
                   </div>
                 </div>
               ))}
@@ -416,7 +416,7 @@ function TallyContent() {
             </p>
           <div className="mt-3 overflow-x-auto rounded-xl border border-border-soft">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-100 text-[15px] font-semibold text-slate-700">
+              <thead className="bg-chip-info text-[15px] font-semibold text-ink-muted">
                 <tr>
                   <th className="px-3 py-2">Order</th>
                   <th className="px-3 py-2">Garment</th>
@@ -435,7 +435,7 @@ function TallyContent() {
                   </tr>
                 ) : (
                   visibleSlips.map((slip) => (
-                    <tr key={slip.id} className="h-16 border-t border-border-soft transition-colors hover:bg-[#F8FFFD]">
+                    <tr key={slip.id} className="h-16 border-t border-border-soft transition-colors hover:bg-surface-muted">
                       <td className="px-3 py-2">
                         <p className="font-semibold text-primary hover:underline">{slip.orderNumber}</p>
                         <p className="text-xs font-semibold text-ink-muted">{slip.slipCode}</p>

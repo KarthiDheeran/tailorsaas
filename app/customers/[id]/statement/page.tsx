@@ -28,7 +28,7 @@ function amountCell(value: number, tone: "debit" | "credit" | "balance") {
       : tone === "debit"
         ? "text-gray-900"
         : value > 0
-          ? "text-red-700"
+          ? "text-danger"
           : "text-emerald-700";
   return <span className={`font-semibold ${color}`}>{money(value)}</span>;
 }
@@ -46,7 +46,7 @@ function SummaryBox({ label, value }: { label: string; value: string }) {
 
 function rowBadgeClass(type: CustomerStatementRow["type"]) {
   if (type === "Payment" || type === "Discount") return "border-emerald-700 text-emerald-800";
-  if (type === "Refund" || type === "Extra Charge") return "border-red-700 text-red-800";
+  if (type === "Refund" || type === "Extra Charge") return "border-danger text-danger";
   return "border-gray-700 text-gray-800";
 }
 

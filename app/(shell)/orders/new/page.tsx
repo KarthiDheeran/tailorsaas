@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   Suspense,
@@ -251,7 +251,7 @@ function OrderSectionCombobox({
         onKeyDown={handleKeyDown}
         placeholder="Type 1, 2, or 3"
         className={cn(
-          "h-[50px] w-full rounded-[10px] border border-[#DCE5EA] bg-white px-4 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
+          "h-[50px] w-full rounded-[10px] border border-border bg-white px-4 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
           hasError && "border-chip-red-fg"
         )}
       />
@@ -269,7 +269,7 @@ function OrderSectionCombobox({
               onClick={() => selectSection(option)}
               className={cn(
                 "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors",
-                index === activeIndex ? "bg-primary-tint text-primary" : "text-ink hover:bg-surface"
+                index === activeIndex ? "bg-primary-tint text-primary" : "text-ink hover:bg-surface-muted"
               )}
             >
               <span className="inline-flex min-w-7 justify-center rounded-md border border-border-soft bg-white px-1.5 py-0.5 font-mono text-xs font-bold text-primary">{option.code}</span>
@@ -1291,15 +1291,15 @@ function NewOrderPageContent() {
           <div className="min-w-0 space-y-3">
             <div
               className={cn(
-                "min-h-[110px] rounded-2xl border border-[#DCE5EA] bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6"
+                "min-h-[110px] rounded-2xl border border-border bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6"
               )}
             >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border-soft pb-3">
                 <div>
-                  <p className="text-sm font-semibold text-[#334155]">New Order</p>
-                  <p className="mt-0.5 text-xs text-[#64748B]">Order number is confirmed when the order is saved.</p>
+                  <p className="text-sm font-semibold text-ink">New Order</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">Order number is confirmed when the order is saved.</p>
                 </div>
-                <span className="rounded-full border border-[#B7E3DC] bg-[#ECFDF5] px-3 py-1.5 text-sm font-bold text-[#0F766E]">
+                <span className="rounded-full border border-primary/30 bg-primary-tint px-3 py-1.5 text-sm font-bold text-primary">
                   {orderNumberPreview || "Select order section"}
                 </span>
               </div>
@@ -1309,7 +1309,7 @@ function NewOrderPageContent() {
                   <button
                     type="button"
                     onClick={handleCancelNewCustomer}
-                    className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                    className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted"
                   >
                     Back to Customer Search
                   </button>
@@ -1321,16 +1321,16 @@ function NewOrderPageContent() {
                 {customerMode === "selected" && matchedCustomer && (
                   <div className="flex min-h-[62px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-3.5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
                         <UserRound className="h-6 w-6" aria-hidden="true" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#64748B]">Customer</p>
-                        <p className="truncate text-xl font-bold tracking-tight text-[#111827]">
+                        <p className="text-sm font-medium text-ink-muted">Customer</p>
+                        <p className="truncate text-xl font-bold tracking-tight text-ink">
                           {matchedCustomer.name}
                         </p>
-                        <p className="truncate text-[15px] text-[#64748B]">
-                          {matchedCustomer.phone} <span aria-hidden="true">•</span> {matchedCustomer.area || "-"}
+                        <p className="truncate text-[15px] text-ink-muted">
+                          {matchedCustomer.phone} <span aria-hidden="true">�</span> {matchedCustomer.area || "-"}
                         </p>
                       </div>
                     </div>
@@ -1338,7 +1338,7 @@ function NewOrderPageContent() {
                       type="button"
                       onClick={handleChangeCustomer}
                       aria-label="Change customer"
-                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[#0F766E] bg-white px-4 text-[15px] font-semibold text-[#0F766E] transition-colors hover:bg-[#ECFDF5] focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/30"
+                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-primary bg-white px-4 text-[15px] font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
                     >
                       <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />
                       Change Customer
@@ -1550,7 +1550,7 @@ function NewOrderPageContent() {
                           "h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors",
                           newCustomer.gender === g
                             ? "border-primary bg-primary text-white"
-                            : "border-border bg-white text-ink hover:bg-surface"
+                            : "border-border bg-white text-ink hover:bg-surface-muted"
                         )}
                       >
                         {g === "Male" ? t("common.male") : t("common.female")}
@@ -1560,16 +1560,16 @@ function NewOrderPageContent() {
                 </div>
                   </div>
                   {canCreateCustomers && (
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#BBF7D0] bg-[#ECFDF5] px-3.5 py-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-primary-tint px-3.5 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-[#166534]">Save customer before adding garments</p>
-                        <p className="mt-0.5 text-xs text-[#64748B]">The customer is added to this browser&apos;s search list immediately.</p>
+                        <p className="text-sm font-semibold text-success">Save customer before adding garments</p>
+                        <p className="mt-0.5 text-xs text-ink-muted">The customer is added to this browser&apos;s search list immediately.</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => void handleSaveCustomerAndContinue()}
                         disabled={creatingCustomer || !!phoneDuplicateCustomer}
-                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-[#0F766E] bg-white px-3.5 text-sm font-semibold text-[#0F766E] transition-colors hover:bg-[#D1FAE5] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-white px-3.5 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {creatingCustomer ? "Creating..." : "Create Customer & Continue"}
                       </button>
@@ -1589,13 +1589,13 @@ function NewOrderPageContent() {
                             {phoneDuplicateCustomer.name}
                           </div>
                           <div className="text-ink-muted">
-                            {phoneDuplicateCustomer.phone} Â· {phoneDuplicateCustomer.area || "-"}
+                            {phoneDuplicateCustomer.phone} · {phoneDuplicateCustomer.area || "-"}
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleSelectCustomer(phoneDuplicateCustomer)}
-                          className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                          className="shrink-0 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted"
                         >
                           Use Existing Customer
                         </button>
@@ -1603,7 +1603,7 @@ function NewOrderPageContent() {
                     </div>
                   )}
                   {similarNameCustomers.length > 0 && (
-                    <div className="rounded-lg border border-border-soft bg-surface px-3.5 py-3 text-sm">
+                    <div className="rounded-lg border border-border-soft bg-surface-muted px-3.5 py-3 text-sm">
                       <div className="mb-2 font-semibold text-ink">
                         Similar customers found
                       </div>
@@ -1618,7 +1618,7 @@ function NewOrderPageContent() {
                                 {customer.name}
                               </div>
                               <div className="text-ink-muted">
-                                {customer.phone} Â· {customer.area || "-"}
+                                {customer.phone} · {customer.area || "-"}
                               </div>
                             </div>
                             <button
@@ -1644,16 +1644,16 @@ function NewOrderPageContent() {
                 </>
                 )}
               </div>
-              <div className="min-w-0 border-t border-[#DCE5EA] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+              <div className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[15px] font-semibold text-[#334155]">Order Section</span>
+                  <span className="text-[15px] font-semibold text-ink">Order Section</span>
                   <OrderSectionCombobox
                     value={orderSection}
                     inputRef={orderSectionRef}
                     onChange={handleOrderSectionChange}
                     hasError={submitAttempted && !!errors.orderSection}
                   />
-                  <p className="text-xs text-[#64748B]">Type code: 1 Men · 2 Chutti · 3 Blouse</p>
+                  <p className="text-xs text-ink-muted">Type code: 1 Men � 2 Chutti � 3 Blouse</p>
                 </div>
                 {submitAttempted && errors.orderSection && (
                   <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
@@ -1679,17 +1679,17 @@ function NewOrderPageContent() {
               previousOrders={customerDetail?.orders ?? []}
               paymentStrip={
                 canViewPayments ? (
-                  <div className="grid gap-3 rounded-xl bg-[#F8FAFC] p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]">
+                  <div className="grid gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]">
                     <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-[#64748B]">
+                      <span className="block text-sm font-medium text-ink-muted">
                         {taxBreakdown && !taxBreakdown.pricesIncludeTax ? "Total" : "Subtotal"}
                       </span>
-                      <span className="flex h-11 items-center text-[21px] font-bold text-[#111827]">
+                      <span className="flex h-11 items-center text-[21px] font-bold text-ink">
                         {formatCurrency(totalAmount)}
                       </span>
                     </div>
                     <label className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-[#64748B]">
+                      <span className="block text-sm font-medium text-ink-muted">
                         {t("orders.paidAdvance")}
                       </span>
                       <input
@@ -1699,7 +1699,7 @@ function NewOrderPageContent() {
                         value={advancePaid}
                         onChange={(e) => setAdvancePaid(Number(e.target.value))}
                         className={cn(
-                          "h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3 text-right text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20",
+                          "h-11 w-full rounded-[10px] border border-border bg-white px-3 text-right text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
                           submitAttempted &&
                             errors.advancePaid &&
                             "border-chip-red-fg"
@@ -1707,24 +1707,24 @@ function NewOrderPageContent() {
                       />
                     </label>
                     <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-[#64748B]">
+                      <span className="block text-sm font-medium text-ink-muted">
                         {t("common.balance")}
                       </span>
                       <span className={cn(
                         "flex h-11 items-center text-[22px] font-extrabold",
-                        balance > 0 ? "text-[#C2410C]" : "text-[#15803D]"
+                        balance > 0 ? "text-warning" : "text-success"
                       )}>
                         {formatCurrency(balance)}
                       </span>
                     </div>
                     <label className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-[#64748B]">
+                      <span className="block text-sm font-medium text-ink-muted">
                         {t("orders.paymentMode")}
                       </span>
                       <Select
                         value={paymentMode}
                         onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                        className="h-11 rounded-[10px] border-[#DCE5EA] py-0 text-base focus:border-[#14B8A6] focus:ring-[#14B8A6]/20"
+                        className="h-11 rounded-[10px] border-border py-0 text-base focus:border-primary focus:ring-primary-tint"
                       >
                         {paymentModes.map((m) => (
                           <option key={m} value={m}>
@@ -1734,12 +1734,12 @@ function NewOrderPageContent() {
                       </Select>
                     </label>
                     <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-[#64748B]">
+                      <span className="block text-sm font-medium text-ink-muted">
                         {t("orders.paymentStatus")}
                       </span>
                       <div className="flex h-11 items-center">
                         {totalAmount === 0 ? (
-                          <span className="inline-block rounded-full border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                          <span className="inline-block rounded-full border border-border-soft bg-chip-info px-3 py-2 text-sm font-semibold text-ink-muted">
                             {t("orders.notCalculated")}
                           </span>
                         ) : (
@@ -1771,15 +1771,15 @@ function NewOrderPageContent() {
           </div>
 
           <div className="min-w-0 space-y-3">
-            <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-              <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-[#111827]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span>
+            <div className="rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-ink">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-tint text-primary"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span>
                 {t("orders.orderDates")}
               </h3>
               <div className="space-y-4">
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.orderDate")}</span><input type="date" required value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20" /></label>
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">{t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span></span><input type="date" required value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className={cn("h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20", submitAttempted && errors.deliveryDate && "border-chip-red-fg")} />{submitAttempted && errors.deliveryDate && <p className="text-xs text-chip-red-fg">{errors.deliveryDate}</p>}</label>
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-[#334155]">Measurements taken by <span className="font-normal text-ink-muted">(optional)</span></span><select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="h-11 w-full rounded-[10px] border border-[#DCE5EA] bg-white px-3.5 text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} · {staff.staff_number}</option>)}</select><span className="text-xs text-[#64748B]">Can be different from the desktop operator.</span></label>
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">{t("orders.orderDate")}</span><input type="date" required value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint" /></label>
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">{t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span></span><input type="date" required value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className={cn("h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint", submitAttempted && errors.deliveryDate && "border-chip-red-fg")} />{submitAttempted && errors.deliveryDate && <p className="text-xs text-chip-red-fg">{errors.deliveryDate}</p>}</label>
+                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">Measurements taken by <span className="font-normal text-ink-muted">(optional)</span></span><select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} � {staff.staff_number}</option>)}</select><span className="text-xs text-ink-muted">Can be different from the desktop operator.</span></label>
               </div>
             </div>
             <NewOrderSummaryPanel
@@ -1793,7 +1793,7 @@ function NewOrderPageContent() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E5E7EB] bg-white shadow-soft">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-7 2xl:max-w-[1760px]">
           <div className="flex items-center gap-3 text-sm text-ink-muted">
             {saveError ? (
@@ -1801,21 +1801,21 @@ function NewOrderPageContent() {
             ) : canViewPayments ? (
               <>
                 <span className="flex items-center gap-2 whitespace-nowrap">
-                  <span className="text-sm font-medium text-[#64748B]">{t("common.total")}</span>
-                  <span className="text-base font-bold text-[#111827]">{formatCurrency(totalAmount)}</span>
+                  <span className="text-sm font-medium text-ink-muted">{t("common.total")}</span>
+                  <span className="text-base font-bold text-ink">{formatCurrency(totalAmount)}</span>
                 </span>
-                <span aria-hidden="true" className="h-5 w-px bg-[#DCE5EA]" />
+                <span aria-hidden="true" className="h-5 w-px bg-border" />
                 <span className="flex items-center gap-2 whitespace-nowrap">
-                  <span className="text-sm font-medium text-[#64748B]">{t("common.paid")}</span>
-                  <span className="text-base font-bold text-[#111827]">{formatCurrency(advancePaid)}</span>
+                  <span className="text-sm font-medium text-ink-muted">{t("common.paid")}</span>
+                  <span className="text-base font-bold text-ink">{formatCurrency(advancePaid)}</span>
                 </span>
-                <span aria-hidden="true" className="h-5 w-px bg-[#DCE5EA]" />
+                <span aria-hidden="true" className="h-5 w-px bg-border" />
                 <span className="flex items-center gap-2 whitespace-nowrap">
-                  <span className="text-sm font-medium text-[#64748B]">{t("common.balance")}</span>
+                  <span className="text-sm font-medium text-ink-muted">{t("common.balance")}</span>
                   <span
                     className={cn(
                       "text-base font-bold",
-                      balance > 0 ? "text-[#C2410C]" : "text-[#15803D]"
+                      balance > 0 ? "text-warning" : "text-success"
                     )}
                   >
                     {formatCurrency(balance)}
@@ -1834,7 +1834,7 @@ function NewOrderPageContent() {
               onClick={handleCancel}
               disabled={leavingToOrders}
               aria-busy={leavingToOrders}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[15px] font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:cursor-wait disabled:opacity-70"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[15px] font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:cursor-wait disabled:opacity-70"
             >
               {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
               {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
@@ -1845,7 +1845,7 @@ function NewOrderPageContent() {
               disabled={saving}
               className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {saving ? "Savingâ€¦" : t("orders.saveOrder")}
+              {saving ? "Saving…" : t("orders.saveOrder")}
             </button>
           </div>
         </div>
@@ -1904,7 +1904,7 @@ function NewOrderPageContent() {
                     href={`/orders/${savedOrder.id}/print/customer`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                    className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
                   >
                     {t("orders.printCustomerReceipt")}
                   </Link>
@@ -1948,7 +1948,7 @@ function NewOrderPageContent() {
                   onClick={handleBackToOrders}
                   disabled={leavingToOrders}
                   aria-busy={leavingToOrders}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-70"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-muted disabled:cursor-wait disabled:opacity-70"
                 >
                   {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
                   {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}

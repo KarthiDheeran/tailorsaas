@@ -42,9 +42,9 @@ export function ProductionQueue({ stages }: { stages: ProductionQueueStage[] }) 
             <Link
               key={stage.stage}
               href="/job-cards"
-              className="flex min-h-[68px] items-center gap-3 px-5 py-4 transition duration-200 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+              className="flex min-h-[68px] items-center gap-3 px-5 py-4 transition duration-200 hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface text-primary">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-primary">
                 <Clock3 className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">

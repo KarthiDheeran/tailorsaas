@@ -149,7 +149,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
                 "h-9 rounded-lg border px-3 text-sm font-medium transition-colors print:hidden",
                 toggle.value
                   ? "border-primary bg-primary-tint text-primary"
-                  : "border-border bg-white text-ink-muted hover:bg-surface"
+                  : "border-border bg-white text-ink-muted hover:bg-surface-muted"
               )}
             >
               {toggle.label}

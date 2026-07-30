@@ -74,7 +74,7 @@ function OrderPreferencesContent() {
       <form onSubmit={submit} className="rounded-xl border border-border-soft bg-white p-6 shadow-soft">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-semibold text-ink">Default delivery lead time</span>
-          <select value={preferences.defaultDeliveryLeadDays} disabled={!enabled || !canManage} onChange={(event) => { setPreferences({ defaultDeliveryLeadDays: Number(event.target.value) }); setSaved(false); }} className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint">
+          <select value={preferences.defaultDeliveryLeadDays} disabled={!enabled || !canManage} onChange={(event) => { setPreferences({ defaultDeliveryLeadDays: Number(event.target.value) }); setSaved(false); }} className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted disabled:text-ink-faint">
             <option value={0}>Same day</option><option value={7}>1 week</option><option value={14}>2 weeks</option><option value={21}>3 weeks</option><option value={28}>4 weeks</option><option value={42}>6 weeks</option><option value={56}>8 weeks</option>
           </select>
           <span className="text-xs text-ink-muted">Example: choosing 3 weeks automatically sets a new order&apos;s delivery date to 21 days after its order date. Staff can still change an individual order&apos;s date.</span>

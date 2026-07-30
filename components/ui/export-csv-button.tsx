@@ -20,7 +20,7 @@ export function ExportCsvButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted transition-colors hover:enabled:bg-surface hover:enabled:text-ink disabled:cursor-not-allowed disabled:opacity-50 print:hidden",
+        "flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-medium text-ink-muted transition-colors hover:enabled:bg-surface-muted hover:enabled:text-ink disabled:cursor-not-allowed disabled:opacity-50 print:hidden",
         className
       )}
     >

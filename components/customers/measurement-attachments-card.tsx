@@ -97,7 +97,7 @@ export function MeasurementAttachmentsCard({
         Photos & Sketches
       </h2>
 
-      <div className="space-y-3 rounded-lg border border-border-soft bg-surface/40 p-3">
+      <div className="space-y-3 rounded-lg border border-border-soft bg-surface-muted/40 p-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-ink-muted">
@@ -181,7 +181,7 @@ export function MeasurementAttachmentsCard({
                       {attachment.attachmentType}
                     </span>
                     {attachment.garmentType && (
-                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted">
+                      <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted">
                         {attachment.garmentType}
                       </span>
                     )}
@@ -201,7 +201,7 @@ export function MeasurementAttachmentsCard({
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Open attachment"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>

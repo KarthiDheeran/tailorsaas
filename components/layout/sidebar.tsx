@@ -155,7 +155,7 @@ function NavLink({
         variant === "dropdown" && "px-3 py-2.5",
         item.isActive
           ? "border-primary bg-primary font-semibold text-white shadow-sm"
-          : "border-transparent font-medium text-ink-muted hover:bg-surface hover:text-ink"
+          : "border-transparent font-medium text-ink-muted hover:bg-surface-muted hover:text-ink"
       )}
     >
       <Icon className="h-[18px] w-[18px] shrink-0" />
@@ -163,7 +163,7 @@ function NavLink({
         {item.label}
       </span>
       {variant !== "horizontal" && item.shortcut && (
-        <kbd className="ml-auto rounded border border-border-soft bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+        <kbd className="ml-auto rounded border border-border-soft bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
           {item.shortcut}
         </kbd>
       )}
@@ -216,7 +216,7 @@ function NavDropdown({
           "flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors",
           active
             ? "border-primary bg-primary-tint text-primary"
-            : "border-border-soft bg-white text-ink-muted hover:bg-surface hover:text-ink"
+            : "border-border-soft bg-white text-ink-muted hover:bg-surface-muted hover:text-ink"
         )}
         aria-expanded={open}
       >
@@ -267,7 +267,7 @@ function LanguageSwitcher({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left transition-colors hover:bg-surface",
+          "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-white text-left transition-colors hover:bg-surface-muted",
           compact ? "h-10 justify-center px-0" : "px-3 py-2.5"
         )}
         title={compact ? LOCALE_LABELS[locale] : undefined}
@@ -297,7 +297,7 @@ function LanguageSwitcher({
                     setLocale(l);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-muted"
                 >
                   <span className="font-medium text-ink">{LOCALE_LABELS[l]}</span>
                   {l === locale && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
@@ -325,7 +325,7 @@ function UserIdentity({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface",
+        "flex w-full items-center gap-3 rounded-lg border border-border-soft bg-surface-muted",
         compact ? "h-10 justify-center px-0" : "px-3 py-2.5",
         className
       )}
@@ -359,7 +359,7 @@ function ProfileDropdown() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-soft bg-white text-sm font-semibold text-primary transition-colors hover:bg-surface"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-soft bg-white text-sm font-semibold text-primary transition-colors hover:bg-surface-muted"
         aria-label="Open profile menu"
         aria-expanded={open}
         title={`${name} - ${role}`}
@@ -395,7 +395,7 @@ function ProfileDropdown() {
                       "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
                       l === locale
                         ? "bg-primary-tint font-semibold text-primary"
-                        : "text-ink-muted hover:bg-surface hover:text-ink"
+                        : "text-ink-muted hover:bg-surface-muted hover:text-ink"
                     )}
                   >
                     <span>{LOCALE_LABELS[l]}</span>
@@ -405,7 +405,7 @@ function ProfileDropdown() {
               </div>
             </div>
             <div className="p-2">
-              <LogoutButton className="border-transparent px-2.5 py-2 hover:bg-surface" />
+              <LogoutButton className="border-transparent px-2.5 py-2 hover:bg-surface-muted" />
             </div>
           </div>
         </>
@@ -455,7 +455,7 @@ export function MobileNav() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
@@ -477,7 +477,7 @@ export function MobileNav() {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
                 aria-label="Close navigation"
               >
                 <X className="h-5 w-5" />

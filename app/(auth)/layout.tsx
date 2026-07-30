@@ -6,7 +6,7 @@ import { Shirt } from "lucide-react";
 // screen, per design brief.
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-[400px]">
         <div className="mb-6 flex items-center justify-center gap-2">
           <Shirt className="h-6 w-6 text-primary" />

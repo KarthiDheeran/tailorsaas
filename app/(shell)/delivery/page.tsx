@@ -253,7 +253,7 @@ function DeliveryDeskContent() {
         </div>
         <Link
           href="/orders"
-          className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
         >
           <ClipboardList className="h-4 w-4" />
           Orders
@@ -272,11 +272,11 @@ function DeliveryDeskContent() {
           <label className="relative block min-w-0 flex-1">
             <span className="mb-1 block text-xs font-semibold text-ink-muted">Receipt barcode / Order number</span>
             <Barcode className="pointer-events-none absolute bottom-3 left-3 h-4 w-4 text-ink-faint" />
-            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter M-1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface" />
+            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter M-1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted" />
           </label>
           <button type="submit" disabled={quickBusy || !quickCode.trim()} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Find Order</button>
         </form>
-        {quickMessage && <p className={`mt-3 text-sm font-semibold ${quickOrder ? "text-primary" : quickMessage.includes("successfully") ? "text-green-700" : "text-chip-red-fg"}`}>{quickMessage}</p>}
+        {quickMessage && <p className={`mt-3 text-sm font-semibold ${quickOrder ? "text-primary" : quickMessage.includes("successfully") ? "text-success" : "text-chip-red-fg"}`}>{quickMessage}</p>}
         {quickOrder && (
           <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 lg:grid-cols-[minmax(0,1fr)_140px_150px_auto] lg:items-end">
             <div>
@@ -327,7 +327,7 @@ function DeliveryDeskContent() {
                   "h-10 rounded-lg border px-3 text-sm font-semibold transition-colors",
                   filter === key
                     ? "border-primary bg-primary-tint text-primary"
-                    : "border-border bg-white text-ink-muted hover:bg-surface hover:text-ink"
+                    : "border-border bg-white text-ink-muted hover:bg-surface-muted hover:text-ink"
                 )}
               >
                 {label}
@@ -343,7 +343,7 @@ function DeliveryDeskContent() {
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border-soft bg-white shadow-sm">
           <table className="w-full min-w-[980px] border-collapse text-sm">
-            <thead className="bg-surface text-left text-xs font-semibold uppercase text-ink-faint">
+            <thead className="bg-surface-muted text-left text-xs font-semibold uppercase text-ink-faint">
               <tr>
                 <th className="px-5 py-3">Order</th>
                 <th className="px-5 py-3">Customer</th>
@@ -369,7 +369,7 @@ function DeliveryDeskContent() {
                   const canDeliverNow = order.status === "Ready" && order.balance <= 0;
                   const deliverDisabled = !canMarkDelivered || !canDeliverNow || pendingOrderId === order.id || isPending;
                   return (
-                    <tr key={order.id} className="align-top hover:bg-surface/60">
+                    <tr key={order.id} className="align-top hover:bg-surface-muted/60">
                       <td className="px-5 py-4">
                         <Link
                           href={`/orders?view=${order.id}`}
@@ -419,7 +419,7 @@ function DeliveryDeskContent() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Receipt"
-                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                             >
                               <FileText className="h-3.5 w-3.5" />
                             </Link>
@@ -428,7 +428,7 @@ function DeliveryDeskContent() {
                             <button
                               type="button"
                               onClick={() => setPaymentOrder(order)}
-                              className="h-8 rounded-lg border border-border px-3 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                              className="h-8 rounded-lg border border-border px-3 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                             >
                               Collect
                             </button>

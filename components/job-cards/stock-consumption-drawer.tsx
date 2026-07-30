@@ -94,7 +94,7 @@ export function StockConsumptionDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -108,7 +108,7 @@ export function StockConsumptionDrawer({
             </div>
           )}
           {(!card.fabricSource || card.fabricSource === "Not specified") && (
-            <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+            <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
               Fabric Source will be set to Shop provided after stock is used.
             </div>
           )}
@@ -129,7 +129,7 @@ export function StockConsumptionDrawer({
             </div>
           )}
           {stockOptions.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border-soft bg-surface px-3 py-4 text-sm text-ink-muted">
+            <div className="rounded-lg border border-dashed border-border-soft bg-surface-muted px-3 py-4 text-sm text-ink-muted">
               No active stock with available quantity.
             </div>
           ) : (
@@ -151,7 +151,7 @@ export function StockConsumptionDrawer({
               </label>
 
               {selectedItem && (
-                <div className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+                <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
                   On hand:{" "}
                   <span className="font-semibold text-ink">
                     {numberValue(selectedItem.quantityOnHand)} {selectedItem.unit}
@@ -187,7 +187,7 @@ export function StockConsumptionDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             Cancel
           </button>

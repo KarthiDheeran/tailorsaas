@@ -25,10 +25,11 @@ export interface AppUser {
   active: boolean;
   must_change_password: boolean;
   staff_id: string | null;
+  preferred_theme?: "modern" | "classic" | "classic-dark";
 }
 
 const PROFILE_COLUMNS =
-  "id, full_name, phone, role_id, active, must_change_password, staff_id";
+  "id, full_name, phone, role_id, active, must_change_password, staff_id, preferred_theme";
 
 export async function getAppUsers(supabase: SupabaseClient): Promise<AppUser[]> {
   const { data, error } = await supabase

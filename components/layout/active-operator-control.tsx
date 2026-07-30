@@ -40,7 +40,7 @@ export function ActiveOperatorControl() {
   if (!enabled) return null;
   async function submit() { setSaving(true); setError(""); const result = await startOperatorSessionAction(staffId, pin); setSaving(false); if (!result.success) return setError(result.error); setOperator(result.data); setPin(""); setOpen(false); }
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="hidden h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface lg:flex" title="Change active operator">
+    <button type="button" onClick={() => setOpen(true)} className="hidden h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-muted lg:flex" title="Change active operator">
       <UserRound className="h-4 w-4 text-primary" /> {operator ? operator.name : "Select operator"}
     </button>
     {open && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">

@@ -40,7 +40,7 @@ export function WorkStageTable({
         </thead>
         <tbody className="text-[13px]">
           {stages.map((stage) => (
-            <tr key={stage.id} className="border-t border-border-soft hover:bg-surface">
+            <tr key={stage.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink">{stage.name}</td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
                 {stage.displayOrder}
@@ -59,7 +59,7 @@ export function WorkStageTable({
               </td>
               <td className="whitespace-nowrap px-5 py-3">
                 {stage.isFinalStage ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-3 py-1 text-xs font-semibold text-success">
                     <CircleCheck className="h-3.5 w-3.5" />
                     Makes job Ready
                   </span>
@@ -74,7 +74,7 @@ export function WorkStageTable({
                       type="button"
                       title="Edit stage"
                       onClick={() => onEdit(stage)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface hover:text-ink"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface-muted hover:text-ink"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -83,7 +83,7 @@ export function WorkStageTable({
                       title={stage.isActive ? "Deactivate stage" : "Activate stage"}
                       onClick={() => onToggleActive(stage)}
                       className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface",
+                        "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface-muted",
                         stage.isActive ? "hover:text-chip-red-fg" : "hover:text-chip-mint-fg"
                       )}
                     >

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import type { Customer, Order, OrderAttachment, OrderStatus } from "@/lib/types";
@@ -630,7 +630,7 @@ export function EditOrderForm({
           <button
             type="button"
             onClick={handleCancel}
-            className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
           >
             {t("common.cancel")}
           </button>

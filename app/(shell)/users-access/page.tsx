@@ -120,7 +120,7 @@ function UsersAccessPageContent() {
         )}
       </div>
 
-      <div className="mb-6 rounded-lg border border-border-soft bg-surface px-4 py-3 text-sm text-ink-muted">
+      <div className="mb-6 rounded-lg border border-border-soft bg-surface-muted px-4 py-3 text-sm text-ink-muted">
         {t("usersAccess.disclaimer")}
       </div>
 

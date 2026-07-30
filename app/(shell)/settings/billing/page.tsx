@@ -18,9 +18,9 @@ import {
 import { clearNewOrderBillingSettings } from "@/lib/new-order-reference-browser-cache";
 
 const inputClass =
-  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint";
+  "h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted disabled:text-ink-faint";
 const textareaClass =
-  "rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface disabled:text-ink-faint";
+  "rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted disabled:text-ink-faint";
 
 function BillingSettingsContent() {
   const { hasPermission, currentUserId } = useCurrentUser();
@@ -242,7 +242,7 @@ function BillingSettingsContent() {
           </label>
           <div className="flex flex-col justify-end gap-1.5 md:col-span-2">
             <span className="text-sm font-medium text-ink-muted">Next Invoice Preview</span>
-            <div className="flex h-11 items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-semibold text-ink">
+            <div className="flex h-11 items-center rounded-lg border border-border bg-surface-muted px-3.5 text-sm font-semibold text-ink">
               {settings.invoicePrefix}-{settings.invoiceSequenceYear}-{String(settings.nextInvoiceSequence).padStart(4, "0")}
             </div>
           </div>
@@ -294,7 +294,7 @@ function BillingSettingsContent() {
             />
             Add tax on top of prices
           </label>
-          <p className="rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-ink-muted md:col-span-3">
+          <p className="rounded-lg border border-border bg-surface-muted px-3.5 py-2.5 text-sm text-ink-muted md:col-span-3">
             When enabled, catalog rates and edited order rates are treated as taxable prices before GST.
           </p>
         </div>

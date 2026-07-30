@@ -302,7 +302,7 @@ function JobCardWorkQueueTable({
         </thead>
         <tbody className="text-[13px]">
           {assignedRows.map((row) => (
-            <tr key={row.id} className="border-t border-border-soft hover:bg-surface">
+            <tr key={row.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                 {row.jobCardNumber}
               </td>
@@ -347,7 +347,7 @@ function JobCardWorkQueueTable({
                     <button
                       type="button"
                       onClick={() => markStarted(row)}
-                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface"
+                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted"
                     >
                       Start
                     </button>
@@ -489,7 +489,7 @@ function StaffPayablesTable({
                 "h-8 rounded-md px-3 text-xs font-semibold transition-colors",
                 period === option
                   ? "bg-primary-tint text-primary"
-                  : "text-ink-muted hover:bg-surface hover:text-ink"
+                  : "text-ink-muted hover:bg-surface-muted hover:text-ink"
               )}
             >
               {option}
@@ -512,7 +512,7 @@ function StaffPayablesTable({
         </thead>
         <tbody className="text-[13px]">
           {rows.map((row) => (
-            <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface">
+            <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3">
                 <div className="font-semibold text-ink">{row.staff.name}</div>
                 <div className="text-xs text-ink-muted">{row.staff.staffNumber}</div>
@@ -550,7 +550,7 @@ function StaffPayablesTable({
                   <button
                     type="button"
                     onClick={() => onViewDetails(row.staff)}
-                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
                   >
                     View Details
                   </button>
@@ -657,7 +657,7 @@ function StaffPayableDetailsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             x
@@ -680,7 +680,7 @@ function StaffPayableDetailsDrawer({
                     "h-8 rounded-md px-3 text-xs font-semibold transition-colors",
                     period === option
                       ? "bg-primary-tint text-primary"
-                      : "text-ink-muted hover:bg-surface hover:text-ink"
+                      : "text-ink-muted hover:bg-surface-muted hover:text-ink"
                   )}
                 >
                   {option}
@@ -693,17 +693,17 @@ function StaffPayableDetailsDrawer({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-border-soft bg-surface p-3">
+            <div className="rounded-lg border border-border-soft bg-surface-muted p-3">
               <p className="text-xs font-medium text-ink-muted">Earned</p>
               <p className="mt-1 text-lg font-semibold text-ink">
                 {isSalaryOutsideMonth ? "Monthly salary" : formatCurrency(earned)}
               </p>
             </div>
-            <div className="rounded-lg border border-border-soft bg-surface p-3">
+            <div className="rounded-lg border border-border-soft bg-surface-muted p-3">
               <p className="text-xs font-medium text-ink-muted">Paid / Advance</p>
               <p className="mt-1 text-lg font-semibold text-ink">{formatCurrency(paid)}</p>
             </div>
-            <div className="rounded-lg border border-border-soft bg-surface p-3">
+            <div className="rounded-lg border border-border-soft bg-surface-muted p-3">
               <p className="text-xs font-medium text-ink-muted">Balance</p>
               <p className={cn("mt-1 text-lg font-semibold", balance > 0 ? "text-chip-red-fg" : "text-ink")}>
                 {isSalaryOutsideMonth ? "-" : formatCurrency(balance)}
@@ -848,7 +848,7 @@ function StaffPayableDetailsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             Close
           </button>
@@ -970,7 +970,7 @@ function StaffPaymentDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             Cancel
           </button>
@@ -1051,7 +1051,7 @@ function WorkQueueTable({
         </thead>
         <tbody className="text-[13px]">
           {visibleRows.map((row) => (
-            <tr key={row.assignment.id} className="border-t border-border-soft hover:bg-surface">
+            <tr key={row.assignment.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
                 {row.order.orderNumber}
               </td>
@@ -1098,7 +1098,7 @@ function WorkQueueTable({
                     <button
                       type="button"
                       onClick={() => markStarted(row)}
-                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface"
+                      className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted"
                     >
                       Start
                     </button>

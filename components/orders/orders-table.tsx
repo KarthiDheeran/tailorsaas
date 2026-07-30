@@ -35,7 +35,7 @@ export function getAvailableOrderStatuses(
 
 export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; fg: string }> = {
   "In Progress": { bg: "bg-chip-blue", fg: "text-chip-blue-fg" },
-  Ready: { bg: "bg-chip-purple", fg: "text-chip-purple-fg" },
+  Ready: { bg: "bg-chip-mint", fg: "text-chip-mint-fg" },
   Delivered: { bg: "bg-chip-mint", fg: "text-chip-mint-fg" },
   Delayed: { bg: "bg-chip-red", fg: "text-chip-red-fg" },
   Cancelled: { bg: "bg-chip-info", fg: "text-chip-info-fg" },
@@ -130,7 +130,7 @@ export function OrderStatusEditor({
               <button
                 type="button"
                 onClick={(e) => handleSelect(s, e)}
-                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface"
+                className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
               >
                 {t(ORDER_STATUS_LABEL_KEYS[s])}
               </button>
@@ -316,7 +316,7 @@ export function OrdersTable({
   return (
     <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
       <table className="w-full text-left">
-        <thead className="bg-slate-50/80 text-[13px] font-bold text-slate-700">
+        <thead className="bg-chip-info/80 text-[13px] font-bold text-ink-muted">
           <tr className="border-b border-border-soft">
             <th className="whitespace-nowrap px-5 py-3">{t("orders.orderNo")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
@@ -381,7 +381,7 @@ export function OrdersTable({
                     <Link
                       href={`/customers/${order.customerId}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="font-medium text-slate-800 hover:text-primary hover:underline"
+                      className="font-medium text-ink hover:text-primary hover:underline"
                     >
                       {customer.name}
                     </Link>
@@ -389,16 +389,16 @@ export function OrdersTable({
                     <div className="text-ink">{t("common.unknown")}</div>
                   )}
                   {customer && (
-                    <div className="text-xs font-medium text-slate-500">{customer.phone}</div>
+                    <div className="text-xs font-medium text-ink-faint">{customer.phone}</div>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-600">
+                <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-muted">
                   {formatDate(order.orderDate)}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-600">
+                <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-muted">
                   {formatDate(order.deliveryDate)}
                 </td>
-                <td className="px-5 py-3 font-medium text-slate-700">{itemsSummary}</td>
+                <td className="px-5 py-3 font-medium text-ink-muted">{itemsSummary}</td>
                 <td className="whitespace-nowrap px-5 py-3">
                   {editableStatus && onStatusChange ? (
                     <OrderStatusEditor
@@ -411,7 +411,7 @@ export function OrdersTable({
                 </td>
                 {canViewPayments && (
                   <>
-                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-slate-900">
+                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
                       {formatCurrency(order.totalAmount)}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-right">

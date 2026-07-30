@@ -343,8 +343,8 @@ function PaymentsPageContent() {
   return (
     <div className="mx-auto max-w-7xl p-4 pb-6 sm:p-6 sm:pb-6 lg:p-7 lg:pb-6">
       <div className="mb-[18px]">
-        <h1 className="text-[30px] font-bold tracking-tight text-[#111827]">{t("payments.title")}</h1>
-        <p className="mt-1 text-[16px] text-[#64748B]">{t("payments.subtitle")}</p>
+        <h1 className="text-[30px] font-bold tracking-tight text-ink">{t("payments.title")}</h1>
+        <p className="mt-1 text-[16px] text-ink-muted">{t("payments.subtitle")}</p>
       </div>
 
       {loadError && (
@@ -515,7 +515,7 @@ function PaymentsPageContent() {
                       <Link
                         href={`/orders/${row.payment.orderId}/print/payment/${row.payment.id}`}
                         title="Print payment receipt"
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                       >
                         <Printer className="h-3.5 w-3.5" />
                       </Link>
@@ -647,20 +647,20 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
   );
 
   return (
-    <section className="mb-[18px] rounded-2xl border border-[#DCE5EA] bg-white shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCE5EA] px-5 py-4">
+    <section className="mb-[18px] rounded-2xl border border-border bg-white shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-[17px] font-semibold text-ink">Daily Closing</h2>
           <p className="text-sm text-ink-muted">
             Cash, digital collections, expenses, and net position for today.
           </p>
         </div>
-        <div className="rounded-lg border border-[#DCE5EA] bg-[#F8FAFC] px-3 py-2 text-sm font-semibold text-[#475569]">
+        <div className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm font-semibold text-ink-muted">
           {formatDate(summary.date)}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 border-b border-[#DCE5EA] sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-2 xl:grid-cols-5">
         <ClosingMetric
           icon={IndianRupee}
           label="Total Received"
@@ -692,8 +692,8 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
 
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-[#F8FAFC] text-[14px] font-semibold text-[#475569]">
-            <tr className="border-b border-[#DCE5EA]">
+          <thead className="bg-surface-muted text-[14px] font-semibold text-ink-muted">
+            <tr className="border-b border-border">
               <th className="whitespace-nowrap px-5 py-2.5">Mode</th>
               <th className="whitespace-nowrap px-5 py-2.5 text-right">Received</th>
               <th className="whitespace-nowrap px-5 py-2.5 text-right">Expenses</th>
@@ -709,7 +709,7 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
               </tr>
             ) : (
               visibleRows.map((row) => (
-                <tr key={row.mode} className="border-t border-border-soft transition-colors hover:bg-[#F8FFFD]">
+                <tr key={row.mode} className="border-t border-border-soft transition-colors hover:bg-surface-muted">
                   <td className="whitespace-nowrap px-5 py-2.5 font-medium text-ink">
                     {row.mode}
                   </td>
@@ -753,7 +753,7 @@ function ClosingMetric({
       <span
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-          warning ? "bg-chip-red text-chip-red-fg" : "bg-primary-tint text-primary"
+          warning ? "bg-warning-soft text-warning" : "bg-primary-tint text-primary"
         )}
       >
         <Icon className="h-4 w-4" />
@@ -763,7 +763,7 @@ function ClosingMetric({
         <div
           className={cn(
             "text-[21px] font-bold",
-            warning ? "text-chip-red-fg" : "text-ink"
+            warning ? "text-warning" : "text-ink"
           )}
         >
           {value}
@@ -869,7 +869,7 @@ function ExpenseLedgerTable({
                     <button
                       type="button"
                       onClick={() => handleVoid(expense)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface"
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted"
                     >
                       {t("payments.voidExpense")}
                     </button>
@@ -951,7 +951,7 @@ function ExpenseDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -1059,7 +1059,7 @@ function ExpenseDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface hover:text-ink"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
           >
             {t("common.cancel")}
           </button>

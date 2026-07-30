@@ -68,7 +68,7 @@ function AdjustmentRow({
   return (
     <div
       className={`rounded-lg border border-border-soft p-3 ${
-        adjustment.voided ? "bg-surface opacity-70" : "bg-white"
+        adjustment.voided ? "bg-surface-muted opacity-70" : "bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -118,7 +118,7 @@ function AdjustmentRow({
       </div>
 
       {canVoid && !adjustment.voided && voiding && (
-        <div className="mt-3 space-y-2 rounded-lg border border-border-soft bg-surface p-3">
+        <div className="mt-3 space-y-2 rounded-lg border border-border-soft bg-surface-muted p-3">
           <label className="block text-[12px] font-medium text-ink-muted">
             Void reason
           </label>

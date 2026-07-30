@@ -130,10 +130,10 @@ function DashboardContent() {
 
   return (
     <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]">
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-primary-tint via-white to-amber-100/70 px-5 py-4 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border-soft bg-white px-5 py-4 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
-          <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Dashboard</h1>
-          <p className="mt-0.5 text-sm font-medium text-slate-600">
+          <h1 className="text-[28px] font-bold tracking-tight text-ink">Dashboard</h1>
+          <p className="mt-0.5 text-sm font-medium text-ink-muted">
             What needs attention today
           </p>
         </div>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -434,7 +434,7 @@ function ConfigureItemModal({
       const id = snapshot.itemId ?? `${snapshot.orderId}-${snapshot.serialNo}`;
       options.push({
         id: `history:${id}`,
-        label: `${snapshot.orderNumber} · ${formatOrderDate(snapshot.orderDate)}`,
+        label: `${snapshot.orderNumber} � ${formatOrderDate(snapshot.orderDate)}`,
         values: snapshot.measurements,
       });
     });
@@ -945,14 +945,14 @@ function ConfigureItemModal({
                 <h3 id="configure-item-title" className="truncate text-[18px] font-semibold text-ink">
                   Configure {garment.name}
                 </h3>
-                <span className="shrink-0 rounded-full border border-border-soft bg-surface px-2 py-0.5 text-xs font-semibold text-ink-muted">
+                <span className="shrink-0 rounded-full border border-border-soft bg-surface-muted px-2 py-0.5 text-xs font-semibold text-ink-muted">
                   Code {garmentCodeLabel(garment)}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -989,7 +989,7 @@ function ConfigureItemModal({
                       }
                       onKeyDown={handlePreviousMeasurementsKeyDown}
                       title="Selecting a source copies its values into this item only."
-                      className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-2.5 text-sm font-medium text-ink shadow-sm outline-none transition-colors hover:bg-surface focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                      className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-2.5 text-sm font-medium text-ink shadow-sm outline-none transition-colors hover:bg-surface-muted focus:border-primary focus:ring-2 focus:ring-primary-tint"
                     >
                       <span className="truncate">{selectedPreviousMeasurementLabel}</span>
                       <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" />
@@ -1011,7 +1011,7 @@ function ConfigureItemModal({
                             className={`block w-full px-3 py-2 text-left text-sm transition-colors ${
                               index === activePreviousMeasurementIndex
                                 ? "bg-primary-tint text-primary-strong"
-                                : "text-ink hover:bg-surface"
+                                : "text-ink hover:bg-surface-muted"
                             }`}
                           >
                             <span className="block truncate">{option.label}</span>
@@ -1025,7 +1025,7 @@ function ConfigureItemModal({
 
               <section className="space-y-5">
                 {metadataLoading ? (
-                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
+                  <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
                   <GarmentFormFields
                     fields={nonInstructionFields}
@@ -1033,7 +1033,7 @@ function ConfigureItemModal({
                     onChange={handleGarmentFieldChange}
                   />
                 ) : (
-                  <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-muted">
+                  <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
@@ -1044,7 +1044,7 @@ function ConfigureItemModal({
                     Selected extras are added to Final Instructions for the tailor.
                   </p>
                   {addOnOptions.length === 0 ? (
-                    <p className="rounded-md bg-surface px-3 py-2 text-sm text-ink-muted">
+                    <p className="rounded-md bg-surface-muted px-3 py-2 text-sm text-ink-muted">
                       No add-ons configured for this garment.
                     </p>
                   ) : (
@@ -1114,7 +1114,7 @@ function ConfigureItemModal({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                className="flex-1 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 Cancel
               </button>
@@ -1162,7 +1162,7 @@ function ConfigureItemModal({
                     className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm transition-colors ${
                       index === activeAddOnIndex
                         ? "bg-primary-tint text-primary-strong"
-                        : "text-ink hover:bg-surface"
+                        : "text-ink hover:bg-surface-muted"
                     }`}
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -1173,7 +1173,7 @@ function ConfigureItemModal({
                             : "border-border bg-white text-transparent"
                         }`}
                       >
-                        ✓
+                        ?
                       </span>
                       <span className="truncate font-medium">{addOn.name}</span>
                     </span>
@@ -1276,8 +1276,8 @@ export function NewOrderItemsCard({
 
   const garmentSelector = (
     <label className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-2 text-[15px] font-semibold text-[#334155]">
-        <Shirt className="h-4 w-4 text-[#0F766E]" aria-hidden="true" />
+      <span className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+        <Shirt className="h-4 w-4 text-primary" aria-hidden="true" />
         Garment Type
       </span>
       <GarmentTypeCombobox
@@ -1290,18 +1290,18 @@ export function NewOrderItemsCard({
         }}
         onChange={openAddModal}
         onSelected={() => undefined}
-        inputClassName="h-[50px] rounded-[10px] border-[#DCE5EA] bg-white px-4 text-base focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
+        inputClassName="h-[50px] rounded-[10px] border-border bg-white px-4 text-base focus:border-primary focus:ring-2 focus:ring-primary-tint"
       />
     </label>
   );
   return (
-    <div className="rounded-2xl border border-[#DCE5EA] bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5">
+    <div className="rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
             <ShoppingBag className="h-4.5 w-4.5" aria-hidden="true" />
           </span>
-          <h3 className="text-[21px] font-bold tracking-tight text-[#111827]">Order Items</h3>
+          <h3 className="text-[21px] font-bold tracking-tight text-ink">Order Items</h3>
         </div>
         {!garmentSelectorTarget && <div className="w-full max-w-sm">{garmentSelector}</div>}
       </div>
@@ -1309,17 +1309,17 @@ export function NewOrderItemsCard({
       {garmentSelectorTarget && createPortal(garmentSelector, garmentSelectorTarget)}
 
       {rows.length === 0 ? (
-        <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#DCE5EA] bg-[#F8FAFC] px-4 py-5 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#0F766E]">
+        <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface-muted px-4 py-5 text-center">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-tint text-primary">
             <Shirt className="h-5 w-5" aria-hidden="true" />
           </span>
-          <p className="text-base font-semibold text-[#111827]">No order items added</p>
-          <p className="text-sm text-[#64748B]">Choose a garment type above to add the first item.</p>
+          <p className="text-base font-semibold text-ink">No order items added</p>
+          <p className="text-sm text-ink-muted">Choose a garment type above to add the first item.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#DCE5EA]">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#F8FAFC] text-[14px] font-bold text-[#475569]">
+            <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
               <tr>
                 <th className="whitespace-nowrap px-4 py-2.5">Garment</th>
                 <th className="whitespace-nowrap px-4 py-2.5 text-right">Qty</th>
@@ -1335,10 +1335,10 @@ export function NewOrderItemsCard({
                 const selected = selectedAddOns(item, garmentTypes, addOns);
                 const amount = computeAmount(item, garmentTypes, addOns);
                 return (
-                  <tr key={item.draftKey} className="border-t border-[#E8EEF2] transition-colors hover:bg-[#F8FFFD]">
-                    <td className="whitespace-nowrap px-5 py-3.5 font-bold text-[16px] text-[#111827]">
+                  <tr key={item.draftKey} className="border-t border-border-soft transition-colors hover:bg-surface-muted">
+                    <td className="whitespace-nowrap px-5 py-3.5 font-bold text-[16px] text-ink">
                       <span className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#ECFDF5] text-[#0F766E]">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary">
                           <Shirt className="h-4 w-4" aria-hidden="true" />
                         </span>
                         {garment ? formatGarmentCodeName(garment) : "Unknown garment"}
@@ -1361,7 +1361,7 @@ export function NewOrderItemsCard({
                             rateInputRefs.current[item.draftKey]?.focus();
                           }
                         }}
-                        className="h-11 w-24 rounded-[10px] border border-[#DCE5EA] bg-white px-2.5 text-center text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
+                        className="h-11 w-24 rounded-[10px] border border-border bg-white px-2.5 text-center text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                       />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right text-ink">
@@ -1378,17 +1378,17 @@ export function NewOrderItemsCard({
                             rateOverridden: true,
                           })
                         }
-                        className="h-11 w-32 rounded-[10px] border border-[#DCE5EA] bg-white px-3 text-right text-base text-[#111827] outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
+                        className="h-11 w-32 rounded-[10px] border border-border bg-white px-3 text-right text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
                       />
                     </td>
-                    <td className="px-4 py-3.5 text-[15px] text-[#64748B]">
+                    <td className="px-4 py-3.5 text-[15px] text-ink-muted">
                       {selected.length > 0 ? (
                         selected.map((addOn) => addOn.name).join(", ")
                       ) : (
-                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-[#64748B]">None</span>
+                        <span className="inline-flex rounded-full bg-chip-info px-2.5 py-1 text-xs font-medium text-ink-muted">None</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right text-[18px] font-bold text-[#0F766E]">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right text-[18px] font-bold text-primary">
                       {formatCurrency(amount)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
@@ -1405,7 +1405,7 @@ export function NewOrderItemsCard({
                             returnKey: item.draftKey,
                           })}
                           aria-label={`Edit ${garment ? formatGarmentCodeName(garment) : "order item"}`}
-                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-[#0F766E] bg-white px-3 text-sm font-semibold text-[#0F766E] transition-colors hover:bg-[#ECFDF5] focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/20"
+                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Edit
@@ -1414,7 +1414,7 @@ export function NewOrderItemsCard({
                           type="button"
                           onClick={() => deleteRow(index)}
                           aria-label={`Delete ${garment ? formatGarmentCodeName(garment) : "order item"}`}
-                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-red-200 bg-white px-3 text-sm font-semibold text-[#DC2626] transition-colors hover:bg-[#FEF2F2] focus:outline-none focus:ring-2 focus:ring-red-200"
+                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-danger/30 bg-white px-3 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-danger-soft"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
@@ -1430,7 +1430,7 @@ export function NewOrderItemsCard({
       )}
 
       {paymentStrip && (
-        <div className="mt-4 border-t border-[#DCE5EA] pt-4">
+        <div className="mt-4 border-t border-border pt-4">
           {paymentStrip}
         </div>
       )}
@@ -1470,7 +1470,7 @@ export function NewOrderItemsCard({
   );
 }
 
-// Item Amount = Qty Ã- (Rate + selected add-ons total) - Rate here is the
+// Item Amount = Qty �- (Rate + selected add-ons total) - Rate here is the
 // row's current effective rate (Catalog base price, or the shopkeeper's
 // manual override), not necessarily the garment's basePrice.
 function computeAmount(
@@ -1731,7 +1731,7 @@ function GarmentTypeCombobox({
         }}
         onKeyDown={handleInputKeyDown}
         placeholder={placeholder ?? t("common.selectEllipsis")}
-        className={`${inputClass} ${inputClassName ?? ""} ${disabled ? "cursor-not-allowed bg-surface text-ink-muted" : ""}`}
+        className={`${inputClass} ${inputClassName ?? ""} ${disabled ? "cursor-not-allowed bg-surface-muted text-ink-muted" : ""}`}
       />
       {open && (
         <div
@@ -1754,7 +1754,7 @@ function GarmentTypeCombobox({
                 className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
                   index === activeIndex
                     ? "bg-primary-tint text-primary"
-                    : "text-ink hover:bg-surface"
+                    : "text-ink hover:bg-surface-muted"
                 }`}
               >
                 <span className="min-w-8 rounded-md border border-border-soft bg-white px-1.5 py-0.5 text-center font-mono text-xs font-semibold text-primary">

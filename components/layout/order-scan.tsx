@@ -206,7 +206,7 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close scan dialog"
           >
             <X className="h-5 w-5" />
@@ -229,12 +229,12 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
             placeholder="TS|ORD|... or M-1"
             className="h-11 w-full rounded-lg border border-border px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
-          {error && <p className="text-sm font-medium text-red-700">{error}</p>}
+          {error && <p className="text-sm font-medium text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="h-10 rounded-lg border border-border px-4 font-semibold text-ink hover:bg-surface"
+              className="h-10 rounded-lg border border-border px-4 font-semibold text-ink hover:bg-surface-muted"
             >
               Cancel
             </button>
@@ -259,7 +259,7 @@ export function OrderScanButton({ compact = false }: { compact?: boolean }) {
       type="button"
       onClick={() => window.dispatchEvent(new Event(OPEN_ORDER_SCAN_EVENT))}
       className={cn(
-        "flex h-10 items-center justify-center gap-2 rounded-lg border border-border text-ink-muted transition hover:bg-surface hover:text-ink",
+        "flex h-10 items-center justify-center gap-2 rounded-lg border border-border text-ink-muted transition hover:bg-surface-muted hover:text-ink",
         compact ? "w-10" : "px-3"
       )}
       title="Scan / Enter Order Code"

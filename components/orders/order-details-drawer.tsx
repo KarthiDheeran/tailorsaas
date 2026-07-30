@@ -57,7 +57,7 @@ function PrintMenu({ order }: { order: Order }) {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
       >
         <Printer className="h-3.5 w-3.5" />
         {t("orders.print")}
@@ -79,7 +79,7 @@ function PrintMenu({ order }: { order: Order }) {
                       setOpen(false);
                     }, 900);
                   }}
-                  className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface"
+                  className="block px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-surface-muted"
                 >
                   <span className="flex items-center gap-1.5">
                     {openingPrint === "receipt" && (
@@ -152,7 +152,7 @@ function InvoiceShareActions({
       <a
         href={`tel:${customer.phone}`}
         title="Call"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <Phone className="h-3.5 w-3.5" />
       </a>
@@ -162,14 +162,14 @@ function InvoiceShareActions({
         rel="noopener noreferrer"
         onClick={logWhatsAppOpen}
         title="Share invoice on WhatsApp"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <WhatsAppIcon className="h-3.5 w-3.5" />
       </a>
       <a
         href={mailto}
         title="Share invoice by email"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <Mail className="h-3.5 w-3.5" />
       </a>
@@ -288,7 +288,7 @@ export function OrderDetailsDrawer({
                 type="button"
                 onClick={onClose}
                 aria-label={t("common.close")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -344,7 +344,7 @@ export function OrderDetailsDrawer({
               </div>
 
               {(order.createdByOperatorName || order.measurementTakenByOperatorName || order.deliveredByOperatorName) && (
-                <div className="rounded-lg border border-border-soft bg-surface p-3">
+                <div className="rounded-lg border border-border-soft bg-surface-muted p-3">
                   <p className="text-[13px] font-semibold text-ink">Staff activity</p>
                   <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
                     {order.createdByOperatorName && <p className="text-ink-muted">Order created by <span className="font-semibold text-ink">{order.createdByOperatorName}</span></p>}
@@ -360,7 +360,7 @@ export function OrderDetailsDrawer({
                 </p>
                 <div className="overflow-hidden rounded-lg border border-border-soft">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-surface text-[12px] font-semibold text-ink-muted">
+                    <thead className="bg-surface-muted text-[12px] font-semibold text-ink-muted">
                       <tr>
                         <th className="px-3 py-2">{t("orders.particular")}</th>
                         <th className="px-3 py-2 text-right">{t("common.qty")}</th>
@@ -387,7 +387,7 @@ export function OrderDetailsDrawer({
                                 </span>
                               )}
                               {hasMeasurementSnapshot(item) && (
-                                <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
+                                <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
                                   Measurements saved
                                 </span>
                               )}
@@ -414,7 +414,7 @@ export function OrderDetailsDrawer({
               </div>
 
               {canViewPayments && (
-                <div className="rounded-lg bg-surface p-4">
+                <div className="rounded-lg bg-surface-muted p-4">
                   <div className="flex items-center justify-between py-1">
                     <span className="text-sm text-ink-muted">{t("common.total")}</span>
                     <span className="text-sm font-semibold text-ink">
@@ -472,7 +472,7 @@ export function OrderDetailsDrawer({
                     {canViewPayments && payments.length > 0 && (
                       <Link
                         href={`/orders/${order.id}#payments`}
-                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface-muted"
                       >
                         <span>Payments</span>
                         <span className="font-semibold">{payments.length}</span>
@@ -481,7 +481,7 @@ export function OrderDetailsDrawer({
                     {canViewPayments && adjustments.length > 0 && (
                       <Link
                         href={`/orders/${order.id}#adjustments`}
-                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface-muted"
                       >
                         <span>Adjustments</span>
                         <span className="font-semibold">{adjustments.length}</span>
@@ -490,7 +490,7 @@ export function OrderDetailsDrawer({
                     {attachments.length > 0 && (
                       <Link
                         href={`/orders/${order.id}#attachments`}
-                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface"
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-ink transition-colors hover:bg-surface-muted"
                       >
                         <span>Attachments</span>
                         <span className="font-semibold">{attachments.length}</span>
@@ -522,7 +522,7 @@ export function OrderDetailsDrawer({
                       href={`/orders/${order.id}/edit`}
                       onClick={() => setOpeningEdit(true)}
                       aria-busy={openingEdit}
-                      className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
                     >
                       {openingEdit ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

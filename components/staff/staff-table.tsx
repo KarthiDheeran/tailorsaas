@@ -54,7 +54,7 @@ export function StaffTable({
           {rows.map(({ staff, activeOrders, completedThisMonth, pendingWork }) => (
             <tr
               key={staff.id}
-              className="border-t border-border-soft transition-colors hover:bg-surface"
+              className="border-t border-border-soft transition-colors hover:bg-surface-muted"
             >
               <td className="whitespace-nowrap px-5 py-3">
                 <div className="font-semibold text-ink">{staff.name}</div>
@@ -83,7 +83,7 @@ export function StaffTable({
                   <Link
                     href={`/staff/${staff.id}`}
                     title={t("staff.view")}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </Link>
@@ -92,14 +92,14 @@ export function StaffTable({
                       <Link
                         href={`/staff/assign?staffId=${staff.id}`}
                         title={t("staff.assignWork")}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                       >
                         <ClipboardPlus className="h-3.5 w-3.5" />
                       </Link>
                       <Link
                         href={`/staff/${staff.id}/edit`}
                         title={t("common.edit")}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Link>
@@ -110,7 +110,7 @@ export function StaffTable({
                       type="button"
                       title={t("staff.deactivate")}
                       onClick={() => onDeactivate(staff.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface hover:text-chip-red-fg"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-chip-red-fg"
                     >
                       <UserX className="h-3.5 w-3.5" />
                     </button>

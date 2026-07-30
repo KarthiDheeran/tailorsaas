@@ -55,7 +55,7 @@ export function FilterDropdown<T extends string>({
                 <button
                   type="button"
                   onClick={() => handleSelect(opt.value)}
-                  className="block w-full whitespace-nowrap px-3.5 py-2 text-left text-sm text-ink hover:bg-surface"
+                  className="block w-full whitespace-nowrap px-3.5 py-2 text-left text-sm text-ink hover:bg-surface-muted"
                 >
                   {opt.label}
                 </button>
