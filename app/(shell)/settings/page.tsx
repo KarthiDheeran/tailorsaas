@@ -5,6 +5,7 @@ import {
   Languages,
   Layers,
   CalendarDays,
+  MapPin,
   MessageSquareText,
   Receipt,
   Settings,
@@ -24,6 +25,14 @@ const SETTINGS_SECTIONS = [
     icon: Receipt,
     status: "Available",
     permission: "settings.view",
+  },
+  {
+    title: "Shops & Locations",
+    description: "Create branches and choose Men, Chudidar, or Blouse availability per shop.",
+    href: "/settings/shops",
+    icon: MapPin,
+    status: "Available",
+    permission: "settings.manageShop",
   },
   {
     title: "Order Delivery Defaults",

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { checkCanSaveUserGivenUsers, type AppUser } from "@/lib/profiles";
 import type { Role } from "@/lib/roles";
+import { GARMENT_SECTIONS, type GarmentSection } from "@/lib/catalog";
+import type { Shop } from "@/lib/shops";
 import { createClient } from "@/lib/supabase/client";
 import { Select } from "@/components/ui/select";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -21,6 +23,7 @@ export function UserEditDrawer({
   user,
   roles,
   users,
+  shops,
   onCancel,
   onSaved,
   onResetPassword,
@@ -28,6 +31,7 @@ export function UserEditDrawer({
   user: AppUser;
   roles: Role[];
   users: AppUser[];
+  shops: Shop[];
   onCancel: () => void;
   onSaved: (patch: {
     id: string;
@@ -36,6 +40,8 @@ export function UserEditDrawer({
     roleId: string;
     active: boolean;
     staffId?: string;
+    shopId?: string;
+    allowedOrderSections: GarmentSection[];
   }) => Promise<{ success: boolean; error?: string }>;
   onResetPassword: (input: {
     userId: string;
@@ -48,6 +54,10 @@ export function UserEditDrawer({
   const [roleId, setRoleId] = useState(user.role_id);
   const [active, setActive] = useState(user.active);
   const [staffId, setStaffId] = useState(user.staff_id ?? "");
+  const [shopId, setShopId] = useState(user.shop_id ?? "");
+  const [allowedOrderSections, setAllowedOrderSections] = useState<GarmentSection[]>(
+    user.allowed_order_sections.length ? user.allowed_order_sections : [...GARMENT_SECTIONS]
+  );
   const [staffOptions, setStaffOptions] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +95,10 @@ export function UserEditDrawer({
       setError(blockReason);
       return;
     }
+    if (allowedOrderSections.length === 0) {
+      setError("Choose at least one order section.");
+      return;
+    }
     setSubmitting(true);
     const result = await onSaved({
       id: user.id,
@@ -93,6 +107,8 @@ export function UserEditDrawer({
       roleId,
       active,
       staffId: staffId || undefined,
+      shopId: shopId || undefined,
+      allowedOrderSections,
     });
     setSubmitting(false);
     if (!result.success) {
@@ -199,6 +215,42 @@ export function UserEditDrawer({
                   <p className="text-xs text-ink-faint">{deactivateBlockedReason}</p>
                 )}
               </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-ink-muted">Shop</span>
+                <Select value={shopId} onChange={(e) => setShopId(e.target.value)}>
+                  <option value="">All shops</option>
+                  {shops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.name}
+                      {shop.location ? ` - ${shop.location}` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <div className="flex flex-col gap-2">
+                <span className="text-[13px] font-medium text-ink-muted">Order sections</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {GARMENT_SECTIONS.map((section) => (
+                    <label
+                      key={section}
+                      className="flex items-center gap-2 rounded-lg border border-border-soft px-3 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allowedOrderSections.includes(section)}
+                        onChange={(event) =>
+                          setAllowedOrderSections((current) =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, section]))
+                              : current.filter((item) => item !== section)
+                          )
+                        }
+                      />
+                      {section}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[13px] font-medium text-ink-muted">
                   Linked staff record <span className="font-normal">({t("common.optional")})</span>

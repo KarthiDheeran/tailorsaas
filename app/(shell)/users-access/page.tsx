@@ -6,7 +6,7 @@
 // app/(shell)/settings/users-access) and update the sidebar entry in
 // components/layout/sidebar.tsx to match.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 import type { AppUser } from "@/lib/profiles";
@@ -23,6 +23,9 @@ import { AddUserDrawer } from "@/components/users-access/add-user-drawer";
 import { RolesTable } from "@/components/users-access/roles-table";
 import { RoleEditDrawer } from "@/components/users-access/role-edit-drawer";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { createClient } from "@/lib/supabase/client";
+import { getShops, type Shop } from "@/lib/shops";
+import type { GarmentSection } from "@/lib/catalog";
 
 function UsersAccessPageContent() {
   const {
@@ -37,6 +40,7 @@ function UsersAccessPageContent() {
   } = useCurrentUser();
   const { t } = useLanguage();
   const [tab, setTab] = useState<UsersAccessTab>("users");
+  const [shops, setShops] = useState<Shop[]>([]);
 
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -45,6 +49,20 @@ function UsersAccessPageContent() {
   const [isAddingRole, setIsAddingRole] = useState(false);
   const roleDrawerOpen = isAddingRole || editingRole !== null;
 
+  useEffect(() => {
+    let cancelled = false;
+    getShops(createClient())
+      .then((rows) => {
+        if (!cancelled) setShops(rows.filter((shop) => shop.active));
+      })
+      .catch(() => {
+        if (!cancelled) setShops([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function handleUserSaved(patch: {
     id: string;
     fullName: string;
@@ -52,6 +70,8 @@ function UsersAccessPageContent() {
     roleId: string;
     active: boolean;
     staffId?: string;
+    shopId?: string;
+    allowedOrderSections: GarmentSection[];
   }) {
     return updateUserProfile(patch);
   }
@@ -127,7 +147,7 @@ function UsersAccessPageContent() {
       <UsersAccessTabs active={tab} onChange={setTab} />
 
       {tab === "users" ? (
-        <UsersTable users={users} roles={roles} onEdit={setEditingUser} />
+        <UsersTable users={users} roles={roles} shops={shops} onEdit={setEditingUser} />
       ) : (
         <RolesTable
           roles={roles}
@@ -144,6 +164,7 @@ function UsersAccessPageContent() {
           user={editingUser}
           roles={roles}
           users={users}
+          shops={shops}
           onCancel={() => setEditingUser(null)}
           onSaved={handleUserSaved}
           onResetPassword={resetUserPassword}
@@ -153,6 +174,7 @@ function UsersAccessPageContent() {
       {isAddingUser && (
         <AddUserDrawer
           roles={roles}
+          shops={shops}
           onCancel={() => setIsAddingUser(false)}
           onCreate={createUser}
         />

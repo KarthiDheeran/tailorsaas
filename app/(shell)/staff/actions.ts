@@ -237,7 +237,7 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
   ] = await Promise.all([
     getStaff(dataClient),
     getWorkAssignments(dataClient),
-    getAllOrders(dataClient),
+    getAllOrders(supabase),
     getStaffPayments(dataClient),
     getStaffWorkEarnings(dataClient),
     getTalliedJobCardStageSlips(dataClient),
@@ -245,7 +245,7 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
 
   let jobCardQueueRows: JobCard[] | null = null;
   try {
-    jobCardQueueRows = await getJobCards(dataClient, todayIso, staffList);
+    jobCardQueueRows = await getJobCards(supabase, todayIso, staffList);
   } catch (error) {
     if (!isMissingJobCardsSchemaError(error)) throw error;
   }

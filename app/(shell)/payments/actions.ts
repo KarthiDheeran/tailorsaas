@@ -329,8 +329,10 @@ export async function getDailyClosingAction(todayIso: string): Promise<DailyClos
 // outstandingBalanceTotal) — every order with balance > 0, no date/filter
 // scoping. Sorted oldest-delivery-date-first, so the most overdue orders
 // surface at the top of the table (mirrors Dashboard's overdueOrders sort).
-async function getPendingDuesOrders(): Promise<Order[]> {
-  const allOrders = await getAllOrders(createAdminClient());
+async function getPendingDuesOrders(
+  supabase: ReturnType<typeof createServerClient>
+): Promise<Order[]> {
+  const allOrders = await getAllOrders(supabase);
   return allOrders
     .filter(isReceivableOrder)
     .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
@@ -341,7 +343,7 @@ export async function getPendingDuesAction(): Promise<number | null> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.viewPayments");
   if (!guard.ok) return null;
-  const orders = await getPendingDuesOrders();
+  const orders = await getPendingDuesOrders(supabase);
   return orders.reduce((sum, o) => sum + Number(o.balance), 0);
 }
 
@@ -350,7 +352,7 @@ export async function getPendingDuesOrdersAction(): Promise<Order[] | null> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.viewPayments");
   if (!guard.ok) return null;
-  return getPendingDuesOrders();
+  return getPendingDuesOrders(supabase);
 }
 
 export async function getFinancialAdjustmentsAction(
@@ -367,7 +369,7 @@ export async function getFinancialAdjustmentsAction(
     const admin = createAdminClient();
     const [adjustments, orders] = await Promise.all([
       getAllOrderFinancialAdjustments(admin),
-      getAllOrders(admin),
+      getAllOrders(supabase),
     ]);
     const ordersById = new Map(orders.map((order) => [order.id, order]));
     const query = filters.query?.trim().toLowerCase() ?? "";

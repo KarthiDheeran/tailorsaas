@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
+  getServerCallerContext,
   getServerCallerPermissions,
   requireServerPermission,
 } from "@/lib/auth/require-server-permission";
@@ -211,11 +212,10 @@ export async function getOrdersPageDataAction(): Promise<OrdersPageData> {
     return { orders: [], customers: [] };
   }
 
-  const dataClient = createAdminClient();
   const [orders, customers] = await Promise.all([
-    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(dataClient)),
+    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)),
     hasPermission(permissions, "customers.view")
-      ? profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(dataClient))
+      ? profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(supabase))
       : Promise.resolve([]),
   ]);
   return { orders, customers };
@@ -240,7 +240,7 @@ function parseOrderScanCode(rawCode: string):
     const token = code.slice(tokenPrefix.length).trim();
     return token ? { kind: "scan-token", value: token } : undefined;
   }
-  if (/^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+)$/.test(code)) {
+  if (/^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+|\d+)$/.test(code)) {
     return { kind: "order-number", value: code };
   }
   return undefined;
@@ -384,6 +384,8 @@ export async function generateNextOrderNumberAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
   if (!guard.ok || !isGarmentSection(orderSection)) return "";
+  const caller = await getServerCallerContext(supabase);
+  if (!caller?.allowedOrderSections.includes(orderSection)) return "";
   return peekNextOrderNumber(supabase, orderSection);
 }
 
@@ -417,10 +419,26 @@ function validateOrderDates(data: {
   return null;
 }
 
+async function requireAllowedOrderSection(
+  supabase: ReturnType<typeof createServerClient>,
+  section: GarmentSection
+): Promise<string | null> {
+  const caller = await getServerCallerContext(supabase);
+  if (!caller) return "Not signed in or account inactive.";
+  if (!caller.allowedOrderSections.includes(section)) {
+    return "You do not have access to this order section.";
+  }
+  if (!caller.shopId) {
+    return "Your account is not assigned to a shop.";
+  }
+  return null;
+}
+
 async function validateAndSnapshotOrderItems(
   supabase: ReturnType<typeof createServerClient>,
   items: OrderItem[],
-  existingItems: OrderItem[] = []
+  existingItems: OrderItem[] = [],
+  expectedSection?: GarmentSection
 ): Promise<{ items: OrderItem[]; error?: string }> {
   const configurations = await getGarmentTypeConfigurations(
     supabase,
@@ -432,6 +450,12 @@ async function validateAndSnapshotOrderItems(
   const validatedItems: OrderItem[] = [];
   for (const item of items) {
     const configuration = item.garmentTypeId ? configurationById.get(item.garmentTypeId) : undefined;
+    if (expectedSection && configuration && configuration.garment.section !== expectedSection) {
+      return {
+        items: [],
+        error: `Item ${item.serialNo}: ${configuration.garment.name} is not available in ${expectedSection}.`,
+      };
+    }
     const fields = configuration ? resolveRuntimeGarmentFields(configuration.fields, []) : null;
     if (!fields || fields.length === 0) {
       validatedItems.push({
@@ -476,12 +500,14 @@ export async function createOrderAction(data: {
   if (!isGarmentSection(data.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
+  const scopeError = await requireAllowedOrderSection(supabase, data.orderSection);
+  if (scopeError) return { success: false, error: scopeError };
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
-  const prepared = await validateAndSnapshotOrderItems(supabase, data.items);
+  const prepared = await validateAndSnapshotOrderItems(supabase, data.items, [], data.orderSection);
   if (prepared.error) return { success: false, error: prepared.error };
   const order = await createOrder(supabase, { ...data, items: prepared.items, status: "In Progress" });
   await recordOrderOperatorAttribution(
@@ -525,6 +551,8 @@ export async function createOrderForNewCustomerAction(data: {
   if (!isGarmentSection(data.order.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
+  const scopeError = await requireAllowedOrderSection(supabase, data.order.orderSection);
+  if (scopeError) return { success: false, error: scopeError };
   const customerGuard = await requireServerPermission(supabase, "customers.create");
   if (!customerGuard.ok) return { success: false, error: customerGuard.error };
   if (!data.customer.name.trim()) return { success: false, error: "Name is required." };
@@ -565,7 +593,7 @@ export async function createOrderForNewCustomerAction(data: {
     throw error;
   }
 
-  const prepared = await validateAndSnapshotOrderItems(supabase, data.order.items);
+  const prepared = await validateAndSnapshotOrderItems(supabase, data.order.items, [], data.order.orderSection);
   if (prepared.error) return { success: false, error: prepared.error };
 
   let order: Order;
@@ -612,7 +640,12 @@ export async function updateOrderAction(
   if (dateError) return { success: false, error: dateError };
   const existingOrder = await getOrderById(supabase, id);
   if (!existingOrder) return { success: false, error: "Order not found." };
-  const prepared = await validateAndSnapshotOrderItems(supabase, data.items, existingOrder.items);
+  const prepared = await validateAndSnapshotOrderItems(
+    supabase,
+    data.items,
+    existingOrder.items,
+    existingOrder.orderSection
+  );
   if (prepared.error) return { success: false, error: prepared.error };
   const order = await updateOrder(supabase, id, { ...data, items: prepared.items });
   if (!order) return { success: false, error: "Order not found." };

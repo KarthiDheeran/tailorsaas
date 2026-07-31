@@ -1,7 +1,10 @@
 "use server";
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import {
+  getServerCallerContext,
+  requireServerPermission,
+} from "@/lib/auth/require-server-permission";
 import {
   createAddOn,
   createGarmentType,
@@ -96,14 +99,20 @@ export async function getGarmentTypesAction(): Promise<CatalogGarmentType[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.view");
   if (!guard.ok) return [];
-  return getAllGarmentTypes(supabase);
+  const garments = await getAllGarmentTypes(supabase);
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || caller.permissions.includes("catalog.manage")) return garments;
+  return garments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
 }
 
 export async function getActiveGarmentTypesAction(): Promise<CatalogGarmentType[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.view");
   if (!guard.ok) return [];
-  return getActiveGarmentTypes(supabase);
+  const garments = await getActiveGarmentTypes(supabase);
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || caller.permissions.includes("catalog.manage")) return garments;
+  return garments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
 }
 
 export async function getAddOnsAction(): Promise<CatalogAddOn[]> {
@@ -585,7 +594,10 @@ export async function getGarmentTypeConfigurationAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.view");
   if (!guard.ok) return null;
-  return getGarmentTypeConfiguration(supabase, garmentTypeId);
+  const configuration = await getGarmentTypeConfiguration(supabase, garmentTypeId);
+  const caller = await getServerCallerContext(supabase);
+  if (!configuration || !caller || caller.permissions.includes("catalog.manage")) return configuration;
+  return caller.allowedOrderSections.includes(configuration.garment.section) ? configuration : null;
 }
 
 /** Catalog list companion: one joined query for all visible garment field counts. */
@@ -595,7 +607,12 @@ export async function getGarmentTypeConfigurationsAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "catalog.view");
   if (!guard.ok) return [];
-  return getGarmentTypeConfigurations(supabase, garmentTypeIds);
+  const configurations = await getGarmentTypeConfigurations(supabase, garmentTypeIds);
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || caller.permissions.includes("catalog.manage")) return configurations;
+  return configurations.filter((configuration) =>
+    caller.allowedOrderSections.includes(configuration.garment.section)
+  );
 }
 
 export async function saveGarmentTypeConfigurationAction(

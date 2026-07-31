@@ -6,15 +6,12 @@ import { getOrdersAction } from "@/app/(shell)/orders/actions";
 import { createProductionPrintBundleAction } from "@/app/(shell)/job-cards/actions";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
-import type { GarmentSection } from "@/lib/catalog";
+import { GARMENT_SECTIONS, type GarmentSection } from "@/lib/catalog";
 import type { Order } from "@/lib/types";
 
-const SECTION_PREFIX: Record<GarmentSection, string> = { Men: "M", Chutti: "C", Blouse: "B" };
-const sections: GarmentSection[] = ["Men", "Chutti", "Blouse"];
-
-function sequenceFor(orderNumber: string, section: GarmentSection) {
-  const match = new RegExp(`^${SECTION_PREFIX[section]}-(\\d+)$`).exec(orderNumber);
-  return match ? Number(match[1]) : null;
+function sequenceFor(order: Order) {
+  if (typeof order.orderSequence === "number") return order.orderSequence;
+  return /^\d+$/.test(order.orderNumber) ? Number(order.orderNumber) : null;
 }
 
 export function ProductionPrintPage() {
@@ -33,7 +30,9 @@ export function ProductionPrintPage() {
     getOrdersAction()
       .then((result) => !cancelled && setOrders(result))
       .catch(() => !cancelled && setOrders([]));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const printableOrders = useMemo(() => {
@@ -42,7 +41,8 @@ export function ProductionPrintPage() {
     const to = toSequence === "" ? null : Number(toSequence);
     return (orders ?? []).filter((order) => {
       if (["Cancelled", "Delivered"].includes(order.status)) return false;
-      const sequence = sequenceFor(order.orderNumber, section);
+      if (order.orderSection && order.orderSection !== section) return false;
+      const sequence = sequenceFor(order);
       if (sequence === null || (from !== null && sequence < from) || (to !== null && sequence > to)) return false;
       if (orderDate && order.orderDate !== orderDate) return false;
       if (!normalized) return true;
@@ -59,15 +59,14 @@ export function ProductionPrintPage() {
   function toggleOrder(id: string) {
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
   async function printBundle() {
     if (selected.size === 0) return;
-    // Open while this click still has browser user activation. The server
-    // action can take a moment while it creates/reuses secure stage slips.
     const previewWindow = window.open("", "_blank");
     if (previewWindow) previewWindow.opener = null;
     setPrinting(true);
@@ -89,7 +88,9 @@ export function ProductionPrintPage() {
     <div className="mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-5 lg:px-8">
       <div className="mb-5">
         <h1 className="text-3xl font-bold tracking-tight text-ink">Production Print</h1>
-        <p className="mt-1 text-base text-ink-muted">Print a continuous Cutting → Stitching bundle. Cut each completed Cutting slip manually.</p>
+        <p className="mt-1 text-base text-ink-muted">
+          Print a continuous Cutting to Stitching bundle. Cut each completed Cutting slip manually.
+        </p>
       </div>
       <JobCardTabs active="production-print" />
       <section className="mt-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
@@ -99,17 +100,22 @@ export function ProductionPrintPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by order number, customer, or phone" className="h-11 w-full rounded-xl border border-border bg-white pl-10 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
-          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order section</span><select value={section} onChange={(event) => { setSection(event.target.value as GarmentSection); setSelected(new Set()); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{sections.map((item) => <option key={item} value={item}>{item} ({SECTION_PREFIX[item]})</option>)}</select></label>
+          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order section</span><select value={section} onChange={(event) => { setSection(event.target.value as GarmentSection); setSelected(new Set()); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{GARMENT_SECTIONS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">From no.</span><input type="number" min="1" inputMode="numeric" value={fromSequence} onChange={(event) => setFromSequence(event.target.value)} placeholder="1" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">To no.</span><input type="number" min="1" inputMode="numeric" value={toSequence} onChange={(event) => setToSequence(event.target.value)} placeholder="20" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order date</span><input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <button type="button" onClick={selectFiltered} disabled={printableOrders.length === 0} className="h-11 rounded-xl border border-primary px-4 text-sm font-semibold text-primary hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-50">Select filtered ({printableOrders.length})</button>
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-ink-muted">Range: {SECTION_PREFIX[section]}-{fromSequence || "1"} to {SECTION_PREFIX[section]}-{toSequence || "…"}. Every garment unit prints Cutting first, then Stitching.</p><button type="button" onClick={() => void printBundle()} disabled={printing || selected.size === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({selected.size})</button></div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-ink-muted">
+            Range: {fromSequence || "1"} to {toSequence || "..."}. Every garment unit prints Cutting first, then Stitching.
+          </p>
+          <button type="button" onClick={() => void printBundle()} disabled={printing || selected.size === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({selected.size})</button>
+        </div>
         {error && <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">{error}</p>}
-        {orders === null ? <p className="py-12 text-center text-sm text-ink-muted">Loading orders…</p> : (
+        {orders === null ? <p className="py-12 text-center text-sm text-ink-muted">Loading orders...</p> : (
           <div className="mt-4 overflow-x-auto rounded-xl border border-border-soft">
-            <table className="min-w-full text-left text-sm"><thead className="bg-surface-muted text-ink-muted"><tr><th className="w-12 px-4 py-3"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Delivery</th><th className="px-4 py-3 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => <tr key={order.id} className="border-t border-border-soft hover:bg-primary-tint/30"><td className="px-4 py-3"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="px-4 py-3 font-semibold text-primary">{order.orderNumber}</td><td className="px-4 py-3"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="px-4 py-3 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="px-4 py-3 text-right text-ink">{order.items.map((item) => `${item.particular} ×${item.qty}`).join(", ")}</td></tr>)}</tbody></table>
+            <table className="min-w-full text-left text-sm"><thead className="bg-surface-muted text-ink-muted"><tr><th className="w-12 px-4 py-3"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Delivery</th><th className="px-4 py-3 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => <tr key={order.id} className="border-t border-border-soft hover:bg-primary-tint/30"><td className="px-4 py-3"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="px-4 py-3 font-semibold text-primary">{order.orderNumber}</td><td className="px-4 py-3"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="px-4 py-3 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="px-4 py-3 text-right text-ink">{order.items.map((item) => `${item.particular} x${item.qty}`).join(", ")}</td></tr>)}</tbody></table>
             {printableOrders.length === 0 && <p className="p-10 text-center text-sm text-ink-muted">No printable orders found.</p>}
           </div>
         )}

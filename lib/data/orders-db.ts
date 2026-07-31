@@ -84,7 +84,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 }
 
 const ORDER_COLUMNS = `
-  id, order_number, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+  id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
   delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
@@ -99,7 +99,11 @@ const LEGACY_ORDER_COLUMNS = `
 
 interface OrderRow {
   id: string;
+  tenant_id?: string | null;
+  shop_id?: string | null;
   order_number: string;
+  order_section?: GarmentSection | null;
+  order_sequence?: number | null;
   scan_token?: string | null;
   invoice_number?: string | null;
   customer_id: string;
@@ -127,7 +131,11 @@ interface OrderRow {
 function mapOrder(row: OrderRow): Order {
   return {
     id: row.id,
+    tenantId: row.tenant_id ?? undefined,
+    shopId: row.shop_id ?? undefined,
     orderNumber: row.order_number,
+    orderSection: row.order_section ?? undefined,
+    orderSequence: row.order_sequence ?? undefined,
     scanToken: row.scan_token ?? undefined,
     invoiceNumber: row.invoice_number ?? undefined,
     customerId: row.customer_id,
@@ -205,9 +213,10 @@ export async function findOrderByOrderNumber(
     .from("orders")
     .select("id, order_number")
     .eq("order_number", orderNumber)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
   if (error) throw error;
-  const row = data as { id: string; order_number: string } | null;
+  const row = ((data as { id: string; order_number: string }[] | null) ?? [])[0];
   return row ? { id: row.id, orderNumber: row.order_number } : undefined;
 }
 

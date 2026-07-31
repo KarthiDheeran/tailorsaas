@@ -15,7 +15,7 @@ const SCANNER_TOTAL_MS_PER_CHAR = 80;
 
 function looksLikeOrderScan(value: string) {
   const code = value.trim().toUpperCase();
-  return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+)$/.test(code);
+  return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+|\d+)$/.test(code);
 }
 
 function looksLikeStageSlipScan(value: string) {
@@ -29,7 +29,7 @@ function looksLikeSupportedScan(value: string) {
 
 function shouldSuppressScannerCharacter(value: string) {
   const code = value.toUpperCase();
-  return code.startsWith("TS|ORD") || code.startsWith("ORD") || /^[MCB]-/.test(code) || code.startsWith("TS|JOB") || code.startsWith("JCS");
+  return code.startsWith("TS|ORD") || code.startsWith("ORD") || /^[MCB]-/.test(code) || /^\d+$/.test(code) || code.startsWith("TS|JOB") || code.startsWith("JCS");
 }
 
 function focusedTextControl() {
@@ -226,7 +226,7 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
               setManualCode(event.target.value);
               setError("");
             }}
-            placeholder="TS|ORD|... or M-1"
+            placeholder="TS|ORD|... or 1"
             className="h-11 w-full rounded-lg border border-border px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
           {error && <p className="text-sm font-medium text-danger">{error}</p>}

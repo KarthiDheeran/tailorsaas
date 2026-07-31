@@ -3,8 +3,10 @@
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import { getServerCallerContext } from "@/lib/auth/require-server-permission";
 import { checkCanSaveUserGivenUsers, getAppUsers } from "@/lib/profiles";
 import { ALL_PERMISSIONS, PERMISSION_PARENT } from "@/lib/permissions";
+import { GARMENT_SECTIONS, isGarmentSection, type GarmentSection } from "@/lib/catalog";
 import {
   createRole as createRoleData,
   deleteRole as deleteRoleData,
@@ -17,6 +19,10 @@ import {
 
 type ActionResult = { success: true } | { success: false; error: string };
 type DataActionResult<T> = { success: true; data: T } | { success: false; error: string };
+
+function normalizeAllowedOrderSections(value: GarmentSection[]): GarmentSection[] {
+  return Array.from(new Set(value.filter(isGarmentSection)));
+}
 
 // Phase 5 generalized this into lib/auth/require-server-permission.ts (used
 // by ~15 actions across Orders/Customers/Catalog/Staff now, not just this
@@ -35,6 +41,8 @@ export async function createUserAction(input: {
   roleId: string;
   phone?: string;
   staffId?: string;
+  shopId?: string;
+  allowedOrderSections?: GarmentSection[];
 }): Promise<ActionResult> {
   if (!input.fullName.trim()) return { success: false, error: "Name is required." };
   if (!input.email.trim()) return { success: false, error: "Email is required." };
@@ -46,6 +54,14 @@ export async function createUserAction(input: {
   const supabase = createServerClient();
   const guard = await requireManageUsers(supabase);
   if (!guard.ok) return { success: false, error: guard.error };
+  const caller = await getServerCallerContext(supabase);
+  if (!caller?.tenantId) return { success: false, error: "Account is missing tenant scope." };
+  const allowedOrderSections = normalizeAllowedOrderSections(
+    input.allowedOrderSections?.length ? input.allowedOrderSections : [...GARMENT_SECTIONS]
+  );
+  if (allowedOrderSections.length === 0) {
+    return { success: false, error: "Choose at least one allowed order section." };
+  }
 
   // Only auth.admin.createUser needs the service-role key — the profiles
   // insert below uses the regular RLS-respecting server client, since
@@ -71,6 +87,9 @@ export async function createUserAction(input: {
     active: true,
     must_change_password: true,
     staff_id: input.staffId || null,
+    tenant_id: caller.tenantId,
+    shop_id: input.shopId || null,
+    allowed_order_sections: allowedOrderSections,
   });
 
   if (profileError) {
@@ -90,12 +109,18 @@ export async function updateUserProfileAction(input: {
   roleId: string;
   active: boolean;
   staffId?: string;
+  shopId?: string;
+  allowedOrderSections: GarmentSection[];
 }): Promise<ActionResult> {
   if (!input.fullName.trim()) return { success: false, error: "Name is required." };
 
   const supabase = createServerClient();
   const guard = await requireManageUsers(supabase);
   if (!guard.ok) return { success: false, error: guard.error };
+  const allowedOrderSections = normalizeAllowedOrderSections(input.allowedOrderSections);
+  if (allowedOrderSections.length === 0) {
+    return { success: false, error: "Choose at least one allowed order section." };
+  }
 
   // Authoritative last-Admin check — fetched fresh here, never trusting
   // whatever list the client had in memory when it submitted.
@@ -111,6 +136,8 @@ export async function updateUserProfileAction(input: {
       role_id: input.roleId,
       active: input.active,
       staff_id: input.staffId || null,
+      shop_id: input.shopId || null,
+      allowed_order_sections: allowedOrderSections,
     })
     .eq("id", input.id);
 

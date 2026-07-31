@@ -62,10 +62,9 @@ export async function getCommunicationTargetsAction(): Promise<{
     return { customers: [], orders: [] };
   }
 
-  const admin = createAdminClient();
   const [customers, orders] = await Promise.all([
-    hasPermission(permissions, "customers.view") ? getCustomers(admin) : Promise.resolve([]),
-    hasPermission(permissions, "orders.view") ? getAllOrders(admin) : Promise.resolve([]),
+    hasPermission(permissions, "customers.view") ? getCustomers(supabase) : Promise.resolve([]),
+    hasPermission(permissions, "orders.view") ? getAllOrders(supabase) : Promise.resolve([]),
   ]);
   return { customers, orders };
 }

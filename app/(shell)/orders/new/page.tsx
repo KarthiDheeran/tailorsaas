@@ -164,11 +164,13 @@ function buildOrderConfirmationMessage(order: Order): string {
 
 function OrderSectionCombobox({
   value,
+  options,
   inputRef,
   onChange,
   hasError = false,
 }: {
   value: GarmentSection | "";
+  options: { section: GarmentSection; code: number }[];
   inputRef: React.RefObject<HTMLInputElement>;
   onChange: (section: GarmentSection) => void;
   hasError?: boolean;
@@ -177,14 +179,14 @@ function OrderSectionCombobox({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const selected = ORDER_SECTION_OPTIONS.find((option) => option.section === value);
-  const filtered = ORDER_SECTION_OPTIONS.filter((option) => {
+  const selected = options.find((option) => option.section === value);
+  const filtered = options.filter((option) => {
     const normalized = query.trim().toLowerCase();
     return !normalized || option.code.toString().startsWith(normalized) || option.section.toLowerCase().startsWith(normalized);
   });
   const inputValue = open ? query : selected ? `${selected.code} - ${selected.section}` : "";
 
-  function selectSection(option: (typeof ORDER_SECTION_OPTIONS)[number]) {
+  function selectSection(option: (typeof options)[number]) {
     setOpen(false);
     setQuery("");
     setActiveIndex(0);
@@ -206,7 +208,7 @@ function OrderSectionCombobox({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const exactCode = ORDER_SECTION_OPTIONS.find((option) => option.code.toString() === query.trim());
+      const exactCode = options.find((option) => option.code.toString() === query.trim());
       const option = exactCode ?? filtered[activeIndex];
       if (option) selectSection(option);
       return;
@@ -292,6 +294,7 @@ function NewOrderPageContent() {
   const deliveryDateWasEditedRef = useRef(false);
   const {
     hasPermission,
+    currentUser,
     currentUserId,
     isLoading: isCurrentUserLoading,
   } = useCurrentUser();
@@ -368,6 +371,12 @@ function NewOrderPageContent() {
   const [measurementTakenByOperatorId, setMeasurementTakenByOperatorId] = useState("");
 
   useEffect(() => {
+    if (!orderSection && currentUser?.allowed_order_sections.length === 1) {
+      setOrderSection(currentUser.allowed_order_sections[0]);
+    }
+  }, [currentUser?.allowed_order_sections, orderSection]);
+
+  useEffect(() => {
     let cancelled = false;
     Promise.all([getActiveOperatorStaffAction(), getOperatorModeAction()]).then(([staffResult, mode]) => {
       if (cancelled) return;
@@ -387,6 +396,15 @@ function NewOrderPageContent() {
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
   const [garmentConfigurationsLoaded, setGarmentConfigurationsLoaded] = useState(false);
+  const allowedOrderSections = currentUser?.allowed_order_sections.length
+    ? currentUser.allowed_order_sections
+    : [...GARMENT_SECTIONS];
+  const orderSectionOptions = ORDER_SECTION_OPTIONS.filter((option) =>
+    allowedOrderSections.includes(option.section)
+  );
+  const visibleGarmentTypes = orderSection
+    ? garmentTypes.filter((garment) => garment.section === orderSection)
+    : garmentTypes.filter((garment) => allowedOrderSections.includes(garment.section));
 
   useEffect(() => {
     if (isCurrentUserLoading) return;
@@ -734,7 +752,7 @@ function NewOrderPageContent() {
 
   const { computedItems, totalAmount: taxableSubtotal } = computeOrderItems(
     items,
-    garmentTypes,
+    visibleGarmentTypes,
     addOns
   );
   const taxBreakdown = getOrderTaxBreakdown(taxableSubtotal, billingSettings);
@@ -760,7 +778,7 @@ function NewOrderPageContent() {
     const computed = computedItems[index];
     const valid = item.garmentTypeId && computed.qty > 0 && computed.rate >= 0;
     const garmentName =
-      garmentTypes.find((garment) => garment.id === item.garmentTypeId)?.name ||
+      visibleGarmentTypes.find((garment) => garment.id === item.garmentTypeId)?.name ||
       computed.particular ||
       "Unselected item";
     attachmentItemOptions.push({
@@ -842,6 +860,14 @@ function NewOrderPageContent() {
 
   function handleOrderSectionChange(section: GarmentSection) {
     setOrderSection(section);
+    setItems((current) =>
+      current.map((item) =>
+        item.garmentTypeId &&
+        !garmentTypes.some((garment) => garment.id === item.garmentTypeId && garment.section === section)
+          ? { ...blankDraftItem(), draftKey: item.draftKey }
+          : item
+      )
+    );
     window.setTimeout(() => setGarmentFocusRequest((current) => current + 1), 0);
   }
 
@@ -1088,7 +1114,7 @@ function NewOrderPageContent() {
     for (const it of items) {
       if (!it.measurement?.updateCustomerMeasurements) continue;
       if (countFilledFields(it.measurement) === 0) continue;
-      const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
+      const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
       if (!garment) continue;
       profileUpdateCounts.set(
         garment.name,
@@ -1108,7 +1134,7 @@ function NewOrderPageContent() {
 
     async function persistMeasurementEdits(customerId: string): Promise<string | null> {
       for (const it of items) {
-        const garment = garmentTypes.find((g) => g.id === it.garmentTypeId);
+        const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
         if (!garment || !it.measurement) continue;
         if (!it.measurement.updateCustomerMeasurements) continue;
         if (countFilledFields(it.measurement) === 0) continue;
@@ -1649,11 +1675,12 @@ function NewOrderPageContent() {
                   <span className="text-[15px] font-semibold text-ink">Order Section</span>
                   <OrderSectionCombobox
                     value={orderSection}
+                    options={orderSectionOptions}
                     inputRef={orderSectionRef}
                     onChange={handleOrderSectionChange}
                     hasError={submitAttempted && !!errors.orderSection}
                   />
-                  <p className="text-xs text-ink-muted">Type code: 1 Men � 2 Chutti � 3 Blouse</p>
+                  <p className="text-xs text-ink-muted">Type code: {orderSectionOptions.map((option) => `${option.code} ${option.section}`).join(" / ")}</p>
                 </div>
                 {submitAttempted && errors.orderSection && (
                   <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
@@ -1672,7 +1699,7 @@ function NewOrderPageContent() {
               customerId={matchedCustomer?.id ?? null}
               items={items}
               onItemsChange={setItems}
-              garmentTypes={garmentTypes}
+              garmentTypes={visibleGarmentTypes}
               addOns={addOns}
               garmentConfigurations={garmentConfigurations}
               garmentConfigurationsLoaded={garmentConfigurationsLoaded}

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { GarmentSection } from "@/lib/catalog";
 import type { Permission } from "@/lib/permissions";
 import { hasPermission } from "@/lib/permissions";
 
@@ -72,7 +73,14 @@ export async function getServerCallerPermissions(
 
 export async function getServerCallerContext(
   supabase: SupabaseClient
-): Promise<{ userId: string; staffId: string | null; permissions: Permission[] } | null> {
+): Promise<{
+  userId: string;
+  staffId: string | null;
+  tenantId: string | null;
+  shopId: string | null;
+  allowedOrderSections: GarmentSection[];
+  permissions: Permission[];
+} | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -80,7 +88,7 @@ export async function getServerCallerContext(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role_id, active, staff_id")
+    .select("role_id, active, staff_id, tenant_id, shop_id, allowed_order_sections")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || !profile.active) return null;
@@ -94,6 +102,9 @@ export async function getServerCallerContext(
   return {
     userId: user.id,
     staffId: (profile.staff_id as string | null) ?? null,
+    tenantId: (profile.tenant_id as string | null) ?? null,
+    shopId: (profile.shop_id as string | null) ?? null,
+    allowedOrderSections: ((profile.allowed_order_sections as GarmentSection[] | null) ?? []),
     permissions: (role?.permissions as Permission[]) ?? [],
   };
 }

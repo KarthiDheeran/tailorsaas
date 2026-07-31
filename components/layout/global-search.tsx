@@ -18,7 +18,7 @@ const DEBOUNCE_MS = 220;
 
 function isOrderCode(value: string) {
   const code = value.trim().toUpperCase();
-  return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+)$/.test(code);
+  return /^TS\|ORD\|[A-Z0-9]{12,}$/.test(code) || /^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+|\d+)$/.test(code);
 }
 
 function isStageSlipCode(value: string) {

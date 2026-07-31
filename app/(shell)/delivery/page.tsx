@@ -272,7 +272,7 @@ function DeliveryDeskContent() {
           <label className="relative block min-w-0 flex-1">
             <span className="mb-1 block text-xs font-semibold text-ink-muted">Receipt barcode / Order number</span>
             <Barcode className="pointer-events-none absolute bottom-3 left-3 h-4 w-4 text-ink-faint" />
-            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter M-1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted" />
+            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter 1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted" />
           </label>
           <button type="submit" disabled={quickBusy || !quickCode.trim()} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Find Order</button>
         </form>

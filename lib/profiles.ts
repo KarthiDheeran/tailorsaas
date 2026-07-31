@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { GarmentSection } from "@/lib/catalog";
 import { SYSTEM_ROLE_IDS } from "@/lib/roles";
 
 // ---------------------------------------------------------------------------
@@ -25,11 +26,14 @@ export interface AppUser {
   active: boolean;
   must_change_password: boolean;
   staff_id: string | null;
+  tenant_id: string;
+  shop_id: string | null;
+  allowed_order_sections: GarmentSection[];
   preferred_theme?: "modern" | "classic" | "classic-dark";
 }
 
 const PROFILE_COLUMNS =
-  "id, full_name, phone, role_id, active, must_change_password, staff_id, preferred_theme";
+  "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme";
 
 export async function getAppUsers(supabase: SupabaseClient): Promise<AppUser[]> {
   const { data, error } = await supabase

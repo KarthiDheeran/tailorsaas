@@ -4,20 +4,25 @@ import { Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AppUser } from "@/lib/profiles";
 import type { Role } from "@/lib/roles";
+import type { Shop } from "@/lib/shops";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 export function UsersTable({
   users,
   roles,
+  shops,
   onEdit,
 }: {
   users: AppUser[];
   roles: Role[];
+  shops: Shop[];
   onEdit: (user: AppUser) => void;
 }) {
   const { t } = useLanguage();
   const roleName = (roleId: string) =>
-    roles.find((r) => r.id === roleId)?.name ?? "—";
+    roles.find((r) => r.id === roleId)?.name ?? "-";
+  const shopName = (shopId: string | null) =>
+    shopId ? shops.find((shop) => shop.id === shopId)?.name ?? "Unknown shop" : "All shops";
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
@@ -27,6 +32,8 @@ export function UsersTable({
             <th className="whitespace-nowrap px-5 py-3">{t("common.name")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("common.phone")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("usersAccess.assignedRole")}</th>
+            <th className="whitespace-nowrap px-5 py-3">Shop</th>
+            <th className="whitespace-nowrap px-5 py-3">Sections</th>
             <th className="whitespace-nowrap px-5 py-3">{t("common.active")}</th>
             <th className="whitespace-nowrap px-5 py-3 text-right">
               {t("common.actions")}
@@ -43,10 +50,16 @@ export function UsersTable({
                 {user.full_name}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
-                {user.phone ?? "—"}
+                {user.phone ?? "-"}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                 {roleName(user.role_id)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {shopName(user.shop_id)}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
+                {user.allowed_order_sections.join(", ") || "-"}
               </td>
               <td className="whitespace-nowrap px-5 py-3">
                 <span

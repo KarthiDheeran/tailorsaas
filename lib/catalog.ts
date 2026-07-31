@@ -199,7 +199,7 @@ export interface CatalogGarmentType {
   isActive: boolean;
 }
 
-export const GARMENT_SECTIONS = ["Men", "Chutti", "Blouse"] as const;
+export const GARMENT_SECTIONS = ["Men", "Chudidar", "Blouse"] as const;
 export type GarmentSection = (typeof GARMENT_SECTIONS)[number];
 
 export function isGarmentSection(value: unknown): value is GarmentSection {
@@ -213,7 +213,7 @@ export function defaultGarmentSectionForName(name: string): GarmentSection {
     case "half pant":
     case "skirt":
     case "finoform":
-      return "Chutti";
+      return "Chudidar";
     default:
       return "Men";
   }

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { Role } from "@/lib/roles";
+import { GARMENT_SECTIONS, type GarmentSection } from "@/lib/catalog";
+import type { Shop } from "@/lib/shops";
 import { createClient } from "@/lib/supabase/client";
 import { Select } from "@/components/ui/select";
 
@@ -16,6 +18,8 @@ export interface CreateUserInput {
   roleId: string;
   phone?: string;
   staffId?: string;
+  shopId?: string;
+  allowedOrderSections: GarmentSection[];
 }
 
 // Dedicated creation drawer, not a mode flag on UserEditDrawer — email and
@@ -24,10 +28,12 @@ export interface CreateUserInput {
 // these separate (same call already made for Edit Order vs. New Order).
 export function AddUserDrawer({
   roles,
+  shops,
   onCancel,
   onCreate,
 }: {
   roles: Role[];
+  shops: Shop[];
   onCancel: () => void;
   onCreate: (input: CreateUserInput) => Promise<{ success: boolean; error?: string }>;
 }) {
@@ -37,6 +43,10 @@ export function AddUserDrawer({
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
   const [phone, setPhone] = useState("");
   const [staffId, setStaffId] = useState("");
+  const [shopId, setShopId] = useState("");
+  const [allowedOrderSections, setAllowedOrderSections] = useState<GarmentSection[]>([
+    ...GARMENT_SECTIONS,
+  ]);
   const [staffOptions, setStaffOptions] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -67,6 +77,7 @@ export function AddUserDrawer({
     if (!email.trim()) return setError("Email is required.");
     if (tempPassword.length < 8) return setError("Temporary password must be at least 8 characters.");
     if (!roleId) return setError("Select a role.");
+    if (allowedOrderSections.length === 0) return setError("Choose at least one order section.");
 
     setSubmitting(true);
     const result = await onCreate({
@@ -76,6 +87,8 @@ export function AddUserDrawer({
       roleId,
       phone: phone.trim() || undefined,
       staffId: staffId || undefined,
+      shopId: shopId || undefined,
+      allowedOrderSections,
     });
     setSubmitting(false);
     if (!result.success) {
@@ -170,6 +183,42 @@ export function AddUserDrawer({
                     ))}
                   </Select>
                 </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">Shop</span>
+                  <Select value={shopId} onChange={(e) => setShopId(e.target.value)}>
+                    <option value="">All shops</option>
+                    {shops.map((shop) => (
+                      <option key={shop.id} value={shop.id}>
+                        {shop.name}
+                        {shop.location ? ` - ${shop.location}` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[13px] font-medium text-ink-muted">Order sections</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GARMENT_SECTIONS.map((section) => (
+                      <label
+                        key={section}
+                        className="flex items-center gap-2 rounded-lg border border-border-soft px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allowedOrderSections.includes(section)}
+                          onChange={(event) =>
+                            setAllowedOrderSections((current) =>
+                              event.target.checked
+                                ? Array.from(new Set([...current, section]))
+                                : current.filter((item) => item !== section)
+                            )
+                          }
+                        />
+                        {section}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     Link to staff record <span className="font-normal">(optional)</span>

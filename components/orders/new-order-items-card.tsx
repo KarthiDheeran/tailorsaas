@@ -927,9 +927,9 @@ function ConfigureItemModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] bg-black/30" onClick={onCancel} />
+      <div className="fixed inset-0 z-[60] bg-white" />
       <div
-        className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+        className="fixed inset-0 z-[70] flex items-stretch justify-stretch"
         onKeyDown={handleKeyDown}
       >
         <div
@@ -937,7 +937,7 @@ function ConfigureItemModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="configure-item-title"
-          className="flex max-h-[calc(100vh-32px)] w-full max-w-[940px] flex-col overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft"
+          className="flex h-screen w-screen flex-col overflow-hidden bg-white"
         >
           <div className="border-b border-border-soft px-5">
             <div className="flex min-h-14 items-center justify-between gap-3">
@@ -961,7 +961,7 @@ function ConfigureItemModal({
           </div>
 
           <form ref={formRef} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3">
+            <div className="border-b border-border-soft px-5 py-3">
               <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                 <span className="w-20 shrink-0 text-sm font-medium text-ink-muted">
                   Load from:
@@ -1022,23 +1022,26 @@ function ConfigureItemModal({
                   </div>
                 )}
               </div>
+            </div>
 
-              <section className="space-y-5">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-surface-muted/40 px-5 py-4">
+              <section className="flex h-full min-w-max gap-4">
                 {metadataLoading ? (
-                  <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
+                  <p className="min-w-[430px] rounded-lg bg-white px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
                   <GarmentFormFields
                     fields={nonInstructionFields}
                     values={typedFieldDraft.typedValues}
                     onChange={handleGarmentFieldChange}
+                    layout="columns"
                   />
                 ) : (
-                  <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">
+                  <p className="min-w-[430px] rounded-lg bg-white px-3 py-2 text-sm text-ink-muted">
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
 
-                <section className="border-t border-border-soft pt-4">
+                <section className="h-full min-w-[430px] max-w-[520px] overflow-y-auto rounded-lg border border-border-soft bg-white p-4">
                   <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
                   <p className="mb-2 text-sm text-ink-muted">
                     Selected extras are added to Final Instructions for the tailor.
@@ -1072,7 +1075,7 @@ function ConfigureItemModal({
                   )}
                 </section>
 
-                <section className="border-t border-border-soft pt-4">
+                <section className="h-full min-w-[430px] max-w-[560px] overflow-y-auto rounded-lg border border-border-soft bg-white p-4">
                   <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
                   {!metadataLoading && instructionFields.length > 0 && (
                     <GarmentFormFields

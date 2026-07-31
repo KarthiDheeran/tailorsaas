@@ -22,6 +22,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import type { Permission } from "@/lib/permissions";
+import type { GarmentSection } from "@/lib/catalog";
 import {
   hasAllPermissions as checkAllPermissions,
   hasAnyPermission as checkAnyPermission,
@@ -70,6 +71,8 @@ interface CurrentUserContextValue {
     roleId: string;
     active: boolean;
     staffId?: string;
+    shopId?: string;
+    allowedOrderSections: GarmentSection[];
   }) => Promise<ActionResult>;
   resetUserPassword: (input: { userId: string; tempPassword: string }) => Promise<ActionResult>;
   createRole: (input: RoleInput) => Promise<ActionResult>;
@@ -146,8 +149,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         let profileRow: ProfileWithRole | null = null;
         const joined = await supabase
           .from("profiles")
-          .select(
-            "id, full_name, phone, role_id, active, must_change_password, staff_id, preferred_theme, role:roles(id,name,description,type,permissions)"
+            .select(
+            "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme, role:roles(id,name,description,type,permissions)"
           )
           .eq("id", authUserId)
           .maybeSingle();
@@ -156,7 +159,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         if (error) {
           const fallback = await supabase
             .from("profiles")
-            .select("id, full_name, phone, role_id, active, must_change_password, staff_id")
+            .select("id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections")
             .eq("id", authUserId)
             .maybeSingle();
           profileRow = fallback.data as ProfileWithRole | null;
@@ -287,6 +290,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       roleId: string;
       active: boolean;
       staffId?: string;
+      shopId?: string;
+      allowedOrderSections: GarmentSection[];
     }): Promise<ActionResult> => {
       const result = await updateUserProfileAction(input);
       if (result.success) setRefreshTick((t) => t + 1);

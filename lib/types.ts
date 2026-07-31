@@ -507,7 +507,11 @@ export type PaymentStatus = "Not calculated" | "Paid" | "Due" | "Overdue";
 
 export interface Order {
   id: string;
+  tenantId?: string;
+  shopId?: string;
   orderNumber: string;
+  orderSequence?: number;
+  orderSection?: import("@/lib/catalog").GarmentSection;
   scanToken?: string;
   invoiceNumber?: string;
   customerId: string;
