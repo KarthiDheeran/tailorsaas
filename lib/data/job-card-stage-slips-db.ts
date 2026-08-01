@@ -289,6 +289,33 @@ export async function getPendingJobCardStageSlip(
 }
 
 /**
+ * Returns the first printed slip for one garment line/unit range and stage.
+ * Reprints must use this instead of creating a new barcode, even if the slip
+ * was already tallied, so physical paper copies keep the original slip code.
+ */
+export async function getFirstJobCardStageSlip(
+  supabase: SupabaseClient,
+  input: Pick<CreateJobCardStageSlipInput, "orderId" | "orderItemSerialNo" | "unitNo" | "stage" | "quantity">
+): Promise<JobCardStageSlip | undefined> {
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .eq("order_id", input.orderId)
+    .eq("order_item_serial_no", input.orderItemSerialNo)
+    .eq("unit_no", input.unitNo)
+    .eq("stage", input.stage)
+    .eq("quantity", input.quantity ?? 1)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
+    throw error;
+  }
+  return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+}
+
+/**
  * Binds an unassigned printed slip to the worker who actually completed it.
  * The scan screen uses this immediately before tallying, so payroll is based
  * on the selected worker's rate instead of requiring assignment at print time.

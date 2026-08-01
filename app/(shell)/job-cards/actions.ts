@@ -31,10 +31,10 @@ import {
 import {
   createJobCardStageSlip,
   assignJobCardStageSlipForTally,
+  getFirstJobCardStageSlip,
   getJobCardStageSlipsByIds,
   getJobCardStageSlipById,
   getJobCardStageSlipByScanCode,
-  getPendingJobCardStageSlip,
   getTalliedJobCardStageSlips,
   isMissingJobCardStageSlipsSchemaError,
   markJobCardStageSlipTallied,
@@ -120,6 +120,21 @@ const VALID_STAGES = new Set<JobCardStage>([
   "Ready",
 ]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const STAGE_SLIP_DISPLAY_ORDER: TaskType[] = [
+  "Cutting",
+  "Stitching",
+  "Embroidery",
+  "Finishing",
+  "Alteration",
+  "Ironing/Packing",
+  "Delivery",
+  "Measurement",
+];
+const COMPATIBILITY_STAGE_SLIP_NOTE_PREFIX = "[compat-batch-unit]";
+
+function isCompatibilityStageSlip(slip: JobCardStageSlip) {
+  return slip.notes?.startsWith(COMPATIBILITY_STAGE_SLIP_NOTE_PREFIX) ?? false;
+}
 
 async function isConfiguredWorkStage(stage: string): Promise<boolean> {
   const supabase = createServerClient();
@@ -159,6 +174,49 @@ export interface JobCardsPageData {
   inventoryMovements: InventoryMovement[] | null;
 }
 
+function attachStageSlipCodesToJobCards(
+  cards: JobCard[] | null,
+  slips: JobCardStageSlip[]
+): JobCard[] | null {
+  if (!cards || cards.length === 0 || slips.length === 0) return cards;
+  const slipRefsByCardId = new Map<string, { slipCode: string; stage: TaskType }[]>();
+  for (const slip of slips) {
+    const firstUnit = slip.unitNo;
+    const lastUnit = slip.unitNo + Math.max(1, slip.quantity) - 1;
+    for (const card of cards) {
+      if (
+        card.orderId !== slip.orderId ||
+        card.item.serialNo !== slip.orderItemSerialNo ||
+        card.unitNo < firstUnit ||
+        card.unitNo > lastUnit
+      ) {
+        continue;
+      }
+      const current = slipRefsByCardId.get(card.id) ?? [];
+      if (!current.some((entry) => entry.slipCode === slip.slipCode)) {
+        current.push({ slipCode: slip.slipCode, stage: slip.stage });
+      }
+      slipRefsByCardId.set(card.id, current);
+    }
+  }
+  if (slipRefsByCardId.size === 0) return cards;
+  return cards.map((card) => ({
+    ...card,
+    stageSlipCode: slipRefsByCardId.get(card.id)?.[0]?.slipCode ?? card.stageSlipCode,
+    stageSlipCodes: slipRefsByCardId.get(card.id)?.map((entry) => entry.slipCode) ?? card.stageSlipCodes,
+    stageSlipRefs:
+      slipRefsByCardId
+        .get(card.id)
+        ?.slice()
+        .sort(
+          (a, b) =>
+            STAGE_SLIP_DISPLAY_ORDER.indexOf(a.stage) -
+              STAGE_SLIP_DISPLAY_ORDER.indexOf(b.stage) ||
+            a.slipCode.localeCompare(b.slipCode)
+        ) ?? card.stageSlipRefs,
+  }));
+}
+
 export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | null> {
   const supabase = createServerClient();
   const context = await getServerCallerContext(supabase);
@@ -174,7 +232,11 @@ export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | n
 
   try {
     const staffList = await getStaff(supabase).catch(() => []);
-    return await getJobCards(supabase, todayIso, staffList, { assignedStaffId });
+    const [cards, slips] = await Promise.all([
+      getJobCards(supabase, todayIso, staffList, { assignedStaffId }),
+      getTalliedJobCardStageSlips(supabase),
+    ]);
+    return attachStageSlipCodesToJobCards(cards, slips.filter((slip) => !isCompatibilityStageSlip(slip)));
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return null;
     throw error;
@@ -216,11 +278,12 @@ export async function getJobCardsPageDataAction(
   const visibleStaff = assignedStaffId
     ? staffForCards.filter((staff) => staff.id === assignedStaffId)
     : staffForCards;
-  const [jobCards, orders, staff, assignments, inventory] = await Promise.all([
+  const [jobCards, stageSlips, orders, staff, assignments, inventory] = await Promise.all([
     profileDataFunction({ functionName: "getJobCards", tableOrRpc: "job_cards" }, () => getJobCards(supabase, todayIso, visibleStaff, { assignedStaffId })).catch((error) => {
       if (isMissingJobCardsSchemaError(error)) return null;
       throw error;
     }),
+    profileDataFunction({ functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" }, () => getTalliedJobCardStageSlips(supabase)),
     canViewOrders && !assignedStaffId ? profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)) : Promise.resolve([]),
     canViewStaff ? Promise.resolve(visibleStaff) : Promise.resolve([]),
     canViewStaff
@@ -234,7 +297,10 @@ export async function getJobCardsPageDataAction(
   ]);
 
   return {
-    jobCards,
+    jobCards: attachStageSlipCodesToJobCards(
+      jobCards,
+      stageSlips.filter((slip) => !isCompatibilityStageSlip(slip))
+    ),
     orders,
     staff,
     assignments,
@@ -482,6 +548,84 @@ export async function getQuickTallyStaffAction(): Promise<Staff[]> {
   );
 }
 
+async function missingCompletedStitchingUnitsForOrder(order: Order): Promise<number> {
+  const admin = createAdminClient();
+  const [
+    { data: cardRows, error: cardsError },
+    { data: earningRows, error: earningsError },
+    { data: slipRows, error: slipsError },
+  ] = await Promise.all([
+      admin
+        .from("job_cards")
+        .select("id, order_item_serial_no, unit_no, cancelled")
+        .eq("order_id", order.id),
+      admin
+        .from("staff_work_earnings")
+        .select("job_card_id")
+        .eq("order_id", order.id)
+        .eq("task_type", "Stitching"),
+      admin
+        .from("job_card_stage_slips")
+        .select("order_item_serial_no, unit_no, quantity")
+        .eq("order_id", order.id)
+        .eq("stage", "Stitching")
+        .not("tallied_at", "is", null),
+    ]);
+
+  if (cardsError) throw cardsError;
+  if (earningsError) throw earningsError;
+  if (slipsError) throw slipsError;
+
+  const completedJobCardIds = new Set(
+    ((earningRows ?? []) as { job_card_id: string | null }[])
+      .map((row) => row.job_card_id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const activeCardsByItem = new Map<number, { id: string; unit_no: number }[]>();
+  for (const row of (cardRows ?? []) as {
+    id: string;
+    order_item_serial_no: number | null;
+    unit_no: number | null;
+    cancelled: boolean | null;
+  }[]) {
+    if (row.cancelled || row.order_item_serial_no == null || row.unit_no == null) continue;
+    const cards = activeCardsByItem.get(row.order_item_serial_no) ?? [];
+    cards.push({ id: row.id, unit_no: row.unit_no });
+    activeCardsByItem.set(row.order_item_serial_no, cards);
+  }
+
+  let missing = 0;
+  for (const item of order.items) {
+    const requiredUnits = Math.max(1, Number(item.qty) || 1);
+    const completedSlipUnits = new Set<number>();
+    for (const slip of (slipRows ?? []) as {
+      order_item_serial_no: number | null;
+      unit_no: number | null;
+      quantity: number | null;
+    }[]) {
+      if (slip.order_item_serial_no !== item.serialNo || slip.unit_no == null) continue;
+      const firstUnit = slip.unit_no;
+      const lastUnit = Math.min(requiredUnits, firstUnit + Math.max(1, Number(slip.quantity) || 1) - 1);
+      for (let unit = firstUnit; unit <= lastUnit; unit += 1) {
+        completedSlipUnits.add(unit);
+      }
+    }
+    if (completedSlipUnits.size >= requiredUnits) continue;
+
+    const itemCards = (activeCardsByItem.get(item.serialNo) ?? []).filter(
+      (card) => card.unit_no >= 1 && card.unit_no <= requiredUnits
+    );
+    if (itemCards.length === 0) {
+      missing += requiredUnits - completedSlipUnits.size;
+      continue;
+    }
+    missing += itemCards.filter(
+      (card) => !completedSlipUnits.has(card.unit_no) && !completedJobCardIds.has(card.id)
+    ).length;
+  }
+  return missing;
+}
+
 export async function markOrderReadyWithBinAction(
   orderId: string,
   deliveryBin?: string
@@ -491,11 +635,51 @@ export async function markOrderReadyWithBinAction(
   if (!guard.ok) return { success: false, error: guard.error };
   if (!orderId) return { success: false, error: "Order is required." };
 
-  const { error } = await supabase.rpc("mark_order_ready_with_bin", {
-    p_order_id: orderId,
-    p_delivery_bin: deliveryBin?.trim() || null,
-  });
-  if (error) return { success: false, error: errorMessage(error, "Could not mark the order ready.") };
+  const orderBefore = await getOrderById(supabase, orderId);
+  if (!orderBefore) return { success: false, error: "Order not found." };
+  if (orderBefore.status === "Cancelled" || orderBefore.status === "Delivered") {
+    return { success: false, error: "Cancelled or delivered orders cannot be marked ready." };
+  }
+
+  try {
+    const missingUnits = await missingCompletedStitchingUnitsForOrder(orderBefore);
+    if (missingUnits > 0) {
+      return {
+        success: false,
+        error: `Cannot mark order ${orderBefore.orderNumber} ready or delivered: ${missingUnits} garment unit(s) still need a completed Stitching scan.`,
+      };
+    }
+
+    const admin = createAdminClient();
+    const now = new Date().toISOString();
+    const todayIso = now.slice(0, 10);
+    const { error: orderError } = await admin
+      .from("orders")
+      .update({
+        status: "Ready",
+        delivery_bin: deliveryBin?.trim() || null,
+        updated_at: now,
+      })
+      .eq("id", orderId)
+      .not("status", "in", '("Cancelled","Delivered")');
+    if (orderError) throw orderError;
+
+    const { error: cardsError } = await admin
+      .from("job_cards")
+      .update({
+        current_stage: "Ready",
+        order_status: "Ready",
+        assigned_staff_id: null,
+        completed_date: todayIso,
+        updated_at: now,
+      })
+      .eq("order_id", orderId)
+      .eq("cancelled", false);
+    if (cardsError) throw cardsError;
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Could not mark the order ready.") };
+  }
+
   const order = await getOrderById(supabase, orderId);
   return order ? { success: true, data: order } : { success: false, error: "Order not found." };
 }
@@ -526,7 +710,7 @@ export async function createProductionPrintBundleAction(
             quantity,
             stage,
           };
-          const existing = await getPendingJobCardStageSlip(supabase, input);
+          const existing = await getFirstJobCardStageSlip(supabase, input);
           slips.push(existing ?? await createJobCardStageSlip(supabase, input));
         }
       }
@@ -610,6 +794,9 @@ async function confirmStageSlipTally(
     }
 
     const tallied = await markJobCardStageSlipTallied(admin, slip.id);
+    if (tallied) {
+      await createBatchUnitCompatibilitySlips(admin, tallied);
+    }
     return tallied
       ? { success: true, data: tallied }
       : { success: false, error: "Job card not found." };
@@ -624,11 +811,67 @@ async function confirmStageSlipTally(
   }
 }
 
+async function createBatchUnitCompatibilitySlips(
+  supabase: ReturnType<typeof createAdminClient>,
+  slip: JobCardStageSlip
+) {
+  const quantity = Math.max(1, Number(slip.quantity) || 1);
+  if (quantity <= 1 || !slip.talliedAt) return;
+
+  const units = Array.from({ length: quantity - 1 }, (_, index) => slip.unitNo + index + 1);
+  const { data: existingRows, error: existingError } = await supabase
+    .from("job_card_stage_slips")
+    .select("unit_no")
+    .eq("order_id", slip.orderId)
+    .eq("order_item_serial_no", slip.orderItemSerialNo)
+    .eq("stage", slip.stage)
+    .in("unit_no", units)
+    .not("tallied_at", "is", null);
+  if (existingError) throw existingError;
+
+  const existingUnits = new Set(
+    ((existingRows ?? []) as { unit_no: number | null }[])
+      .map((row) => row.unit_no)
+      .filter((unit): unit is number => typeof unit === "number")
+  );
+  const rows = units
+    .filter((unitNo) => !existingUnits.has(unitNo))
+    .map((unitNo) => ({
+      order_id: slip.orderId,
+      order_item_serial_no: slip.orderItemSerialNo,
+      unit_no: unitNo,
+      order_number: slip.orderNumber,
+      customer_id: slip.customerId,
+      customer_snapshot: slip.customerSnapshot ?? null,
+      garment_type: slip.garmentType,
+      quantity: 1,
+      stage: slip.stage,
+      staff_id: slip.staffId ?? null,
+      staff_name: slip.staffName,
+      wage_rate: 0,
+      wage_amount: 0,
+      measurements_snapshot: slip.measurementsSnapshot ?? null,
+      field_schema_snapshot: slip.fieldSchemaSnapshot ?? null,
+      add_ons_snapshot: slip.addOnsSnapshot ?? null,
+      labour_add_ons_snapshot: slip.labourAddOnsSnapshot ?? null,
+      notes: `${COMPATIBILITY_STAGE_SLIP_NOTE_PREFIX} ${slip.slipCode}`,
+      printed_at: slip.printedAt,
+      tallied_at: slip.talliedAt,
+    }));
+
+  if (rows.length === 0) return;
+  const { error } = await supabase.from("job_card_stage_slips").insert(rows);
+  if (error) throw error;
+}
+
 export async function getTalliedJobCardStageSlipsAction(): Promise<JobCardStageSlip[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return [];
-  return withPerformanceContext("getTalliedJobCardStageSlipsAction", () => profileDataFunction({ functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" }, () => getTalliedJobCardStageSlips(supabase)));
+  return withPerformanceContext("getTalliedJobCardStageSlipsAction", async () => {
+    const slips = await profileDataFunction({ functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" }, () => getTalliedJobCardStageSlips(supabase));
+    return slips.filter((slip) => !isCompatibilityStageSlip(slip));
+  });
 }
 
 export async function assignJobCardAction(

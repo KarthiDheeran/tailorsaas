@@ -378,6 +378,17 @@ function JobCardWorkQueueTable({
 type PayablePeriod = "This Week" | "This Month" | "All";
 const PAYABLE_DETAIL_PREVIEW_LIMIT = 10;
 
+interface PayableWorkRow {
+  id: string;
+  taskType: string;
+  completedDate: string;
+  sourceSlipCode?: string;
+  jobCardNumbers: string[];
+  quantity: number;
+  wageRates: Set<number>;
+  wageAmount: number;
+}
+
 function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -420,6 +431,63 @@ function isWithinPayablePeriod(dateIso: string | undefined, period: PayablePerio
   if (end && dateIso > end) return false;
   if (period === "This Month" && dateIso.slice(0, 7) !== todayIso.slice(0, 7)) return false;
   return true;
+}
+
+function payableWorkKey(earning: StaffWorkEarning) {
+  return earning.sourceSlipCode
+    ? `slip:${earning.sourceSlipCode}:${earning.staffId}:${earning.taskType}:${earning.completedDate}`
+    : `earning:${earning.id}`;
+}
+
+function groupedPayableWorkRows(earnings: StaffWorkEarning[]): PayableWorkRow[] {
+  const byKey = new Map<string, PayableWorkRow>();
+  for (const earning of earnings) {
+    const key = payableWorkKey(earning);
+    const current =
+      byKey.get(key) ??
+      {
+        id: key,
+        taskType: earning.taskType,
+        completedDate: earning.completedDate,
+        sourceSlipCode: earning.sourceSlipCode,
+        jobCardNumbers: [],
+        quantity: 0,
+        wageRates: new Set<number>(),
+        wageAmount: 0,
+      };
+    current.quantity += 1;
+    current.wageAmount += Number(earning.wageAmount);
+    current.wageRates.add(Number(earning.wageRate));
+    if (!current.jobCardNumbers.includes(earning.jobCardNumber)) {
+      current.jobCardNumbers.push(earning.jobCardNumber);
+    }
+    byKey.set(key, current);
+  }
+
+  return Array.from(byKey.values())
+    .map((row) => ({
+      ...row,
+      jobCardNumbers: row.jobCardNumbers.sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true })
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.completedDate.localeCompare(a.completedDate) ||
+        (b.sourceSlipCode ?? "").localeCompare(a.sourceSlipCode ?? "", undefined, { numeric: true }) ||
+        a.taskType.localeCompare(b.taskType)
+    );
+}
+
+function rateLabelForPayableRow(row: PayableWorkRow) {
+  if (row.wageRates.size === 1) return formatCurrency(Array.from(row.wageRates)[0]);
+  return "mixed rates";
+}
+
+function jobCardRangeLabel(numbers: string[]) {
+  if (numbers.length === 0) return "";
+  if (numbers.length === 1) return numbers[0];
+  return `${numbers[0]} to ${numbers[numbers.length - 1]}`;
 }
 
 function StaffPayablesTable({
@@ -634,6 +702,10 @@ function StaffPayableDetailsDrawer({
     }
     return Array.from(byTask.values()).sort((a, b) => a.taskType.localeCompare(b.taskType));
   }, [periodEarnings]);
+  const groupedWorkRows = useMemo(
+    () => groupedPayableWorkRows(periodEarnings),
+    [periodEarnings]
+  );
 
   const earned =
     staff.paymentType === "Salary" && period === "This Month"
@@ -643,8 +715,8 @@ function StaffPayableDetailsDrawer({
   const balance = earned - paid;
   const isSalaryOutsideMonth = staff.paymentType === "Salary" && period !== "This Month";
   const visibleEarnings = showAllEarnings
-    ? periodEarnings
-    : periodEarnings.slice(0, PAYABLE_DETAIL_PREVIEW_LIMIT);
+    ? groupedWorkRows
+    : groupedWorkRows.slice(0, PAYABLE_DETAIL_PREVIEW_LIMIT);
   const visiblePayments = showAllPayments
     ? periodPayments
     : periodPayments.slice(0, PAYABLE_DETAIL_PREVIEW_LIMIT);
@@ -755,13 +827,13 @@ function StaffPayableDetailsDrawer({
           <section>
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-ink">Completed Work</h3>
-              {periodEarnings.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+              {groupedWorkRows.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
                 <p className="text-xs text-ink-muted">
-                  Showing {visibleEarnings.length} of {periodEarnings.length}
+                  Showing {visibleEarnings.length} of {groupedWorkRows.length}
                 </p>
               )}
             </div>
-            {periodEarnings.length === 0 ? (
+            {groupedWorkRows.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-border-soft px-3 py-6 text-center text-sm text-ink-muted">
                 No completed job-card work in this period.
               </div>
@@ -775,22 +847,25 @@ function StaffPayableDetailsDrawer({
                     >
                       <div>
                         <p className="font-semibold text-ink">
-                          {earning.jobCardNumber} - {earning.taskType}
+                          {earning.sourceSlipCode
+                            ? `${earning.taskType} - Slip ${earning.sourceSlipCode}`
+                            : `${earning.jobCardNumbers[0]} - ${earning.taskType}`}
                           {earning.sourceSlipCode && (
                             <span className="ml-2 inline-flex rounded-full bg-primary-tint px-2 py-0.5 align-middle text-[11px] font-semibold text-primary">
-                              Slip {earning.sourceSlipCode}
+                              Qty {earning.quantity}
                             </span>
                           )}
                         </p>
                         <p className="text-xs text-ink-muted">
-                          {formatDate(earning.completedDate)} - Rate {formatCurrency(earning.wageRate)}
+                          {formatDate(earning.completedDate)} - {earning.quantity} unit{earning.quantity === 1 ? "" : "s"} x Rate {rateLabelForPayableRow(earning)}
+                          {earning.jobCardNumbers.length > 0 ? ` - ${jobCardRangeLabel(earning.jobCardNumbers)}` : ""}
                         </p>
                       </div>
                       <p className="font-semibold text-ink sm:text-right">{formatCurrency(earning.wageAmount)}</p>
                     </div>
                   ))}
                 </div>
-                {periodEarnings.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
+                {groupedWorkRows.length > PAYABLE_DETAIL_PREVIEW_LIMIT && (
                   <button
                     type="button"
                     onClick={() => setShowAllEarnings((current) => !current)}
@@ -798,7 +873,7 @@ function StaffPayableDetailsDrawer({
                   >
                     {showAllEarnings
                       ? "Show fewer"
-                      : `Show all ${periodEarnings.length} completed entries`}
+                      : `Show all ${groupedWorkRows.length} completed entries`}
                   </button>
                 )}
               </>

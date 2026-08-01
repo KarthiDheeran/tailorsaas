@@ -61,6 +61,13 @@ function stageChipClass(stage: string) {
   return "border-border-soft bg-chip-info text-ink-muted";
 }
 
+function slipGarmentLabel(slip: JobCardStageSlip) {
+  const quantity = Math.max(1, Number(slip.quantity) || 1);
+  return quantity > 1
+    ? `${slip.garmentType} - Qty ${quantity}`
+    : `${slip.garmentType} - Unit ${slip.unitNo}`;
+}
+
 function TallyContent() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const automaticallyOpenedSlipRef = useRef<string | null>(null);
@@ -355,7 +362,7 @@ function TallyContent() {
               <LiveScanField icon={<FileText />} label="Slip" value={latestLiveSlip.slipCode} />
               <LiveScanField icon={<Barcode />} label="Order" value={latestLiveSlip.orderNumber} />
               <LiveScanField icon={<UserRound />} label="Worker" value={latestLiveSlip.staffName} />
-              <LiveScanField icon={<Barcode />} label="Garment" value={`${latestLiveSlip.garmentType} - Unit ${latestLiveSlip.unitNo}`} />
+              <LiveScanField icon={<Barcode />} label="Garment" value={slipGarmentLabel(latestLiveSlip)} />
               <div className="min-w-0"><p className="text-[13px] text-ink-muted">Stage</p><span className={`mt-1 inline-flex rounded-full border px-2.5 py-1 text-sm font-semibold ${stageChipClass(latestLiveSlip.stage)}`}>{latestLiveSlip.stage}</span></div>
               <LiveScanField icon={<WalletCards />} label="Amount" value={formatCurrency(latestLiveSlip.wageAmount)} emphasis />
               <LiveScanField icon={<Clock3 />} label="Time" value={localTime(latestLiveSlip.talliedAt)} subdued />
@@ -446,7 +453,7 @@ function TallyContent() {
                         <p className="text-xs font-semibold text-ink-muted">{slip.slipCode}</p>
                       </td>
                       <td className="px-3 py-2 text-ink">
-                        {slip.garmentType} - Unit {slip.unitNo}
+                        {slipGarmentLabel(slip)}
                       </td>
                       <td className="px-3 py-2"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${stageChipClass(slip.stage)}`}>{slip.stage}</span></td>
                       <td className="px-3 py-2 text-ink"><span className="flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{slip.staffName}</span></td>

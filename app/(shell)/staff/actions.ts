@@ -101,6 +101,7 @@ const VALID_PAYMENT_TYPES = new Set<StaffPaymentType>(["Salary", "Per Piece"]);
 const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const COMPATIBILITY_STAGE_SLIP_NOTE_PREFIX = "[compat-batch-unit]";
 
 export interface StaffFormInput {
   name: string;
@@ -531,7 +532,13 @@ function attachStageSlipCodesToEarnings(
 
   const slipCodeByEarningKey = new Map<string, string>();
   for (const slip of slips) {
-    if (!slip.talliedAt || !slip.staffId) continue;
+    if (
+      !slip.talliedAt ||
+      !slip.staffId ||
+      slip.notes?.startsWith(COMPATIBILITY_STAGE_SLIP_NOTE_PREFIX)
+    ) {
+      continue;
+    }
     const completedDate = dateKey(slip.talliedAt);
     const firstUnit = slip.unitNo;
     const lastUnit = slip.unitNo + Math.max(1, slip.quantity) - 1;

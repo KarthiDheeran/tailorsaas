@@ -60,6 +60,9 @@ export interface JobCard {
   completedDate?: string;
   wageRate?: number;
   wageAmount?: number;
+  stageSlipCode?: string;
+  stageSlipCodes?: string[];
+  stageSlipRefs?: { slipCode: string; stage: TaskType }[];
   isDelayed: boolean;
 }
 

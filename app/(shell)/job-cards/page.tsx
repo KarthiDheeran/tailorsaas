@@ -14,7 +14,6 @@ import {
 import {
   getJobCardActivityLogsAction,
   getJobCardsPageDataAction,
-  markOrderReadyWithBinAction,
   syncMissingJobCardsAction,
   transferJobCardAction,
 } from "@/app/(shell)/job-cards/actions";
@@ -79,6 +78,12 @@ const DUE_FILTERS = [
 ] as const;
 
 type DueFilter = (typeof DUE_FILTERS)[number];
+type JobCardLine = {
+  id: string;
+  card: JobCard;
+  cards: JobCard[];
+  stageSlipRefs: NonNullable<JobCard["stageSlipRefs"]>;
+};
 
 function StageBadge({ stage }: { stage: JobCardStage }) {
   const styles: Record<JobCardStage, string> = {
@@ -140,6 +145,31 @@ function defaultJobCardSort(a: JobCard, b: JobCard) {
   return a.item.serialNo - b.item.serialNo || a.unitNo - b.unitNo;
 }
 
+function groupJobCardsByOrderLine(cards: JobCard[]): JobCardLine[] {
+  const byLine = new Map<string, JobCard[]>();
+  for (const card of cards) {
+    const key = `${card.orderId}:${card.item.serialNo}`;
+    const current = byLine.get(key) ?? [];
+    current.push(card);
+    byLine.set(key, current);
+  }
+  return Array.from(byLine.entries()).map(([id, rows]) => {
+    const cardsInLine = rows.slice().sort((a, b) => a.unitNo - b.unitNo);
+    const slipRefs = new Map<string, NonNullable<JobCard["stageSlipRefs"]>[number]>();
+    for (const card of cardsInLine) {
+      for (const slip of card.stageSlipRefs ?? []) {
+        slipRefs.set(`${slip.stage}:${slip.slipCode}`, slip);
+      }
+    }
+    return {
+      id,
+      card: cardsInLine[0],
+      cards: cardsInLine,
+      stageSlipRefs: Array.from(slipRefs.values()),
+    };
+  });
+}
+
 function addDays(iso: string, days: number) {
   const date = new Date(`${iso}T00:00:00`);
   date.setDate(date.getDate() + days);
@@ -166,26 +196,48 @@ function matchesSearch(card: JobCard, query: string) {
     card.customer?.phone,
     card.garment,
     card.assignedTo,
+    card.stageSlipCode,
+    ...(card.stageSlipCodes ?? []),
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+function matchesLineSearch(line: JobCardLine, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return line.cards.some((card) => matchesSearch(card, query));
 }
 
 function customerFabricsForJobCard(card: JobCard, fabrics: CustomerFabric[]) {
   return fabrics.filter((fabric) => fabric.notes?.includes(card.jobCardNumber));
 }
 
-function GarmentCell({ card }: { card: JobCard }) {
+function GarmentLineCell({ line }: { line: JobCardLine }) {
+  const quantity = Math.max(1, line.card.totalUnits);
   return (
     <div>
-      <div className="font-medium text-ink">{card.garment}</div>
-      {card.totalUnits > 1 && (
+      <div className="font-medium text-ink">{line.card.garment}</div>
+      {quantity > 1 && (
         <div className="text-xs text-ink-muted">
-          Unit {card.unitNo} of {card.totalUnits}
+          Qty {quantity}
         </div>
       )}
     </div>
   );
+}
+
+function lineStage(line: JobCardLine): JobCardStage {
+  const stages = Array.from(new Set(line.cards.map(displayStage)));
+  return stages.length === 1 ? stages[0] : line.card.stage;
+}
+
+function isActiveLine(line: JobCardLine) {
+  return line.cards.some(isActiveCard);
+}
+
+function isDelayedLine(line: JobCardLine) {
+  return line.cards.some(isDelayedCard);
 }
 
 const MEASUREMENT_NOTES_KEY = "__measurementNotes";
@@ -339,16 +391,18 @@ function JobCardsContent() {
     () => Array.from(new Set(jobCards.map((card) => card.garment))).sort(),
     [jobCards]
   );
-  const filteredCards = jobCards.filter((card) => {
-    const stage = displayStage(card);
-    if (!matchesSearch(card, query)) return false;
-    if (filter === "active" && !isActiveCard(card)) return false;
-    if (filter === "delayed" && !isDelayedCard(card)) return false;
+  const jobCardLines = useMemo(() => groupJobCardsByOrderLine(jobCards), [jobCards]);
+  const filteredLines = jobCardLines.filter((line) => {
+    const card = line.card;
+    const stage = lineStage(line);
+    if (!matchesLineSearch(line, query)) return false;
+    if (filter === "active" && !isActiveLine(line)) return false;
+    if (filter === "delayed" && !isDelayedLine(line)) return false;
     if (filter !== "all" && filter !== "active" && filter !== "delayed" && stage !== filter) {
       return false;
     }
     if (stageFilter !== "all" && stage !== stageFilter) return false;
-    if (!matchesDueFilter(card, dueFilter, todayIso)) return false;
+    if (!line.cards.some((candidate) => matchesDueFilter(candidate, dueFilter, todayIso))) return false;
     if (garmentFilter !== "all" && card.garment !== garmentFilter) return false;
     if (dateRange.from && card.deliveryDate < dateRange.from) return false;
     if (dateRange.to && card.deliveryDate > dateRange.to) return false;
@@ -357,10 +411,15 @@ function JobCardsContent() {
 
   useEffect(() => {
     if (!focusedJobCardId || isLoading) return;
-    const row = document.querySelector(`[data-job-card-id="${focusedJobCardId}"]`);
+    const focusedLine = filteredLines.find((line) =>
+      line.cards.some((card) => card.id === focusedJobCardId)
+    );
+    const row = focusedLine
+      ? document.querySelector(`[data-job-card-line-id="${focusedLine.id}"]`)
+      : null;
     if (!row) return;
     row.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [filteredCards, focusedJobCardId, isLoading]);
+  }, [filteredLines, focusedJobCardId, isLoading]);
   const customerFabricsByOrder = useMemo(() => {
     const byOrder = new Map<string, CustomerFabric[]>();
     for (const fabric of customerFabrics) {
@@ -559,30 +618,32 @@ function JobCardsContent() {
           </div>
 
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-ink-muted">{filteredCards.length} job card{filteredCards.length === 1 ? "" : "s"}</p>
+            <p className="text-sm font-medium text-ink-muted">{filteredLines.length} production item{filteredLines.length === 1 ? "" : "s"}</p>
           </div>
           <div className="overflow-visible rounded-[14px] border border-border bg-white shadow-soft">
             <table className="w-full table-fixed text-left">
               <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
                 <tr className="h-[50px] border-b border-border">
                   <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
-                  <th className="w-[14%] whitespace-nowrap px-4 py-3">Job Card</th>
+                  <th className="w-[18%] whitespace-nowrap px-4 py-3">Production Slips</th>
                   <th className="w-[18%] whitespace-nowrap px-4 py-3">Customer</th>
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Garment</th>
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Status</th>
+                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Garment</th>
+                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Status</th>
                   <th className="w-[12%] whitespace-nowrap px-4 py-3">Due Date</th>
                   <th className="w-[190px] whitespace-nowrap bg-white px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="text-[13px]">
-                {filteredCards.map((card: JobCard) => {
+                {filteredLines.map((line) => {
+                  const card = line.card;
+                  const stage = lineStage(line);
                   return (
                   <tr
-                    key={card.id}
-                    data-job-card-id={card.id}
+                    key={line.id}
+                    data-job-card-line-id={line.id}
                     className={cn(
                       "h-[68px] border-t border-border-soft text-[15px] transition-colors duration-150 hover:bg-surface-muted",
-                      focusedJobCardId === card.id && "bg-primary-tint ring-2 ring-primary/30"
+                      line.cards.some((row) => row.id === focusedJobCardId) && "bg-primary-tint ring-2 ring-primary/30"
                     )}
                   >
                     <td className="whitespace-nowrap px-4 py-3">
@@ -597,32 +658,38 @@ function JobCardsContent() {
                         <span className="font-semibold text-ink-muted">{card.orderNumber}</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setDetailsCard(card)}
-                        className="inline-flex items-center gap-1.5 font-bold text-primary hover:underline"
-                      >
-                        <ClipboardList className="h-4 w-4" aria-hidden="true" />
-                        {card.jobCardNumber}
-                      </button>
+                    <td className="px-4 py-3 align-top">
+                      {line.stageSlipRefs.length > 0 ? (
+                        <div className="mt-1 flex max-w-full flex-wrap gap-1">
+                          {line.stageSlipRefs.map((slip) => (
+                            <span
+                              key={`${slip.stage}:${slip.slipCode}`}
+                              className="inline-flex max-w-full items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-muted"
+                            >
+                              {slip.stage} {slip.slipCode.replace(/^JCS-\d{4}-/, "")}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs font-semibold text-ink-muted">No slips printed</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-1.5 font-semibold text-ink"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{card.customer?.name ?? "Unknown"}</div>
                       <div className="pl-5 text-[13px] text-ink-muted">{card.customer?.phone ?? ""}</div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-ink">
-                      <span className="flex items-center gap-1.5 font-semibold"><Shirt className="h-3.5 w-3.5 text-primary" aria-hidden="true" /><GarmentCell card={card} /></span>
+                      <span className="flex items-center gap-1.5 font-semibold"><Shirt className="h-3.5 w-3.5 text-primary" aria-hidden="true" /><GarmentLineCell line={line} /></span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <StageBadge stage={displayStage(card)} />
+                      <StageBadge stage={stage} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className={card.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
+                      <span className={isDelayedLine(line) ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
                         <CalendarDays className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
                         {formatDate(card.deliveryDate)}
                       </span>
-                      {isDelayedCard(card) && (
+                      {isDelayedLine(line) && (
                         <div className="mt-1 text-xs font-semibold text-chip-red-fg">
                           Delayed
                         </div>
@@ -679,7 +746,7 @@ function JobCardsContent() {
                                 History
                               </button>
                               {card.assignedStaffId &&
-                                !["Ready", "Delivered", "Cancelled"].includes(displayStage(card)) && (
+                                !["Ready", "Delivered", "Cancelled"].includes(stage) && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -703,7 +770,7 @@ function JobCardsContent() {
             </table>
           </div>
 
-          {filteredCards.length === 0 && (
+          {filteredLines.length === 0 && (
             <div className="mt-4 rounded-xl border border-dashed border-border-soft bg-white p-8 text-center text-sm text-ink-muted">
               <ClipboardList className="mx-auto mb-2 h-6 w-6 text-primary" aria-hidden="true" />
               <p className="font-semibold text-ink">No job cards found</p>
@@ -824,10 +891,18 @@ function MarkOrderReadyModal({
   async function save() {
     setSaving(true);
     setError("");
-    const result = await markOrderReadyWithBinAction(card.orderId, bin);
+    const response = await fetch("/api/job-cards/mark-ready", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: card.orderId, deliveryBin: bin }),
+    });
+    const result = (await response.json().catch(() => ({
+      success: false,
+      error: "Could not mark the order ready.",
+    }))) as { success: boolean; error?: string };
     setSaving(false);
     if (!result.success) {
-      setError(result.error);
+      setError(result.error ?? "Could not mark the order ready.");
       return;
     }
     onSaved();
