@@ -1,7 +1,7 @@
 "use server";
 
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
-import { GARMENT_SECTIONS, isGarmentSection, type GarmentSection } from "@/lib/catalog";
+import { isGarmentSection, type GarmentSection } from "@/lib/catalog";
 import {
   createShop,
   getShops,

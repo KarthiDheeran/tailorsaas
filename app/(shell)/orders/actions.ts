@@ -526,6 +526,7 @@ export async function createOrderAction(data: {
     order.id,
     selectedCreator.operator ?? operatorGuard.operator,
     measurementTaker.operator ?? operatorGuard.operator,
+    { hasAdvancePayment: data.advancePaid > 0 },
   );
   await recomputeOrderTotals(createAdminClient(), order.id);
   await trySyncJobCardsForOrder(supabase, order.id);
@@ -627,6 +628,7 @@ export async function createOrderForNewCustomerAction(data: {
     order.id,
     selectedCreator.operator ?? operatorGuard.operator,
     measurementTaker.operator ?? operatorGuard.operator,
+    { hasAdvancePayment: data.order.advancePaid > 0 },
   );
   await trySyncJobCardsForOrder(supabase, order.id);
   await recomputeOrderTotals(createAdminClient(), order.id);

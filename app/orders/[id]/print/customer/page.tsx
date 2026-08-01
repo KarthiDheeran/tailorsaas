@@ -45,7 +45,7 @@ type ReceiptRow =
       total: number;
     };
 
-const ROWS_PER_RECEIPT_PAGE = 28;
+const ROWS_PER_RECEIPT_PAGE = 11;
 
 function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   const counted = payments.filter((p) => !p.voided);
@@ -310,28 +310,28 @@ function CustomerReceiptPrintPageContent({
     <PrintPageFrame showClose contentClassName="receipt-preview-frame">
       <style jsx global>{`
         @page {
-          size: A4 portrait;
+          size: 6in 4in;
           margin: 0;
         }
 
         .receipt-preview-frame {
-          width: 210mm;
-          max-width: 210mm;
+          width: 6in;
+          max-width: 6in;
           padding: 0;
           background: transparent;
           box-shadow: none;
         }
 
         .receipt-page {
-          width: 210mm;
-          height: 297mm;
+          width: 6in;
+          height: 4in;
           box-sizing: border-box;
           overflow: hidden;
           break-after: page;
           page-break-after: always;
           display: grid;
           grid-template-rows: auto 1fr auto;
-          padding: 10mm;
+          padding: 0.22in 0.25in 0.18in;
           background: white;
           color: #111827;
           font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -345,13 +345,13 @@ function CustomerReceiptPrintPageContent({
         .receipt-header {
           display: grid;
           grid-template-columns: 1.25fr 1fr;
-          gap: 0.16in;
+          gap: 0.14in;
           border-bottom: 1px solid #111827;
-          padding-bottom: 0.07in;
+          padding-bottom: 0.04in;
         }
 
         .receipt-shop-name {
-          font-size: 20px;
+          font-size: 16px;
           line-height: 1;
           font-weight: 800;
           letter-spacing: 0;
@@ -359,26 +359,26 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-tagline {
           margin-top: 2px;
-          font-size: 9px;
+          font-size: 7.5px;
           color: #4b5563;
         }
 
         .receipt-details {
-          margin: 0.06in 0 0;
+          margin: 0.04in 0 0;
           display: grid;
-          gap: 2px;
-          font-size: 9.5px;
+          gap: 1px;
+          font-size: 7.8px;
         }
 
         .receipt-details div {
           display: grid;
-          grid-template-columns: 0.72in 1fr;
+          grid-template-columns: 0.62in 1fr;
           gap: 0.05in;
           min-width: 0;
         }
 
         .receipt-customer .receipt-details div {
-          grid-template-columns: 0.48in 1fr;
+          grid-template-columns: 0.42in 1fr;
         }
 
         .receipt-barcode {
@@ -390,17 +390,17 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-barcode img {
           display: block;
-          width: 1.86in;
-          height: 0.34in;
+          width: 1.55in;
+          height: 0.26in;
           image-rendering: crisp-edges;
         }
 
         .receipt-barcode span {
-          max-width: 1.86in;
+          max-width: 1.55in;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          font-size: 8px;
+          font-size: 6.8px;
           font-weight: 700;
           color: #111827;
         }
@@ -421,22 +421,22 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-body {
           min-height: 0;
-          padding-top: 0.07in;
+          padding-top: 0.04in;
         }
 
         .receipt-items {
           width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          font-size: 9.5px;
-          line-height: 1.15;
+          font-size: 7.8px;
+          line-height: 1.08;
         }
 
         .receipt-items th {
           border-bottom: 1px solid #111827;
-          padding: 3px 3px;
+          padding: 2px 2px;
           text-align: left;
-          font-size: 10px;
+          font-size: 8px;
           font-weight: 800;
         }
 
@@ -454,7 +454,7 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td {
-          padding: 3px 3px;
+          padding: 2px 2px;
           vertical-align: top;
           border-bottom: 1px solid #e5e7eb;
           break-inside: avoid;
@@ -469,7 +469,7 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-items .addon-row td {
           color: #4b5563;
-          font-size: 8.8px;
+          font-size: 7.2px;
           border-bottom-color: #f1f5f9;
         }
 
@@ -486,17 +486,17 @@ function CustomerReceiptPrintPageContent({
         .receipt-footer {
           display: grid;
           grid-template-columns: 1fr auto;
-          gap: 0.12in;
+          gap: 0.1in;
           align-items: end;
           border-top: 1px solid #111827;
-          padding-top: 0.06in;
+          padding-top: 0.04in;
         }
 
         .receipt-note {
           display: flex;
           flex-direction: column;
           gap: 2px;
-          font-size: 8.5px;
+          font-size: 6.8px;
           color: #4b5563;
         }
 
@@ -506,8 +506,8 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-summary {
-          width: 1.75in;
-          font-size: 9.5px;
+          width: 1.45in;
+          font-size: 7.6px;
         }
 
         .receipt-summary div {
@@ -530,8 +530,8 @@ function CustomerReceiptPrintPageContent({
         .receipt-summary .balance {
           margin-top: 2px;
           border-top: 1px solid #111827;
-          padding-top: 3px;
-          font-size: 11px;
+          padding-top: 2px;
+          font-size: 8.6px;
         }
 
         @media screen {
@@ -550,8 +550,8 @@ function CustomerReceiptPrintPageContent({
         @media print {
           html,
           body {
-            width: 210mm;
-            min-height: 297mm;
+            width: 6in;
+            min-height: 4in;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;

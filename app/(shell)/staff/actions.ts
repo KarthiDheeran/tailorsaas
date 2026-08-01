@@ -25,7 +25,10 @@ import {
   getJobCards,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
-import { getTalliedJobCardStageSlips } from "@/lib/data/job-card-stage-slips-db";
+import {
+  getTalliedJobCardStageSlips,
+  type JobCardStageSlip,
+} from "@/lib/data/job-card-stage-slips-db";
 import { getActiveWorkStages, getAllGarmentTypes } from "@/lib/data/catalog-db";
 import {
   createExpense,
@@ -55,7 +58,6 @@ import type {
   TaskType,
   WorkAssignment,
 } from "@/lib/types";
-import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 
 // ---------------------------------------------------------------------------
 // Phase 6D: Staff HR, Work Assignments, and Staff Payments are now real,
@@ -100,35 +102,10 @@ const VALID_PRIORITIES = new Set<TaskPriority>(["Low", "Normal", "High"]);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-function tallyDateKey(value?: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function buildStageSlipWorkEarnings(slips: JobCardStageSlip[]): StaffWorkEarning[] {
-  return slips
-    .filter((slip) => slip.staffId && slip.talliedAt)
-    .map((slip) => ({
-      id: `stage-slip:${slip.id}`,
-      staffId: slip.staffId!,
-      jobCardId: slip.id,
-      orderId: slip.orderId,
-      jobCardNumber: `${slip.orderNumber} - ${slip.garmentType} Unit ${slip.unitNo}`,
-      taskType: slip.stage,
-      completedDate: tallyDateKey(slip.talliedAt),
-      wageRate: slip.wageRate,
-      wageAmount: slip.wageAmount,
-      createdAt: slip.talliedAt ?? slip.createdAt,
-    }));
-}
-
 export interface StaffFormInput {
   name: string;
   phone: string;
+  shopId?: string;
   role: StaffRole;
   joiningDate: string;
   address: string;
@@ -240,7 +217,7 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
     getAllOrders(supabase),
     getStaffPayments(dataClient),
     getStaffWorkEarnings(dataClient),
-    getTalliedJobCardStageSlips(dataClient),
+    getTalliedJobCardStageSlips(supabase),
   ]);
 
   let jobCardQueueRows: JobCard[] | null = null;
@@ -249,6 +226,11 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
   } catch (error) {
     if (!isMissingJobCardsSchemaError(error)) throw error;
   }
+
+  const annotatedStaffWorkEarnings =
+    jobCardQueueRows
+      ? attachStageSlipCodesToEarnings(staffWorkEarnings, talliedStageSlips, jobCardQueueRows)
+      : staffWorkEarnings;
 
   return {
     staffRows: canManage
@@ -259,7 +241,7 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
     workQueueRows: buildWorkQueueRows(staffList, assignments, orders, todayIso),
     jobCardQueueRows,
     staffPayments,
-    staffWorkEarnings: [...staffWorkEarnings, ...buildStageSlipWorkEarnings(talliedStageSlips)],
+    staffWorkEarnings: annotatedStaffWorkEarnings,
   };
 }
 
@@ -283,6 +265,8 @@ export async function createStaffAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
+  const context = await getServerCallerContext(supabase);
+  if (!context?.tenantId) return { success: false, error: "Current user is not assigned to a tenant." };
 
   const [stages, garments] = await Promise.all([
     getActiveWorkStages(supabase),
@@ -294,8 +278,14 @@ export async function createStaffAction(
     new Set(garments.map((garment) => garment.id))
   );
   if (validationError) return { success: false, error: validationError };
+  const shopId = data.shopId?.trim() || context.shopId || "";
+  if (!shopId) return { success: false, error: "Staff shop/location is required." };
 
-  const member = await createStaff(supabase, data);
+  const member = await createStaff(supabase, {
+    ...data,
+    tenantId: context.tenantId,
+    shopId,
+  });
   return { success: true, data: member };
 }
 
@@ -306,6 +296,8 @@ export async function updateStaffAction(
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { success: false, error: guard.error };
+  const context = await getServerCallerContext(supabase);
+  if (!context?.tenantId) return { success: false, error: "Current user is not assigned to a tenant." };
 
   const [stages, garments] = await Promise.all([
     getActiveWorkStages(supabase),
@@ -317,8 +309,14 @@ export async function updateStaffAction(
     new Set(garments.map((garment) => garment.id))
   );
   if (validationError) return { success: false, error: validationError };
+  const shopId = data.shopId?.trim() || "";
+  if (!shopId) return { success: false, error: "Staff shop/location is required." };
 
-  const member = await updateStaff(supabase, id, data);
+  const member = await updateStaff(supabase, id, {
+    ...data,
+    tenantId: context.tenantId,
+    shopId,
+  });
   if (!member) return { success: false, error: "Staff member not found." };
   return { success: true, data: member };
 }
@@ -514,6 +512,54 @@ export async function getWorkAssignmentsAction(): Promise<WorkAssignment[]> {
 
 function isSameMonth(dateIso: string, todayIso: string): boolean {
   return dateIso.slice(0, 7) === todayIso.slice(0, 7);
+}
+
+function dateKey(dateTimeIso: string | undefined): string {
+  return dateTimeIso?.slice(0, 10) ?? "";
+}
+
+function earningSlipKey(jobCardId: string, taskType: string, staffId: string, completedDate: string) {
+  return `${jobCardId}|${taskType}|${staffId}|${completedDate}`;
+}
+
+function attachStageSlipCodesToEarnings(
+  earnings: StaffWorkEarning[],
+  slips: JobCardStageSlip[],
+  jobCards: JobCard[]
+): StaffWorkEarning[] {
+  if (earnings.length === 0 || slips.length === 0 || jobCards.length === 0) return earnings;
+
+  const slipCodeByEarningKey = new Map<string, string>();
+  for (const slip of slips) {
+    if (!slip.talliedAt || !slip.staffId) continue;
+    const completedDate = dateKey(slip.talliedAt);
+    const firstUnit = slip.unitNo;
+    const lastUnit = slip.unitNo + Math.max(1, slip.quantity) - 1;
+    for (const card of jobCards) {
+      if (
+        card.orderId !== slip.orderId ||
+        card.item.serialNo !== slip.orderItemSerialNo ||
+        card.unitNo < firstUnit ||
+        card.unitNo > lastUnit
+      ) {
+        continue;
+      }
+      slipCodeByEarningKey.set(
+        earningSlipKey(card.id, slip.stage, slip.staffId, completedDate),
+        slip.slipCode
+      );
+    }
+  }
+
+  if (slipCodeByEarningKey.size === 0) return earnings;
+
+  return earnings.map((earning) => ({
+    ...earning,
+    sourceSlipCode:
+      slipCodeByEarningKey.get(
+        earningSlipKey(earning.jobCardId, earning.taskType, earning.staffId, earning.completedDate)
+      ) ?? earning.sourceSlipCode,
+  }));
 }
 
 function buildStaffListRows(

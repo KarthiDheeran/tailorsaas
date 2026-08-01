@@ -127,6 +127,28 @@ async function isConfiguredWorkStage(stage: string): Promise<boolean> {
   return stages.some((candidate) => candidate.stageKey === stage);
 }
 
+async function requireStaffSameShopForOrder(
+  orderId: string,
+  staffId: string
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const [order, staff] = await Promise.all([
+    getOrderById(admin, orderId),
+    getStaff(admin).then((members) => members.find((member) => member.id === staffId)),
+  ]);
+  if (!order) return "Order not found.";
+  if (!staff) return "Staff member not found.";
+  if (staff.status !== "Active") return "Choose an active staff member.";
+  if (!order.shopId) return "Order shop/location is missing.";
+  if (!staff.shopId) {
+    return `Set shop/location for ${staff.name} before assigning job cards.`;
+  }
+  if (staff.shopId !== order.shopId) {
+    return `${staff.name} belongs to another shop/location and cannot be assigned to this order.`;
+  }
+  return null;
+}
+
 export interface JobCardsPageData {
   jobCards: JobCard[] | null;
   orders: Order[];
@@ -262,6 +284,10 @@ export async function createJobCardStageSlipAction(
   }
 
   try {
+    const shopError = data.staffId?.trim()
+      ? await requireStaffSameShopForOrder(data.orderId, data.staffId)
+      : null;
+    if (shopError) return { success: false, error: shopError };
     if (data.staffId?.trim()) {
       await assertJobCardAvailableForStageSlip(createAdminClient(), {
         orderId: data.orderId,
@@ -383,6 +409,8 @@ export async function quickTallyJobCardStageSlipAction(
     if (!staff || staff.status !== "Active") {
       return { success: false, error: "Choose an active staff member." };
     }
+    const shopError = await requireStaffSameShopForOrder(slip.orderId, staff.id);
+    if (shopError) return { success: false, error: shopError };
     if (slip.staffId && slip.staffId !== staff.id) {
       return { success: false, error: `This printed slip is assigned to ${slip.staffName}. Use that staff member or transfer the job card first.` };
     }
@@ -446,7 +474,12 @@ export async function getQuickTallyStaffAction(): Promise<Staff[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return [];
-  return (await getStaff(supabase)).filter((staff) => staff.status === "Active");
+  const context = await getServerCallerContext(supabase);
+  return (await getStaff(supabase)).filter(
+    (staff) =>
+      staff.status === "Active" &&
+      (!context?.shopId || !staff.shopId || staff.shopId === context.shopId)
+  );
 }
 
 export async function markOrderReadyWithBinAction(
@@ -611,19 +644,20 @@ export async function assignJobCardAction(
 
   try {
     const before = await getJobCardActivitySnapshot(supabase, id);
+    if (!before) return { success: false, error: "Job card not found." };
+    const shopError = await requireStaffSameShopForOrder(before.orderId, data.assignedStaffId);
+    if (shopError) return { success: false, error: shopError };
     await assignJobCard(supabase, id, data);
-    if (before) {
-      await logJobCardActivityBestEffort({
-        jobCardId: id,
-        orderId: before.orderId,
-        actionType: "Assigned",
-        fromStage: before.currentStage,
-        toStage: taskTypeToStage(data.taskType),
-        assignedStaffId: data.assignedStaffId,
-        notes: data.notes,
-        performedBy: guard.userId,
-      });
-    }
+    await logJobCardActivityBestEffort({
+      jobCardId: id,
+      orderId: before.orderId,
+      actionType: "Assigned",
+      fromStage: before.currentStage,
+      toStage: taskTypeToStage(data.taskType),
+      assignedStaffId: data.assignedStaffId,
+      notes: data.notes,
+      performedBy: guard.userId,
+    });
     return { success: true, data: undefined };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
@@ -669,6 +703,8 @@ export async function transferJobCardAction(
     if (!before?.assignedStaffId) {
       return { success: false, error: "This job card has no tailor to transfer." };
     }
+    const shopError = await requireStaffSameShopForOrder(before.orderId, data.newStaffId);
+    if (shopError) return { success: false, error: shopError };
     const transfer = await transferJobCard(admin, id, data.newStaffId);
     const staff = await getStaff(admin);
     const previousStaffName =

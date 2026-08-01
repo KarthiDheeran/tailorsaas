@@ -5,7 +5,10 @@ import {
   getActiveGarmentTypesAction,
   getActiveWorkStagesAction,
 } from "@/app/(shell)/catalog/actions";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
 import type { CatalogGarmentType, CatalogWorkStage } from "@/lib/catalog";
+import { createClient } from "@/lib/supabase/client";
+import { getShops, type Shop } from "@/lib/shops";
 import type {
   StaffPaymentType,
   StaffRole,
@@ -18,6 +21,7 @@ import { Select } from "@/components/ui/select";
 export interface StaffFormValues {
   name: string;
   phone: string;
+  shopId?: string;
   role: StaffRole;
   joiningDate: string;
   address: string;
@@ -57,6 +61,7 @@ export function StaffForm({
 }) {
   const [name, setName] = useState(initialValues?.name ?? "");
   const [phone, setPhone] = useState(initialValues?.phone ?? "");
+  const [shopId, setShopId] = useState(initialValues?.shopId ?? "");
   const [role, setRole] = useState<StaffRole>(initialValues?.role ?? "Stitching Staff");
   const [joiningDate, setJoiningDate] = useState(initialValues?.joiningDate ?? "");
   const [address, setAddress] = useState(initialValues?.address ?? "");
@@ -88,15 +93,22 @@ export function StaffForm({
   );
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [workStages, setWorkStages] = useState<CatalogWorkStage[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
   const { t } = useLanguage();
+  const { currentUser } = useCurrentUser();
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getActiveWorkStagesAction(), getActiveGarmentTypesAction()]).then(
-      ([stages, garments]) => {
+    Promise.all([
+      getActiveWorkStagesAction(),
+      getActiveGarmentTypesAction(),
+      getShops(createClient()).catch(() => []),
+    ]).then(
+      ([stages, garments, shopRows]) => {
         if (cancelled) return;
         setWorkStages(stages);
         setGarmentTypes(garments);
+        setShops(shopRows.filter((shop) => shop.active));
       }
     );
     return () => {
@@ -104,9 +116,22 @@ export function StaffForm({
     };
   }, []);
 
+  useEffect(() => {
+    if (shopId) return;
+    if (initialValues?.shopId) {
+      setShopId(initialValues.shopId);
+      return;
+    }
+    if (currentUser?.shop_id) {
+      setShopId(currentUser.shop_id);
+      return;
+    }
+    if (shops.length === 1) setShopId(shops[0].id);
+  }, [currentUser?.shop_id, initialValues?.shopId, shopId, shops]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !phone.trim() || !joiningDate) return;
+    if (!name.trim() || !phone.trim() || !joiningDate || !shopId) return;
 
     const rates: Partial<Record<string, number>> = {};
     for (const [k, v] of Object.entries(pieceRates)) {
@@ -128,6 +153,7 @@ export function StaffForm({
     onSubmit({
       name: name.trim(),
       phone: phone.trim(),
+      shopId,
       role,
       joiningDate,
       address: address.trim(),
@@ -175,6 +201,21 @@ export function StaffForm({
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-ink-muted">Shop / Location</span>
+          <Select
+            required
+            value={shopId}
+            onChange={(e) => setShopId(e.target.value)}
+          >
+            <option value="">Select shop</option>
+            {shops.map((shop) => (
+              <option key={shop.id} value={shop.id}>
+                {shop.name}{shop.location ? ` - ${shop.location}` : ""}
               </option>
             ))}
           </Select>

@@ -90,6 +90,7 @@ function EditStaffPageContent({ params }: { params: { id: string } }) {
           initialValues={{
             name: member.name,
             phone: member.phone,
+            shopId: member.shopId,
             role: member.role,
             joiningDate: member.joiningDate,
             address: member.address,

@@ -33,12 +33,18 @@ import type {
 // ---------------------------------------------------------------------------
 
 const STAFF_COLUMNS = `
+  id, tenant_id, shop_id, staff_number, staff_code, name, phone, role, joining_date, address,
+  emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
+`;
+const LEGACY_STAFF_COLUMNS = `
   id, staff_number, staff_code, name, phone, role, joining_date, address,
   emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 
 interface StaffRow {
   id: string;
+  tenant_id?: string | null;
+  shop_id?: string | null;
   staff_number: string;
   staff_code: number;
   name: string;
@@ -59,6 +65,8 @@ function mapStaff(row: StaffRow): Staff {
   return {
     id: row.id,
     staffNumber: String(row.staff_code),
+    tenantId: row.tenant_id ?? undefined,
+    shopId: row.shop_id ?? undefined,
     name: row.name,
     phone: row.phone,
     role: row.role,
@@ -75,10 +83,15 @@ function mapStaff(row: StaffRow): Staff {
 }
 
 export async function getStaff(supabase: SupabaseClient): Promise<Staff[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("staff")
     .select(STAFF_COLUMNS)
     .order("name");
+  if (isMissingStaffShopColumnError(error)) {
+    const fallback = await supabase.from("staff").select(LEGACY_STAFF_COLUMNS).order("name");
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as unknown as StaffRow[]) ?? []).map(mapStaff);
 }
@@ -87,11 +100,20 @@ export async function getStaffById(
   supabase: SupabaseClient,
   id: string
 ): Promise<Staff | undefined> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("staff")
     .select(STAFF_COLUMNS)
     .eq("id", id)
     .maybeSingle();
+  if (isMissingStaffShopColumnError(error)) {
+    const fallback = await supabase
+      .from("staff")
+      .select(LEGACY_STAFF_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return data ? mapStaff(data as unknown as StaffRow) : undefined;
 }
@@ -99,6 +121,8 @@ export async function getStaffById(
 export interface StaffInput {
   name: string;
   phone: string;
+  tenantId?: string;
+  shopId?: string;
   role: StaffRole;
   joiningDate: string;
   address: string;
@@ -120,25 +144,40 @@ export async function createStaff(
   );
   if (numberError) throw numberError;
 
-  const { data: row, error } = await supabase
+  const insertPayload = {
+    tenant_id: data.tenantId ?? null,
+    shop_id: data.shopId ?? null,
+    staff_number: numberResult as string,
+    name: data.name,
+    phone: data.phone,
+    role: data.role,
+    joining_date: data.joiningDate,
+    address: data.address,
+    emergency_contact: data.emergencyContact,
+    status: data.status,
+    notes: data.notes ?? null,
+    payment_type: data.paymentType,
+    base_salary: data.baseSalary ?? null,
+    piece_rates: data.pieceRates ?? null,
+    garment_stage_rates: data.garmentStageRates ?? null,
+  };
+  let { data: row, error } = await supabase
     .from("staff")
-    .insert({
-      staff_number: numberResult as string,
-      name: data.name,
-      phone: data.phone,
-      role: data.role,
-      joining_date: data.joiningDate,
-      address: data.address,
-      emergency_contact: data.emergencyContact,
-      status: data.status,
-      notes: data.notes ?? null,
-      payment_type: data.paymentType,
-      base_salary: data.baseSalary ?? null,
-      piece_rates: data.pieceRates ?? null,
-      garment_stage_rates: data.garmentStageRates ?? null,
-    })
+    .insert(insertPayload)
     .select(STAFF_COLUMNS)
     .single();
+  if (isMissingStaffShopColumnError(error)) {
+    const legacyPayload: Record<string, unknown> = { ...insertPayload };
+    delete legacyPayload.tenant_id;
+    delete legacyPayload.shop_id;
+    const retry = await supabase
+      .from("staff")
+      .insert(legacyPayload)
+      .select(LEGACY_STAFF_COLUMNS)
+      .single();
+    row = retry.data as unknown as typeof row;
+    error = retry.error;
+  }
   if (error) throw error;
   return mapStaff(row as unknown as StaffRow);
 }
@@ -148,28 +187,51 @@ export async function updateStaff(
   id: string,
   data: StaffInput
 ): Promise<Staff | undefined> {
-  const { data: row, error } = await supabase
+  const updatePayload = {
+    tenant_id: data.tenantId ?? null,
+    shop_id: data.shopId ?? null,
+    name: data.name,
+    phone: data.phone,
+    role: data.role,
+    joining_date: data.joiningDate,
+    address: data.address,
+    emergency_contact: data.emergencyContact,
+    status: data.status,
+    notes: data.notes ?? null,
+    payment_type: data.paymentType,
+    base_salary: data.baseSalary ?? null,
+    piece_rates: data.pieceRates ?? null,
+    garment_stage_rates: data.garmentStageRates ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  let { data: row, error } = await supabase
     .from("staff")
-    .update({
-      name: data.name,
-      phone: data.phone,
-      role: data.role,
-      joining_date: data.joiningDate,
-      address: data.address,
-      emergency_contact: data.emergencyContact,
-      status: data.status,
-      notes: data.notes ?? null,
-      payment_type: data.paymentType,
-      base_salary: data.baseSalary ?? null,
-      piece_rates: data.pieceRates ?? null,
-      garment_stage_rates: data.garmentStageRates ?? null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", id)
     .select(STAFF_COLUMNS)
     .maybeSingle();
+  if (isMissingStaffShopColumnError(error)) {
+    const legacyPayload: Record<string, unknown> = { ...updatePayload };
+    delete legacyPayload.tenant_id;
+    delete legacyPayload.shop_id;
+    const retry = await supabase
+      .from("staff")
+      .update(legacyPayload)
+      .eq("id", id)
+      .select(LEGACY_STAFF_COLUMNS)
+      .maybeSingle();
+    row = retry.data as unknown as typeof row;
+    error = retry.error;
+  }
   if (error) throw error;
   return row ? mapStaff(row as unknown as StaffRow) : undefined;
+}
+
+export function isMissingStaffShopColumnError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const code = candidate?.code ?? "";
+  const message = `${candidate?.message ?? ""} ${candidate?.details ?? ""}`.toLowerCase();
+  return code === "PGRST204" || message.includes("tenant_id") || message.includes("shop_id");
 }
 
 const WORK_ASSIGNMENT_COLUMNS = `

@@ -436,6 +436,8 @@ export type TaskPriority = "Low" | "Normal" | "High";
 export interface Staff {
   id: string;
   staffNumber: string;
+  tenantId?: string;
+  shopId?: string;
   name: string;
   phone: string;
   role: StaffRole;
@@ -493,6 +495,7 @@ export interface StaffWorkEarning {
   completedDate: string;
   wageRate: number;
   wageAmount: number;
+  sourceSlipCode?: string;
   createdAt: string;
 }
 

@@ -6,6 +6,7 @@ export async function recordOrderOperatorAttribution(
   orderId: string,
   creator?: Pick<ActiveSharedDesktopOperator, "id" | "name">,
   measurementTaker?: Pick<ActiveSharedDesktopOperator, "id" | "name">,
+  options: { hasAdvancePayment?: boolean } = {},
 ): Promise<void> {
   if (!creator && !measurementTaker) return;
   const attribution: Record<string, string> = {};
@@ -25,14 +26,16 @@ export async function recordOrderOperatorAttribution(
 
   // An advance recorded as part of order creation belongs to the same active
   // operator. There can only be one initial Advance payment for this flow.
-  if (!creator) return;
+  if (!creator || !options.hasAdvancePayment) return;
   const { error: paymentError } = await supabase
     .from("payments")
     .update({ received_by_operator_id: creator.id, received_by_operator_name: creator.name })
     .eq("order_id", orderId)
     .eq("payment_type", "Advance")
     .eq("voided", false);
-  if (paymentError) throw new Error("Order was created, but advance collector attribution could not be saved.");
+  if (paymentError) {
+    console.error("Advance collector attribution could not be saved.", paymentError);
+  }
 }
 
 export async function recordPaymentOperatorAttribution(
@@ -45,7 +48,9 @@ export async function recordPaymentOperatorAttribution(
     .from("payments")
     .update({ received_by_operator_id: operator.id, received_by_operator_name: operator.name })
     .eq("id", paymentId);
-  if (error) throw new Error("Payment was recorded, but collector attribution could not be saved.");
+  if (error) {
+    console.error("Payment collector attribution could not be saved.", error);
+  }
 }
 
 export async function recordDeliveryOperatorAttribution(

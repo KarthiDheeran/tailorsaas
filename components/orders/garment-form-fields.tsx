@@ -1,6 +1,7 @@
 "use client";
 
 import type { Ref } from "react";
+import { ChevronDown } from "lucide-react";
 
 import type {
   GarmentFieldValue,
@@ -47,19 +48,25 @@ function FieldControl({
           className="min-h-16 rounded-md border border-border bg-white p-2 text-sm text-ink"
         />
       ) : field.inputType === "select" ? (
-        <select
-          ref={controlRef as Ref<HTMLSelectElement>}
-          disabled={disabled}
-          required={field.required}
-          value={(value as string | null) ?? ""}
-          onChange={(event) => onChange(field.code, event.target.value)}
-          className="h-10 rounded-md border border-border bg-white px-2 text-sm text-ink"
-        >
-          <option value="">Select...</option>
-          {field.options.map((option) => (
-            <option key={option}>{option}</option>
-          ))}
-        </select>
+        <span className="relative block">
+          <select
+            ref={controlRef as Ref<HTMLSelectElement>}
+            disabled={disabled}
+            required={field.required}
+            value={(value as string | null) ?? ""}
+            onChange={(event) => onChange(field.code, event.target.value)}
+            className="h-10 w-full appearance-none rounded-md border border-border bg-white pl-3 pr-9 text-sm text-ink"
+          >
+            <option value="">Select...</option>
+            {field.options.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+            aria-hidden="true"
+          />
+        </span>
       ) : field.inputType === "multiselect" ? (
         <div className="space-y-1 rounded-md border border-border bg-white p-2">
           {field.options.map((option) => {

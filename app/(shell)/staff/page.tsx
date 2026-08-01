@@ -111,6 +111,7 @@ function StaffPageContent() {
     const result = await updateStaffAction(staffId, {
       name: member.name,
       phone: member.phone,
+      shopId: member.shopId,
       role: member.role,
       joiningDate: member.joiningDate,
       address: member.address,
@@ -775,6 +776,11 @@ function StaffPayableDetailsDrawer({
                       <div>
                         <p className="font-semibold text-ink">
                           {earning.jobCardNumber} - {earning.taskType}
+                          {earning.sourceSlipCode && (
+                            <span className="ml-2 inline-flex rounded-full bg-primary-tint px-2 py-0.5 align-middle text-[11px] font-semibold text-primary">
+                              Slip {earning.sourceSlipCode}
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-ink-muted">
                           {formatDate(earning.completedDate)} - Rate {formatCurrency(earning.wageRate)}
