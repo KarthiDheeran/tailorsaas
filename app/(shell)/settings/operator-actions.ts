@@ -31,7 +31,7 @@ export async function getActiveOperatorStaffAction() {
   }
   const { data, error } = await createAdminClient()
     .from("staff")
-    .select("id,name,staff_number")
+    .select("id,name,staff_number,staff_code")
     .eq("status", "Active")
     .order("name");
   if (error) {

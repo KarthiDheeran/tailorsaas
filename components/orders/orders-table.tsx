@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
-import { ArrowUp, ArrowDown, ChevronsUpDown, Inbox } from "lucide-react";
+import { ArrowUp, ArrowDown, ChevronsUpDown, Eye, Inbox, Pencil, Trash2 } from "lucide-react";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
 import { orderStatuses } from "@/lib/constants";
 import { updateOrderStatusAction } from "@/app/(shell)/orders/actions";
@@ -281,6 +281,8 @@ export function OrdersTable({
   editableStatus = false,
   onStatusChange,
   onRowClick,
+  showActions = false,
+  onDelete,
 }: {
   orders: Order[];
   // Optional: a caller that already has a fresher/fuller Customer record
@@ -296,6 +298,8 @@ export function OrdersTable({
   editableStatus?: boolean;
   onStatusChange?: () => void;
   onRowClick?: (order: Order) => void;
+  showActions?: boolean;
+  onDelete?: (order: Order) => void;
 }) {
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see formatDate's hydration-mismatch note).
@@ -354,6 +358,7 @@ export function OrdersTable({
                 <th className="whitespace-nowrap px-5 py-3 text-right">{t("orders.balance")}</th>
               </>
             )}
+            {showActions && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
           </tr>
         </thead>
         <tbody className="text-[13px]">
@@ -365,7 +370,7 @@ export function OrdersTable({
             // that intentionally don't fetch customers separately (Phase 6E).
             const customer = customersById?.[order.customerId] ?? order.customerSnapshot;
             const itemsSummary = order.items
-              .map((i) => `${i.particular} x${i.qty}`)
+              .map((i) => `${i.particular}${i.size?.trim() ? ` · ${i.size.trim()}` : ""} x${i.qty}`)
               .join(", ");
             return (
               <tr
@@ -418,6 +423,15 @@ export function OrdersTable({
                       <BalanceBadge order={order} todayIso={todayIso} />
                     </td>
                   </>
+                )}
+                {showActions && (
+                  <td className="whitespace-nowrap px-5 py-3 text-right">
+                    <span className="inline-flex items-center gap-1">
+                      <Link href={`/orders/${order.id}`} onClick={(event) => event.stopPropagation()} aria-label={`View ${order.orderNumber}`} className="rounded-md p-2 text-primary hover:bg-primary-tint"><Eye className="h-4 w-4" /></Link>
+                      <Link href={`/orders/${order.id}/edit`} onClick={(event) => event.stopPropagation()} aria-label={`Edit ${order.orderNumber}`} className="rounded-md p-2 text-ink-muted hover:bg-surface-muted hover:text-ink"><Pencil className="h-4 w-4" /></Link>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); onDelete?.(order); }} aria-label={`Delete ${order.orderNumber}`} className="rounded-md p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                    </span>
+                  </td>
                 )}
               </tr>
             );

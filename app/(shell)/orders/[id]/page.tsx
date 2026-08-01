@@ -9,6 +9,7 @@ import {
   Pencil,
   Printer,
   SlidersHorizontal,
+  Trash2,
   Wallet,
 } from "lucide-react";
 import {
@@ -16,6 +17,7 @@ import {
   getOrderAttachmentsAction,
   getOrderByIdAction,
   getPaymentsForOrderAction,
+  deleteUntouchedOrderAction,
 } from "@/app/(shell)/orders/actions";
 import { getJobCardsAction } from "@/app/(shell)/job-cards/actions";
 import { getGarmentTypesAction } from "@/app/(shell)/catalog/actions";
@@ -378,6 +380,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [returningToOrders, setReturningToOrders] = useState(false);
   const [openingEdit, setOpeningEdit] = useState(false);
   const [openingPrint, setOpeningPrint] = useState<"receipt" | "job-card" | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
@@ -565,6 +568,31 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 {openingEdit ? "Opening..." : t("orders.editOrder")}
               </Link>
             )}
+            {canEdit && (
+              <button
+                type="button"
+                disabled={deletingOrder}
+                onClick={async () => {
+                  if (!window.confirm("Delete this order? This is allowed only before any production or payment activity.")) return;
+                  setDeletingOrder(true);
+                  const result = await deleteUntouchedOrderAction(order.id);
+                  if (!result.success) {
+                    window.alert(result.error);
+                    setDeletingOrder(false);
+                    return;
+                  }
+                  router.replace("/orders");
+                }}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingOrder ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {deletingOrder ? "Deleting..." : "Delete Order"}
+              </button>
+            )}
             {canPrintReceipt && (
               <Link
                 href={`/orders/${order.id}/print/customer`}
@@ -666,7 +694,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft bg-primary-tint/60 px-4 py-3">
                       <div>
                         <p className="font-semibold text-ink">
-                          {item.serialNo}. {item.particular}
+                          {item.serialNo}. {item.particular}{item.size?.trim() ? ` · ${item.size.trim()}` : ""}
                         </p>
                         <p className="text-xs text-ink-muted">
                           Qty {item.qty} · Rate {money(item.rate)} · Amount{" "}

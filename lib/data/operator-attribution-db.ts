@@ -4,7 +4,7 @@ import type { ActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator"
 export async function recordOrderOperatorAttribution(
   supabase: SupabaseClient,
   orderId: string,
-  creator?: ActiveSharedDesktopOperator,
+  creator?: Pick<ActiveSharedDesktopOperator, "id" | "name">,
   measurementTaker?: Pick<ActiveSharedDesktopOperator, "id" | "name">,
 ): Promise<void> {
   if (!creator && !measurementTaker) return;

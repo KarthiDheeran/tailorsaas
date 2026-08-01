@@ -58,7 +58,7 @@ export function UserEditDrawer({
   const [allowedOrderSections, setAllowedOrderSections] = useState<GarmentSection[]>(
     user.allowed_order_sections.length ? user.allowed_order_sections : [...GARMENT_SECTIONS]
   );
-  const [staffOptions, setStaffOptions] = useState<{ id: string; name: string }[]>([]);
+  const [staffOptions, setStaffOptions] = useState<{ id: string; name: string; staffNumber: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -75,9 +75,9 @@ export function UserEditDrawer({
     const supabase = createClient();
     supabase
       .from("staff")
-      .select("id, name")
+      .select("id, name, staff_number, staff_code")
       .then(({ data }) => {
-        if (!cancelled) setStaffOptions(data ?? []);
+        if (!cancelled) setStaffOptions((data ?? []).map((row) => ({ id: row.id, name: row.name, staffNumber: String(row.staff_code ?? row.staff_number) })));
       });
     return () => {
       cancelled = true;
@@ -259,7 +259,7 @@ export function UserEditDrawer({
                   <option value="">None</option>
                   {staffOptions.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {s.staffNumber} — {s.name}
                     </option>
                   ))}
                 </Select>

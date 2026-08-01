@@ -112,6 +112,8 @@ export function mergeQuickAddons(values: GarmentFieldValues): GarmentFieldValues
 
 export type FieldSchemaSnapshot = {
   version: 1;
+  /** Defaults to true when absent so historical orders keep their old output. */
+  printMeasurementsOnJobCard?: boolean;
   fields: Array<{
     code: string;
     name: string;
@@ -200,10 +202,12 @@ export function validateGarmentFieldValues(
 
 export function buildFieldSchemaSnapshot(
   fields: RuntimeGarmentField[],
-  submittedValues: Record<string, unknown>
+  submittedValues: Record<string, unknown>,
+  printMeasurementsOnJobCard = true
 ): FieldSchemaSnapshot {
   return {
     version: 1,
+    printMeasurementsOnJobCard,
     fields: fields.map((field) => ({
       code: field.code,
       name: field.name,
@@ -218,6 +222,12 @@ export function buildFieldSchemaSnapshot(
       value: normalizeGarmentFieldValue(submittedValues[field.code], field.inputType),
     })),
   };
+}
+
+export function shouldPrintMeasurementsOnJobCard(
+  snapshot: Record<string, unknown> | null | undefined
+): boolean {
+  return snapshot?.printMeasurementsOnJobCard !== false;
 }
 
 export type HistoricalGarmentDisplayField = {

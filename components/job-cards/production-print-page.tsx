@@ -20,7 +20,8 @@ export function ProductionPrintPage() {
   const [section, setSection] = useState<GarmentSection>("Men");
   const [fromSequence, setFromSequence] = useState("");
   const [toSequence, setToSequence] = useState("");
-  const [orderDate, setOrderDate] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
@@ -44,13 +45,14 @@ export function ProductionPrintPage() {
       if (order.orderSection && order.orderSection !== section) return false;
       const sequence = sequenceFor(order);
       if (sequence === null || (from !== null && sequence < from) || (to !== null && sequence > to)) return false;
-      if (orderDate && order.orderDate !== orderDate) return false;
+      if (fromDate && order.orderDate < fromDate) return false;
+      if (toDate && order.orderDate > toDate) return false;
       if (!normalized) return true;
       return [order.orderNumber, order.customerSnapshot?.name, order.customerSnapshot?.phone]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(normalized));
     });
-  }, [fromSequence, orderDate, orders, query, section, toSequence]);
+  }, [fromSequence, fromDate, toDate, orders, query, section, toSequence]);
 
   function selectFiltered() {
     setSelected(new Set(printableOrders.map((order) => order.id)));
@@ -94,7 +96,7 @@ export function ProductionPrintPage() {
       </div>
       <JobCardTabs active="production-print" />
       <section className="mt-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
-        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_150px_120px_120px_170px_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_140px_105px_105px_145px_145px_auto] lg:items-end">
           <label className="relative block min-w-0 flex-1 sm:max-w-xl">
             <span className="mb-1.5 block text-xs font-semibold text-ink-muted">Search</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" />
@@ -103,12 +105,13 @@ export function ProductionPrintPage() {
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order section</span><select value={section} onChange={(event) => { setSection(event.target.value as GarmentSection); setSelected(new Set()); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{GARMENT_SECTIONS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">From no.</span><input type="number" min="1" inputMode="numeric" value={fromSequence} onChange={(event) => setFromSequence(event.target.value)} placeholder="1" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">To no.</span><input type="number" min="1" inputMode="numeric" value={toSequence} onChange={(event) => setToSequence(event.target.value)} placeholder="20" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
-          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order date</span><input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">From date</span><input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">To date</span><input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <button type="button" onClick={selectFiltered} disabled={printableOrders.length === 0} className="h-11 rounded-xl border border-primary px-4 text-sm font-semibold text-primary hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-50">Select filtered ({printableOrders.length})</button>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-ink-muted">
-            Range: {fromSequence || "1"} to {toSequence || "..."}. Every garment unit prints Cutting first, then Stitching.
+            Range: {fromSequence || "1"} to {toSequence || "..."}. Each item prints one quantity-based Cutting card, then one Stitching card.
           </p>
           <button type="button" onClick={() => void printBundle()} disabled={printing || selected.size === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({selected.size})</button>
         </div>

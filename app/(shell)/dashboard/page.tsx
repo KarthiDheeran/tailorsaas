@@ -2,19 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ShoppingBag,
-  Truck,
-  AlertTriangle,
-  Wallet,
-  IndianRupee,
-  Plus,
-  ClipboardList,
-  Scissors,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { TodaysDeliveries } from "@/components/dashboard/todays-deliveries";
 import { OverdueOrdersList } from "@/components/dashboard/overdue-orders-list";
 import { PaymentPending } from "@/components/dashboard/payment-pending";
@@ -24,51 +14,12 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 
-const STAT_ICONS = {
-  "Orders Today": ShoppingBag,
-  "Deliveries Today": Truck,
-  "Overdue Orders": AlertTriangle,
-  "Outstanding Balance": Wallet,
-  "Collected Today": IndianRupee,
-  "Unassigned Job Cards": ClipboardList,
-  "Delayed Job Cards": Scissors,
-  "Expenses Today": IndianRupee,
-} as const;
-
 // Stat cards that surface money figures — hidden for anyone without
 // orders.viewPayments (Staff-like access), per the brief's "don't show
 // revenue/report money cards" rule.
-const MONEY_STAT_LABELS = new Set(["Outstanding Balance", "Collected Today"]);
-
-const TODAY_STAT_LABELS = [
-  "Orders Today",
-  "Deliveries Today",
-  "Collected Today",
-  "Expenses Today",
-];
-
-const ATTENTION_STAT_LABELS = [
-  "Overdue Orders",
-  "Unassigned Job Cards",
-  "Delayed Job Cards",
-  "Outstanding Balance",
-];
-
-const STAT_LINKS: Record<string, string> = {
-  "Orders Today": "/orders",
-  "Deliveries Today": "/delivery",
-  "Collected Today": "/payments",
-  "Expenses Today": "/payments",
-  "Outstanding Balance": "/payments?tab=pending-dues",
-  "Overdue Orders": "/orders?balance=overdue",
-  "Unassigned Job Cards": "/job-cards?filter=Unassigned",
-  "Delayed Job Cards": "/job-cards?filter=delayed",
-};
-
 function DashboardContent() {
   const { hasPermission } = useCurrentUser();
   const canViewPayments = hasPermission("orders.viewPayments");
-  const canViewExpenses = hasPermission("expenses.view");
   // ISO (UTC) date string — consistent between server and client renders,
   // matching the todayIso convention already used in orders-table.tsx.
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -78,10 +29,13 @@ function DashboardContent() {
   // after mount, same cost already accepted by every other migrated page.
   const [data, setData] = useState<DashboardData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [summaryFrom, setSummaryFrom] = useState(todayIso);
+  const [summaryTo, setSummaryTo] = useState(todayIso);
+  const [summaryStage, setSummaryStage] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
-    getDashboardDataAction(todayIso)
+    getDashboardDataAction(todayIso, { from: summaryFrom, to: summaryTo, stage: summaryStage })
       .then((result) => {
         if (cancelled) return;
         setData(result);
@@ -96,7 +50,7 @@ function DashboardContent() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [summaryFrom, summaryStage, summaryTo, todayIso]);
 
   if (loadError && !data) {
     return (
@@ -113,20 +67,6 @@ function DashboardContent() {
       </div>
     );
   }
-
-  const visibleStats = data.stats.filter((stat) => {
-    if (MONEY_STAT_LABELS.has(stat.label)) return canViewPayments;
-    if (stat.label === "Expenses Today") return canViewExpenses;
-    return true;
-  });
-  const getStat = (label: string) =>
-    visibleStats.find((stat) => stat.label === label);
-  const todayStats = TODAY_STAT_LABELS.map(getStat).filter(Boolean) as NonNullable<
-    ReturnType<typeof getStat>
-  >[];
-  const attentionStats = ATTENTION_STAT_LABELS.map(getStat).filter(
-    Boolean
-  ) as NonNullable<ReturnType<typeof getStat>>[];
 
   return (
     <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]">
@@ -157,58 +97,23 @@ function DashboardContent() {
         </div>
       )}
 
-      <section className="mb-6">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-ink">Today</h2>
-            <p className="text-[13px] text-ink-muted">
-              Orders, collections, and delivery pulse.
-            </p>
+      <section className="mb-6 overflow-hidden rounded-2xl border border-border-soft bg-white shadow-soft">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border-soft p-4 sm:p-5">
+          <div><h2 className="text-lg font-bold text-ink">Garment Production Summary</h2><p className="text-sm text-ink-muted">Item quantities created in orders, grouped by current status.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <label className="text-xs font-semibold text-ink-muted">From<input type="date" value={summaryFrom} onChange={(event) => setSummaryFrom(event.target.value)} className="mt-1 block h-10 rounded-lg border border-border bg-white px-3 text-sm" /></label>
+            <label className="text-xs font-semibold text-ink-muted">To<input type="date" min={summaryFrom} value={summaryTo} onChange={(event) => setSummaryTo(event.target.value)} className="mt-1 block h-10 rounded-lg border border-border bg-white px-3 text-sm" /></label>
+            <label className="text-xs font-semibold text-ink-muted">Item status<select value={summaryStage} onChange={(event) => setSummaryStage(event.target.value)} className="mt-1 block h-10 min-w-40 rounded-lg border border-border bg-white px-3 text-sm"><option value="all">All statuses</option>{data.garmentStages.map((stage) => <option key={stage} value={stage}>{stage}</option>)}</select></label>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {todayStats.map((stat) => (
-            <StatCard
-              key={stat.label}
-              stat={stat}
-              icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
-              href={STAT_LINKS[stat.label]}
-            />
-          ))}
-        </div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="bg-surface-muted text-xs uppercase text-ink-faint"><tr><th className="px-5 py-3">Garment</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Quantity</th></tr></thead><tbody className="divide-y divide-border-soft">{data.garmentSummary.map((row) => <tr key={`${row.garment}-${row.stage}`}><td className="px-5 py-3 font-semibold text-ink">{row.garment}</td><td className="px-5 py-3 text-ink-muted">{row.stage}</td><td className="px-5 py-3 text-right font-bold text-primary">{row.quantity}</td></tr>)}{data.garmentSummary.length === 0 && <tr><td colSpan={3} className="px-5 py-10 text-center text-ink-muted">No garments match this period and status.</td></tr>}</tbody></table></div>
       </section>
 
-      <section className="mb-6">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-ink">Needs Attention</h2>
-            <p className="text-[13px] text-ink-muted">
-              Work that should be assigned or chased.
-            </p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {attentionStats.map((stat) => (
-            <StatCard
-              key={stat.label}
-              stat={stat}
-              icon={STAT_ICONS[stat.label as keyof typeof STAT_ICONS] ?? ShoppingBag}
-              href={STAT_LINKS[stat.label]}
-              emphasized={stat.tone === "warning"}
-            />
-          ))}
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)] lg:items-start">
-        <div className="space-y-6 lg:col-span-2">
-          <TodaysDeliveries orders={data.todaysDeliveries} />
-          <OverdueOrdersList orders={data.overdueOrders} />
-        </div>
-        <div className="space-y-6">
-          <ProductionQueue stages={data.productionQueue} />
-          {canViewPayments && <PaymentPending orders={data.paymentPending} />}
-        </div>
+      <div className="space-y-6">
+        <TodaysDeliveries orders={data.todaysDeliveries} />
+        <ProductionQueue stages={data.productionQueue} />
+        <OverdueOrdersList orders={data.overdueOrders} />
+        {canViewPayments && <PaymentPending orders={data.paymentPending} />}
       </div>
     </div>
   );

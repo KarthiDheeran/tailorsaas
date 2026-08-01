@@ -20,6 +20,7 @@ import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
 import {
   historicalGarmentValueText,
   resolveHistoricalGarmentDisplayFields,
+  shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
 import { barcodeSvgDataUri } from "@/lib/barcode-code128";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
@@ -124,11 +125,13 @@ function measurementEntries(
 ) {
   if (!measurements) return [];
   if (fieldSchemaSnapshot) {
-    return resolveHistoricalGarmentDisplayFields({ measurements, fieldSchemaSnapshot }).map((field) => ({
-      key: field.code,
-      label: field.unit ? `${field.label} (${field.unit})` : field.label,
-      value: historicalGarmentValueText(field.value),
-    }));
+    return resolveHistoricalGarmentDisplayFields({ measurements, fieldSchemaSnapshot })
+      .filter((field) => shouldPrintMeasurementsOnJobCard(fieldSchemaSnapshot) || field.fieldType !== "measurement")
+      .map((field) => ({
+        key: field.code,
+        label: field.unit ? `${field.label} (${field.unit})` : field.label,
+        value: historicalGarmentValueText(field.value),
+      }));
   }
   const keys = [
     ...measurementFields.map((field) => field.id).filter((key) => typeof measurements[key] === "string" && measurements[key].trim()),
@@ -322,7 +325,7 @@ function PrintSetup({
               <option value="">Select worker</option>
               {visibleStaff.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.name} - {member.role}
+                  {member.staffNumber} — {member.name} — {member.role}
                 </option>
               ))}
             </select>

@@ -69,6 +69,8 @@ export function OrderListFilters({
   onDeliveryFilterChange,
   deliveryCustomRange,
   onDeliveryCustomRangeChange,
+  orderDateRange,
+  onOrderDateRangeChange,
   onClearFilters,
   onSelectCustomer,
 }: {
@@ -82,6 +84,8 @@ export function OrderListFilters({
   onDeliveryFilterChange: (filter: DeliveryFilter) => void;
   deliveryCustomRange: DeliveryCustomRange;
   onDeliveryCustomRangeChange: (range: DeliveryCustomRange) => void;
+  orderDateRange: DeliveryCustomRange;
+  onOrderDateRangeChange: (range: DeliveryCustomRange) => void;
   onClearFilters: () => void;
   onSelectCustomer: (customer: Customer) => void;
 }) {
@@ -119,7 +123,9 @@ export function OrderListFilters({
     query.trim() !== "" ||
     statusFilter !== "all" ||
     balanceFilter !== "all" ||
-    deliveryFilter !== "all";
+    deliveryFilter !== "all" ||
+    orderDateRange.from !== "" ||
+    orderDateRange.to !== "";
 
   function handleSelect(customer: Customer) {
     onQueryChange("");
@@ -127,8 +133,8 @@ export function OrderListFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border-soft bg-white/90 p-3 shadow-soft">
-      <div className="relative w-full sm:w-[450px]">
+    <div className="mb-6 flex flex-wrap items-end gap-2.5 rounded-xl border border-border-soft bg-white/90 p-3 shadow-soft">
+      <div className="relative w-full sm:w-[340px] lg:flex-1 lg:min-w-[280px] lg:max-w-[380px]">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
         <input
           type="text"
@@ -161,7 +167,7 @@ export function OrderListFilters({
         value={statusFilter}
         options={statusOptions}
         onChange={onStatusFilterChange}
-        minWidthClass="min-w-[190px]"
+        minWidthClass="min-w-[140px]"
       />
 
       <FilterDropdown
@@ -169,7 +175,7 @@ export function OrderListFilters({
         value={balanceFilter}
         options={balanceOptions}
         onChange={onBalanceFilterChange}
-        minWidthClass="min-w-[170px]"
+        minWidthClass="min-w-[145px]"
       />
 
       <FilterDropdown
@@ -177,8 +183,11 @@ export function OrderListFilters({
         value={deliveryFilter}
         options={deliveryOptions}
         onChange={onDeliveryFilterChange}
-        minWidthClass="min-w-[170px]"
+        minWidthClass="min-w-[145px]"
       />
+
+      <label className="w-[145px] text-xs font-semibold text-ink-muted">Order from<input type="date" value={orderDateRange.from} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, from: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2`} /></label>
+      <label className="w-[145px] text-xs font-semibold text-ink-muted">Order to<input type="date" value={orderDateRange.to} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, to: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2`} /></label>
 
       {deliveryFilter === "custom" && (
         <>

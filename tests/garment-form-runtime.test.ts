@@ -11,6 +11,7 @@ import {
   resolveHistoricalGarmentDisplayFields,
   resolveRuntimeGarmentFields,
   serializeGarmentFieldDraft,
+  shouldPrintMeasurementsOnJobCard,
   validateGarmentFieldValues,
   type RuntimeGarmentField,
 } from "../lib/garment-form-runtime.js";
@@ -181,6 +182,10 @@ test("server-built snapshots retain trusted metadata, stable ordering, and nativ
     ["waist", "Waist", 32, "inch"],
     ["style", "Style", "Slim", null],
   ]);
+  assert.equal(shouldPrintMeasurementsOnJobCard(snapshot), true);
+  const hiddenMeasurementSnapshot = buildFieldSchemaSnapshot(schema, { waist: 32 }, false);
+  assert.equal(shouldPrintMeasurementsOnJobCard(hiddenMeasurementSnapshot), false);
+  assert.equal(shouldPrintMeasurementsOnJobCard(undefined), true);
 });
 
 test("historical display prefers valid snapshots and safely falls back for malformed snapshots", () => {

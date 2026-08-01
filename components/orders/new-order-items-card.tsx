@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Pencil, Shirt, ShoppingBag, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Pencil, Shirt, ShoppingBag, Trash2, X } from "lucide-react";
 import {
   getMeasurementPickerDataAction,
   type HistoricalMeasurementSnapshot,
@@ -23,6 +23,7 @@ import {
   createGarmentFieldDraft,
   resolveRuntimeGarmentFields,
   serializeGarmentFieldDraft,
+  shouldPrintMeasurementsOnJobCard,
   type GarmentFieldValue,
   type GarmentFieldDraft,
   type RuntimeGarmentField,
@@ -93,12 +94,14 @@ export interface DraftItem {
   // Catalog garment type id (lib/catalog.ts is the source of truth for
   // pricing/measurement fields/add-ons).
   garmentTypeId: string;
+  color: string;
   qty: number;
   rate: number;
   // Once the shopkeeper edits Rate directly, garment changes stop
   // auto-filling it - manual override always wins for that row.
   rateOverridden: boolean;
   addOnIds: string[];
+  printMeasurementsOnJobCard: boolean;
   fabricSource: OrderItemFabricSource;
   fabricNotes: string;
   designNotes: string;
@@ -120,10 +123,12 @@ export function blankDraftItem(): DraftItem {
     draftKey: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     orderItemId: undefined,
     garmentTypeId: "",
+    color: "",
     qty: 1,
     rate: 0,
     rateOverridden: false,
     addOnIds: [],
+    printMeasurementsOnJobCard: true,
     fabricSource: "Not specified",
     fabricNotes: "",
     designNotes: "",
@@ -164,10 +169,12 @@ export function orderItemToDraftItem(
     draftKey: item.id ? `item-${item.id}` : `saved-${item.serialNo}`,
     orderItemId: item.id,
     garmentTypeId: garment?.id ?? "",
+    color: item.size ?? "",
     qty: item.qty,
     rate: item.rate,
     rateOverridden: true,
     addOnIds,
+    printMeasurementsOnJobCard: shouldPrintMeasurementsOnJobCard(item.fieldSchemaSnapshot),
     fabricSource: item.fabricSource ?? "Not specified",
     fabricNotes: item.fabricNotes ?? "",
     designNotes: item.designNotes ?? "",
@@ -223,6 +230,7 @@ type PreviousMeasurementOption = {
   label: string;
   values: Record<string, unknown>;
   notes?: string;
+  addOnIds?: string[];
 };
 
 type FloatingMenuPosition = {
@@ -265,12 +273,37 @@ function configuredDraftItems(items: DraftItem[]): Array<{ item: DraftItem; inde
     .filter(({ item }) => item.garmentTypeId);
 }
 
-function newDraftForGarment(garment: CatalogGarmentType): DraftItem {
-  return {
+function newDraftForGarment(garment: CatalogGarmentType, source?: DraftItem): DraftItem {
+  const draft = {
     ...blankDraftItem(),
     garmentTypeId: garment.id,
     rate: garment.basePrice,
   };
+  if (!source) return draft;
+  return {
+    ...draft,
+    typedFieldDraft: source.typedFieldDraft
+      ? {
+          typedValues: { ...source.typedFieldDraft.typedValues },
+          passthroughValues: { ...source.typedFieldDraft.passthroughValues },
+        }
+      : undefined,
+    measurement: source.measurement
+      ? { ...source.measurement, values: { ...source.measurement.values }, updateCustomerMeasurements: false }
+      : null,
+    printMeasurementsOnJobCard: source.printMeasurementsOnJobCard,
+    addOnIds: [...source.addOnIds],
+    color: source.color,
+  };
+}
+
+function removeAddOnInstructionName(existing: string, addOnName: string): string {
+  const escaped = addOnName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return existing
+    .split("\n")
+    .map((line) => line.replace(new RegExp(`(?:add-on:\\s*)?${escaped}`, "gi"), "").replace(/^[,;\s]+|[,;\s]+$/g, "").replace(/\s{2,}/g, " "))
+    .filter((line) => line.trim() !== "")
+    .join("\n");
 }
 
 function ConfigureItemModal({
@@ -315,6 +348,11 @@ function ConfigureItemModal({
   );
   const [metadataLoading, setMetadataLoading] = useState(!configurationsPreloaded);
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(draft.addOnIds);
+  const [quantity, setQuantity] = useState(Math.max(1, draft.qty));
+  const [color, setColor] = useState(draft.color);
+  const [printMeasurementsOnJobCard, setPrintMeasurementsOnJobCard] = useState(
+    draft.printMeasurementsOnJobCard
+  );
   const legacyRuntimeFields = useMemo<RuntimeGarmentField[]>(
     () =>
       fields.map((field, index) => ({
@@ -420,6 +458,7 @@ function ConfigureItemModal({
         label: "Current item measurements",
         values: draft.measurement.values,
         notes: draft.measurement.notes,
+        addOnIds: draft.addOnIds,
       });
     }
     if (defaultSeed && defaultHasMeasurements) {
@@ -434,8 +473,9 @@ function ConfigureItemModal({
       const id = snapshot.itemId ?? `${snapshot.orderId}-${snapshot.serialNo}`;
       options.push({
         id: `history:${id}`,
-        label: `${snapshot.orderNumber} � ${formatOrderDate(snapshot.orderDate)}`,
+        label: `${snapshot.orderNumber} · ${formatOrderDate(snapshot.orderDate)}`,
         values: snapshot.measurements,
+        addOnIds: snapshot.addOnIds,
       });
     });
     return options;
@@ -446,8 +486,9 @@ function ConfigureItemModal({
     )?.label ?? "Select previous measurements";
 
   useEffect(() => {
-    firstMeasurementRef.current?.focus();
-  }, []);
+    if (metadataLoading) return;
+    window.setTimeout(() => firstMeasurementRef.current?.focus(), 0);
+  }, [metadataLoading, garment.id]);
 
   useEffect(() => {
     setTypedFieldDraft(
@@ -672,6 +713,7 @@ function ConfigureItemModal({
           setSelectedPreviousMeasurement(
             `history:${latestSnapshot.itemId ?? `${latestSnapshot.orderId}-${latestSnapshot.serialNo}`}`
           );
+          setSelectedAddOnIds(latestSnapshot.addOnIds);
           return;
         }
 
@@ -720,31 +762,23 @@ function ConfigureItemModal({
       current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]
     );
 
-    // Add-ons / Extras are the source of billable extras. Keep their names in
-    // one readable instruction line without changing manual notes on removal.
-    if (!alreadySelected && addOn) {
+    if (addOn) {
       if (runtimeDraftFields.some((field) => field.code === "final_instructions")) {
         setTypedFieldDraft((current) => ({
           ...current,
           typedValues: {
             ...current.typedValues,
-            final_instructions: mergeAddOnInstructionNames(
-              typeof current.typedValues.final_instructions === "string"
-                ? current.typedValues.final_instructions
-                : "",
-              addOn.name,
-              addOnInstructionNames
-            ),
+            final_instructions: alreadySelected
+              ? removeAddOnInstructionName(typeof current.typedValues.final_instructions === "string" ? current.typedValues.final_instructions : "", addOn.name)
+              : mergeAddOnInstructionNames(typeof current.typedValues.final_instructions === "string" ? current.typedValues.final_instructions : "", addOn.name, addOnInstructionNames),
           },
         }));
       } else {
         setMeasurement((current) => ({
           ...current,
-          notes: mergeAddOnInstructionNames(
-            current.notes,
-            addOn.name,
-            addOnInstructionNames
-          ),
+          notes: alreadySelected
+            ? removeAddOnInstructionName(current.notes, addOn.name)
+            : mergeAddOnInstructionNames(current.notes, addOn.name, addOnInstructionNames),
         }));
       }
     }
@@ -776,6 +810,7 @@ function ConfigureItemModal({
   function handlePreviousMeasurementSelect(option: PreviousMeasurementOption) {
     setSelectedPreviousMeasurement(option.id);
     loadMeasurementValues(option.values, option.notes);
+    setSelectedAddOnIds(option.addOnIds ?? []);
     setPreviousMeasurementsOpen(false);
   }
 
@@ -881,7 +916,10 @@ function ConfigureItemModal({
     onSave({
       ...draft,
       garmentTypeId: garment.id,
+      qty: quantity,
+      color: color.trim(),
       addOnIds: selectedAddOnIds,
+      printMeasurementsOnJobCard,
       typedFieldDraft,
       measurement: hasMeasurementContent || measurement.updateCustomerMeasurements
         ? measurement
@@ -1024,24 +1062,26 @@ function ConfigureItemModal({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-surface-muted/40 px-5 py-4">
-              <section className="flex h-full min-w-max gap-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-muted/40 px-5 py-4">
+              <section className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-4">
                 {metadataLoading ? (
-                  <p className="min-w-[430px] rounded-lg bg-white px-3 py-2 text-sm text-ink-muted">Loading configured fields...</p>
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted lg:col-span-2">Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
-                  <GarmentFormFields
-                    fields={nonInstructionFields}
-                    values={typedFieldDraft.typedValues}
-                    onChange={handleGarmentFieldChange}
-                    layout="columns"
-                  />
+                  <div className="min-w-0 lg:col-span-2 xl:col-span-2">
+                    <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout="columns" firstControlRef={firstMeasurementRef} />
+                  </div>
                 ) : (
-                  <p className="min-w-[430px] rounded-lg bg-white px-3 py-2 text-sm text-ink-muted">
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted lg:col-span-2">
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
 
-                <section className="h-full min-w-[430px] max-w-[520px] overflow-y-auto rounded-lg border border-border-soft bg-white p-4">
+                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
+                  <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
+                  <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} />
+                </section>}
+
+                <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
                   <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
                   <p className="mb-2 text-sm text-ink-muted">
                     Selected extras are added to Final Instructions for the tailor.
@@ -1073,41 +1113,37 @@ function ConfigureItemModal({
                       />
                     </div>
                   )}
-                </section>
-
-                <section className="h-full min-w-[430px] max-w-[560px] overflow-y-auto rounded-lg border border-border-soft bg-white p-4">
-                  <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
-                  {!metadataLoading && instructionFields.length > 0 && (
-                    <GarmentFormFields
-                      fields={instructionFields}
-                      values={typedFieldDraft.typedValues}
-                      onChange={handleGarmentFieldChange}
-                      showSectionHeadings={false}
-                    />
-                  )}
-                  <label className="mt-3 flex flex-col gap-1">
+                  <label className="mt-4 flex flex-col gap-1">
                     <span className="text-[13px] font-medium text-ink-muted">Notes</span>
-                    <textarea
-                      ref={(node) => {
-                        if (fields.length === 0) firstMeasurementRef.current = node;
-                      }}
-                      value={measurement.notes}
-                      onChange={(event) =>
-                        setMeasurement((current) => ({ ...current, notes: event.target.value }))
-                      }
-                      rows={2}
-                      className="h-[60px] resize-none rounded-md border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                    />
+                    <textarea value={measurement.notes} onChange={(event) => setMeasurement((current) => ({ ...current, notes: event.target.value }))} rows={2} className="h-[60px] resize-none rounded-md border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint" />
+                  </label>
+                  <label className="mt-4 flex items-start gap-2 rounded-lg border border-border-soft bg-surface-muted/60 p-3 text-sm text-ink">
+                    <input type="checkbox" checked={printMeasurementsOnJobCard} onChange={(event) => setPrintMeasurementsOnJobCard(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+                    <span><b className="block font-semibold">Print body measurements on job card</b><span className="text-xs text-ink-muted">Measurements stay saved even when they are not printed.</span></span>
                   </label>
                 </section>
               </section>
 
             </div>
 
-            <div ref={footerRef} className="flex items-center gap-2 border-t border-border-soft bg-white px-5 py-3">
+            <div ref={footerRef} className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border-soft bg-white px-5 py-3">
+              <label className="mr-2 flex items-center gap-2 text-sm font-semibold text-ink-muted">
+                Color
+                <input type="text" value={color} onChange={(event) => setColor(event.target.value)} placeholder="Optional" className="h-10 w-36 rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint" />
+              </label>
+              <label className="mr-2 flex items-center gap-2 text-sm font-semibold text-ink-muted">
+                Quantity
+                <input
+                  type="number"
+                  min={1}
+                  value={quantity}
+                  onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))}
+                  className="h-10 w-24 rounded-md border border-border bg-white px-2.5 text-center text-base font-semibold text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                />
+              </label>
               <button
                 type="submit"
-                className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                className="min-w-48 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
                 {mode === "add" ? "Save Item Details" : "Update Item Details"}
                 <span className="ml-2 rounded border border-white/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/90">
@@ -1117,7 +1153,7 @@ function ConfigureItemModal({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
+                className="min-w-28 rounded-lg border border-border bg-white px-5 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
               >
                 Cancel
               </button>
@@ -1176,7 +1212,7 @@ function ConfigureItemModal({
                             : "border-border bg-white text-transparent"
                         }`}
                       >
-                        ?
+                        {selected && <Check className="h-3 w-3" strokeWidth={3} />}
                       </span>
                       <span className="truncate font-medium">{addOn.name}</span>
                     </span>
@@ -1251,20 +1287,22 @@ export function NewOrderItemsCard({
   function openAddModal(garmentTypeId: string) {
     const garment = findGarmentById(garmentTypes, garmentTypeId);
     if (!garment) return;
-    setModal({ mode: "add", draft: newDraftForGarment(garment) });
+    const currentOrderSource = [...items]
+      .reverse()
+      .find((item) => item.garmentTypeId === garmentTypeId && (item.typedFieldDraft || item.measurement));
+    setModal({ mode: "add", draft: newDraftForGarment(garment, currentOrderSource) });
   }
 
   function saveModalDraft(nextDraft: DraftItem) {
     if (modal?.mode === "edit" && typeof modal.index === "number") {
       onItemsChange(items.map((item, index) => (index === modal.index ? nextDraft : item)));
-      const returnKey = modal.returnKey ?? nextDraft.draftKey;
       setModal(null);
-      window.setTimeout(() => editButtonRefs.current[returnKey]?.focus(), 0);
+      window.setTimeout(() => selectorRef.current?.focus(), 0);
       return;
     }
     onItemsChange([...items.filter((item) => item.garmentTypeId), nextDraft]);
     setModal(null);
-    window.setTimeout(() => qtyInputRefs.current[nextDraft.draftKey]?.focus(), 0);
+    window.setTimeout(() => selectorRef.current?.focus(), 0);
   }
 
   function updateItem(index: number, patch: Partial<DraftItem>) {
@@ -1344,7 +1382,7 @@ export function NewOrderItemsCard({
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary">
                           <Shirt className="h-4 w-4" aria-hidden="true" />
                         </span>
-                        {garment ? formatGarmentCodeName(garment) : "Unknown garment"}
+                        <span>{garment ? formatGarmentCodeName(garment) : "Unknown garment"}{item.color.trim() && <small className="mt-0.5 block font-medium text-ink-muted">Color: {item.color.trim()}</small>}</span>
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right text-ink">
@@ -1473,7 +1511,7 @@ export function NewOrderItemsCard({
   );
 }
 
-// Item Amount = Qty �- (Rate + selected add-ons total) - Rate here is the
+// Item Amount = Qty × (Rate + selected add-ons total) - Rate here is the
 // row's current effective rate (Catalog base price, or the shopkeeper's
 // manual override), not necessarily the garment's basePrice.
 function computeAmount(
@@ -1531,12 +1569,18 @@ export function computeOrderItems(
       // catalog_garment_types "where possible" (Phase 6C) - Edit Order's
       // own items never set this, since that flow has no Catalog dropdown.
       garmentTypeId: it.garmentTypeId || undefined,
+      size: it.color.trim() || undefined,
       qty: it.qty,
       rate: it.rate,
       addOns: itemAddOns.length > 0 ? itemAddOns : undefined,
       addOnsTotal: addOnsTotal > 0 ? addOnsTotal : undefined,
       finalRate,
       amount: finalRate * it.qty,
+      fieldSchemaSnapshot: {
+        version: 1,
+        fields: [],
+        printMeasurementsOnJobCard: it.printMeasurementsOnJobCard,
+      },
       measurements: hasMeasurements
         ? {
             ...serializedMeasurementValues,

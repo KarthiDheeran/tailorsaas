@@ -328,6 +328,23 @@ body {
   }
 }
 
+/* Garment configuration actions sit compactly at the page's lower-right
+   instead of stretching across the drawer as a full-width footer bar. */
+aside.fixed.inset-y-0.right-0 form > footer {
+  justify-content: flex-end;
+  border-top: 0;
+}
+
+aside.fixed.inset-y-0.right-0 form > footer > button:first-child {
+  flex: 0 0 auto;
+  min-width: 13rem;
+  padding-inline: 1.25rem;
+}
+
+aside.fixed.inset-y-0.right-0 form > footer > button:last-child {
+  min-width: 7rem;
+}
+
 /* Customer Receipt / Tailor Job Card print routes (app/orders/[id]/print/**)
    — A4-friendly page size/margins and a plain white background regardless
    of the app's default surface color, since these are physical documents,

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  deleteUntouchedOrderAction,
   getOrderByIdAction,
   getOrdersPageDataAction,
 } from "@/app/(shell)/orders/actions";
@@ -55,6 +56,7 @@ function OrdersPageContent() {
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const canCreate = hasPermission("orders.create");
+  const canEdit = hasPermission("orders.edit");
   const canViewPayments = hasPermission("orders.viewPayments");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null
@@ -65,6 +67,7 @@ function OrdersPageContent() {
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
   const [deliveryCustomRange, setDeliveryCustomRange] =
     useState<DeliveryCustomRange>({ from: "", to: "" });
+  const [orderDateRange, setOrderDateRange] = useState({ from: "", to: "" });
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<OrdersSortKey>("orderDate");
   const [sortDir, setSortDir] = useState<OrdersSortDir>("desc");
@@ -197,6 +200,17 @@ function OrdersPageContent() {
     setRefreshTick((t) => t + 1);
   }
 
+  async function handleDeleteOrder(order: Order) {
+    if (!window.confirm(`Delete order ${order.orderNumber}? This works only before production or payment activity starts.`)) return;
+    const result = await deleteUntouchedOrderAction(order.id);
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    if (detailsOrder?.id === order.id) setDetailsOrder(null);
+    setRefreshTick((tick) => tick + 1);
+  }
+
   // Phase 7C: OrderDetailsDrawer calls this after a payment is recorded or
   // voided — advance_paid/balance/payment_status all change via the ledger
   // trigger, so the drawer needs the freshly re-fetched Order, and the
@@ -251,11 +265,14 @@ function OrdersPageContent() {
     setStatusFilter("all");
     setDeliveryFilter("all");
     setDeliveryCustomRange({ from: "", to: "" });
+    setOrderDateRange({ from: "", to: "" });
     setPage(1);
   }
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const filteredOrders = orders.filter((order) => {
+    if (orderDateRange.from && order.orderDate < orderDateRange.from) return false;
+    if (orderDateRange.to && order.orderDate > orderDateRange.to) return false;
     if (trimmedQuery) {
       const customer = customersById[order.customerId];
       const matchesQuery =
@@ -304,7 +321,10 @@ function OrdersPageContent() {
 
   const allOrders = [...filteredOrders].sort((a, b) => {
     const cmp = a[sortKey] < b[sortKey] ? -1 : a[sortKey] > b[sortKey] ? 1 : 0;
-    return sortDir === "asc" ? cmp : -cmp;
+    if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+    const aSequence = a.orderSequence ?? (Number(a.orderNumber) || 0);
+    const bSequence = b.orderSequence ?? (Number(b.orderNumber) || 0);
+    return bSequence - aSequence;
   });
   const customerOrders = selectedCustomer
     ? orders
@@ -440,7 +460,7 @@ function OrdersPageContent() {
       )}
 
       {!selectedCustomer && (
-        <OrderListFilters
+        <><OrderListFilters
           query={searchQuery}
           onQueryChange={handleQueryChange}
           balanceFilter={balanceFilter}
@@ -451,9 +471,11 @@ function OrdersPageContent() {
           onDeliveryFilterChange={handleDeliveryFilterChange}
           deliveryCustomRange={deliveryCustomRange}
           onDeliveryCustomRangeChange={handleDeliveryCustomRangeChange}
+          orderDateRange={orderDateRange}
+          onOrderDateRangeChange={(range) => { setOrderDateRange(range); setPage(1); }}
           onClearFilters={handleClearFilters}
           onSelectCustomer={handleSelectCustomer}
-        />
+        /></>
       )}
 
       {isLoading ? (
@@ -508,6 +530,8 @@ function OrdersPageContent() {
             editableStatus
             onStatusChange={handleStatusChanged}
             onRowClick={setDetailsOrder}
+            showActions={canEdit}
+            onDelete={handleDeleteOrder}
           />
         </div>
       ) : (
@@ -521,6 +545,8 @@ function OrdersPageContent() {
             editableStatus
             onStatusChange={handleStatusChanged}
             onRowClick={setDetailsOrder}
+            showActions={canEdit}
+            onDelete={handleDeleteOrder}
           />
           {allOrders.length > 0 && (
             <div className="mt-5 flex items-center justify-between text-sm">

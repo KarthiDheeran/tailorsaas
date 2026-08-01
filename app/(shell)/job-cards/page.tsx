@@ -246,6 +246,7 @@ function JobCardsContent() {
   const [stageFilter, setStageFilter] = useState<JobCardStage | "all">("all");
   const [dueFilter, setDueFilter] = useState<DueFilter>("All");
   const [garmentFilter, setGarmentFilter] = useState("all");
+  const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [focusedJobCardId, setFocusedJobCardId] = useState<string | null>(null);
   const [detailsCard, setDetailsCard] = useState<JobCard | null>(null);
   const [historyCard, setHistoryCard] = useState<JobCard | null>(null);
@@ -349,6 +350,8 @@ function JobCardsContent() {
     if (stageFilter !== "all" && stage !== stageFilter) return false;
     if (!matchesDueFilter(card, dueFilter, todayIso)) return false;
     if (garmentFilter !== "all" && card.garment !== garmentFilter) return false;
+    if (dateRange.from && card.deliveryDate < dateRange.from) return false;
+    if (dateRange.to && card.deliveryDate > dateRange.to) return false;
     return true;
   });
 
@@ -515,7 +518,7 @@ function JobCardsContent() {
               ))}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <Select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value as JobCardStage | "all")}
@@ -550,6 +553,8 @@ function JobCardsContent() {
                   </option>
                 ))}
               </Select>
+              <input aria-label="Job cards from date" type="date" value={dateRange.from} onChange={(event) => setDateRange((value) => ({ ...value, from: event.target.value }))} className="h-12 rounded-[10px] border border-border bg-white px-3 text-[15px]" />
+              <input aria-label="Job cards to date" type="date" value={dateRange.to} onChange={(event) => setDateRange((value) => ({ ...value, to: event.target.value }))} className="h-12 rounded-[10px] border border-border bg-white px-3 text-[15px]" />
             </div>
           </div>
 
@@ -918,7 +923,7 @@ function JobCardTransferModal({
             New tailor
             <select value={newStaffId} onChange={(event) => setNewStaffId(event.target.value)} className="h-11 rounded-lg border border-border bg-white px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">Select tailor</option>
-              {availableStaff.map((member) => <option key={member.id} value={member.id}>{member.name} — {member.role}</option>)}
+              {availableStaff.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name} — {member.role}</option>)}
             </select>
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-ink">

@@ -35,6 +35,8 @@ export interface CreateJobCardStageSlipInput {
   orderId: string;
   orderItemSerialNo: number;
   unitNo: number;
+  /** Number of consecutive garment units represented by this one barcode. */
+  quantity?: number;
   stage: TaskType;
   staffId?: string;
   wageRate?: number;
@@ -145,7 +147,9 @@ export async function createJobCardStageSlip(
   const unitNo = Math.max(1, Math.min(input.unitNo, Math.max(1, item.qty)));
   const rate = input.wageRate ?? staffGarmentStageRate(staff, item.garmentTypeId, input.stage);
   const wageRate = Number.isFinite(rate) && rate > 0 ? rate : 0;
-  const quantity = 1;
+  const availableQuantity = Math.max(1, item.qty - unitNo + 1);
+  const requestedQuantity = Math.max(1, Math.floor(input.quantity ?? 1));
+  const quantity = Math.min(requestedQuantity, availableQuantity);
   const labourAddOns = labourAddOnsForStage(item.addOns, input.stage);
   const labourAddOnsTotal = labourAddOns.reduce((sum, addOn) => sum + addOn.amount, 0);
 
@@ -158,13 +162,13 @@ export async function createJobCardStageSlip(
       order_number: order.orderNumber,
       customer_id: order.customerId,
       customer_snapshot: order.customerSnapshot ?? null,
-      garment_type: item.particular,
+      garment_type: item.size?.trim() ? `${item.particular} · ${item.size.trim()}` : item.particular,
       quantity,
       stage: input.stage,
       staff_id: staff?.id ?? null,
       staff_name: staff?.name ?? "Unassigned",
       wage_rate: wageRate,
-      wage_amount: wageRate * quantity + labourAddOnsTotal,
+      wage_amount: (wageRate + labourAddOnsTotal) * quantity,
       measurements_snapshot: meaningfulMeasurements(item.measurements),
       field_schema_snapshot: item.fieldSchemaSnapshot ?? null,
       add_ons_snapshot: item.addOns ?? null,
@@ -263,7 +267,7 @@ export async function getTalliedJobCardStageSlips(
  */
 export async function getPendingJobCardStageSlip(
   supabase: SupabaseClient,
-  input: Pick<CreateJobCardStageSlipInput, "orderId" | "orderItemSerialNo" | "unitNo" | "stage">
+  input: Pick<CreateJobCardStageSlipInput, "orderId" | "orderItemSerialNo" | "unitNo" | "stage" | "quantity">
 ): Promise<JobCardStageSlip | undefined> {
   const { data, error } = await supabase
     .from("job_card_stage_slips")
@@ -272,6 +276,7 @@ export async function getPendingJobCardStageSlip(
     .eq("order_item_serial_no", input.orderItemSerialNo)
     .eq("unit_no", input.unitNo)
     .eq("stage", input.stage)
+    .eq("quantity", input.quantity ?? 1)
     .is("tallied_at", null)
     .order("created_at", { ascending: false })
     .limit(1)

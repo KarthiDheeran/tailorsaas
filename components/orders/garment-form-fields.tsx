@@ -1,5 +1,7 @@
 "use client";
 
+import type { Ref } from "react";
+
 import type {
   GarmentFieldValue,
   GarmentFieldValues,
@@ -18,12 +20,14 @@ function FieldControl({
   error,
   disabled,
   onChange,
+  controlRef,
 }: {
   field: RuntimeGarmentField;
   value: GarmentFieldValue;
   error?: string;
   disabled: boolean;
   onChange: (code: string, value: GarmentFieldValue) => void;
+  controlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
   return (
     <label className="flex flex-col gap-1 text-[13px] font-medium text-ink-muted">
@@ -34,6 +38,7 @@ function FieldControl({
       </span>
       {field.inputType === "textarea" ? (
         <textarea
+          ref={controlRef as Ref<HTMLTextAreaElement>}
           disabled={disabled}
           required={field.required}
           value={(value as string | null) ?? ""}
@@ -43,6 +48,7 @@ function FieldControl({
         />
       ) : field.inputType === "select" ? (
         <select
+          ref={controlRef as Ref<HTMLSelectElement>}
           disabled={disabled}
           required={field.required}
           value={(value as string | null) ?? ""}
@@ -91,6 +97,7 @@ function FieldControl({
         </span>
       ) : (
         <input
+          ref={controlRef as Ref<HTMLInputElement>}
           disabled={disabled}
           required={field.required}
           type={field.inputType === "number" ? "number" : "text"}
@@ -125,6 +132,7 @@ export function GarmentFormFields({
   showSectionHeadings = true,
   layout = "stack",
   onChange,
+  firstControlRef,
 }: {
   fields: RuntimeGarmentField[];
   values: GarmentFieldValues;
@@ -133,41 +141,45 @@ export function GarmentFormFields({
   showSectionHeadings?: boolean;
   layout?: "stack" | "columns";
   onChange: (code: string, value: GarmentFieldValue) => void;
+  firstControlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
   const groups = fields.reduce<Record<string, RuntimeGarmentField[]>>((all, field) => {
     (all[field.sectionName] ??= []).push(field);
     return all;
   }, {});
 
+  let controlIndex = 0;
   const content = Object.entries(groups).map(([section, group]) => (
     <section
       key={section}
       className={
         layout === "columns"
-          ? "h-full min-w-[430px] max-w-[560px] flex-1 overflow-y-auto rounded-lg border border-border-soft bg-white p-4"
+          ? "min-w-0 rounded-lg border border-border-soft bg-white p-4"
           : "mb-4"
       }
     >
       {showSectionHeadings && (
         <h4 className="mb-3 text-[15px] font-semibold text-ink">{section}</h4>
       )}
-      <div className={layout === "columns" ? "grid grid-cols-2 gap-3" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
-        {group.map((field) => (
-          <FieldControl
+      <div className={layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
+        {group.map((field) => {
+          const isFirst = controlIndex++ === 0;
+          return <FieldControl
             key={field.code}
             field={field}
             value={values[field.code]}
             error={errors[field.code]}
             disabled={disabled}
             onChange={onChange}
-          />
-        ))}
+            controlRef={isFirst ? firstControlRef : undefined}
+          />;
+        })}
       </div>
     </section>
   ));
 
   if (layout === "columns") {
-    return <div className="flex min-w-max gap-4">{content}</div>;
+    return <div className="grid min-w-0 gap-4">{content}</div>;
   }
 
   return <>{content}</>;

@@ -31,6 +31,7 @@ import { getGarmentTypeConfigurations } from "@/lib/data/catalog-fields-db";
 import {
   buildFieldSchemaSnapshot,
   resolveRuntimeGarmentFields,
+  shouldPrintMeasurementsOnJobCard,
   validateGarmentFieldValues,
 } from "@/lib/garment-form-runtime";
 import {
@@ -280,6 +281,7 @@ export interface HistoricalMeasurementSnapshot {
   serialNo: number;
   garmentName: string;
   measurements: Record<string, unknown>;
+  addOnIds: string[];
 }
 
 export interface MeasurementPickerData {
@@ -330,6 +332,7 @@ export async function getMeasurementPickerDataAction(
           serialNo: item.serialNo,
           garmentName: item.particular,
           measurements: item.measurements ?? {},
+          addOnIds: (item.addOns ?? []).map((addOn) => addOn.key),
         }))
     )
     .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
@@ -369,6 +372,7 @@ export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
           serialNo: item.serialNo,
           garmentName: item.particular,
           measurements: item.measurements ?? {},
+          addOnIds: (item.addOns ?? []).map((addOn) => addOn.key),
         }))
     )
     .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
@@ -472,7 +476,11 @@ async function validateAndSnapshotOrderItems(
 
     validatedItems.push({
       ...item,
-      fieldSchemaSnapshot: buildFieldSchemaSnapshot(fields, item.measurements ?? {}),
+      fieldSchemaSnapshot: buildFieldSchemaSnapshot(
+        fields,
+        item.measurements ?? {},
+        shouldPrintMeasurementsOnJobCard(item.fieldSchemaSnapshot)
+      ),
     });
   }
   return { items: validatedItems };
@@ -489,6 +497,7 @@ export async function createOrderAction(data: {
   advancePaid: number;
   paymentMode: PaymentMode;
   measurementTakenByOperatorId?: string;
+  createdByOperatorId?: string;
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.create");
@@ -497,6 +506,8 @@ export async function createOrderAction(data: {
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
   const measurementTaker = await resolveMeasurementTaker(data.measurementTakenByOperatorId);
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
+  const selectedCreator = await resolveMeasurementTaker(data.createdByOperatorId);
+  if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
@@ -513,7 +524,7 @@ export async function createOrderAction(data: {
   await recordOrderOperatorAttribution(
     createAdminClient(),
     order.id,
-    operatorGuard.operator,
+    selectedCreator.operator ?? operatorGuard.operator,
     measurementTaker.operator ?? operatorGuard.operator,
   );
   await recomputeOrderTotals(createAdminClient(), order.id);
@@ -539,6 +550,7 @@ export async function createOrderForNewCustomerAction(data: {
     advancePaid: number;
     paymentMode: PaymentMode;
     measurementTakenByOperatorId?: string;
+    createdByOperatorId?: string;
   };
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
@@ -548,6 +560,8 @@ export async function createOrderForNewCustomerAction(data: {
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
   const measurementTaker = await resolveMeasurementTaker(data.order.measurementTakenByOperatorId);
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
+  const selectedCreator = await resolveMeasurementTaker(data.order.createdByOperatorId);
+  if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.order.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
@@ -567,10 +581,10 @@ export async function createOrderForNewCustomerAction(data: {
   if (dateError) return { success: false, error: dateError };
 
   const existing = await getCustomerByPhone(supabase, data.customer.phone.trim());
-  if (existing) {
+  if (existing && existing.name.trim().toLocaleLowerCase() === data.customer.name.trim().toLocaleLowerCase()) {
     return {
       success: false,
-      error: "A customer with this phone number already exists.",
+      error: "A customer with this name and phone number already exists.",
     };
   }
 
@@ -587,7 +601,7 @@ export async function createOrderForNewCustomerAction(data: {
     if (isUniqueConstraintError(error)) {
       return {
         success: false,
-        error: "A customer with this phone number already exists.",
+        error: "A customer with this name and phone number already exists.",
       };
     }
     throw error;
@@ -611,7 +625,7 @@ export async function createOrderForNewCustomerAction(data: {
   await recordOrderOperatorAttribution(
     createAdminClient(),
     order.id,
-    operatorGuard.operator,
+    selectedCreator.operator ?? operatorGuard.operator,
     measurementTaker.operator ?? operatorGuard.operator,
   );
   await trySyncJobCardsForOrder(supabase, order.id);
@@ -677,6 +691,29 @@ export async function updateOrderStatusAction(
   }
   await trySyncJobCardsForOrder(supabase, order.id);
   return { success: true, data: order };
+}
+
+export async function deleteUntouchedOrderAction(id: string): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!id) return { success: false, error: "Order is required." };
+
+  const admin = createAdminClient();
+  const { data: attachments } = await admin
+    .from("order_attachments")
+    .select("storage_path")
+    .eq("order_id", id);
+  const { error } = await supabase.rpc("delete_untouched_order", { p_order_id: id });
+  if (error) return { success: false, error: error.message };
+
+  const storagePaths = (attachments ?? [])
+    .map((entry) => String(entry.storage_path ?? ""))
+    .filter(Boolean);
+  if (storagePaths.length > 0) {
+    await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove(storagePaths);
+  }
+  return { success: true, data: undefined };
 }
 
 export async function getOrderAttachmentsAction(

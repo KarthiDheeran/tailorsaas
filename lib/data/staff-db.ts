@@ -33,13 +33,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 const STAFF_COLUMNS = `
-  id, staff_number, name, phone, role, joining_date, address,
+  id, staff_number, staff_code, name, phone, role, joining_date, address,
   emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 
 interface StaffRow {
   id: string;
   staff_number: string;
+  staff_code: number;
   name: string;
   phone: string;
   role: StaffRole;
@@ -57,7 +58,7 @@ interface StaffRow {
 function mapStaff(row: StaffRow): Staff {
   return {
     id: row.id,
-    staffNumber: row.staff_number,
+    staffNumber: String(row.staff_code),
     name: row.name,
     phone: row.phone,
     role: row.role,

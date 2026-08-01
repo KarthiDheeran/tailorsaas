@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Search, Trash2, X } from "lucide-react";
 import {
   GARMENT_SECTIONS,
   MEASUREMENT_FIELD_GROUPS,
@@ -52,6 +52,7 @@ export function GarmentTypeDrawer({
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(
     garment?.addOnIds ?? []
   );
+  const [addOnSearch, setAddOnSearch] = useState("");
   const [customFieldName, setCustomFieldName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -71,6 +72,22 @@ export function GarmentTypeDrawer({
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
     );
   }
+
+  const availableAddOns = useMemo(
+    () => [...activeAddOns].sort((a, b) => a.name.localeCompare(b.name)),
+    [activeAddOns]
+  );
+  const filteredAddOns = useMemo(() => {
+    const query = addOnSearch.trim().toLowerCase();
+    if (!query) return availableAddOns;
+    return availableAddOns.filter((addOn) =>
+      addOn.name.toLowerCase().includes(query)
+    );
+  }, [addOnSearch, availableAddOns]);
+  const selectedAddOns = useMemo(
+    () => availableAddOns.filter((addOn) => selectedAddOnIds.includes(addOn.id)),
+    [availableAddOns, selectedAddOnIds]
+  );
 
   function addCustomField() {
     const trimmed = customFieldName.trim().replace(/\s+/g, " ");
@@ -345,30 +362,62 @@ export function GarmentTypeDrawer({
                 selected while creating an order and will add to the item
                 price.
               </p>
-              {activeAddOns.length === 0 ? (
+              {availableAddOns.length === 0 ? (
                 <p className="text-sm text-ink-muted">
                   No add-ons available yet — add some from the Add-ons /
                   Extras tab.
                 </p>
               ) : (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  {activeAddOns.map((addOn) => (
-                    <label
-                      key={addOn.id}
-                      className="flex items-center gap-2 text-sm text-ink"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAddOnIds.includes(addOn.id)}
-                        onChange={() => toggleAddOn(addOn.id)}
-                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary-tint"
-                      />
-                      {addOn.name}{" "}
-                      <span className="text-ink-muted">
-                        {formatCurrency(addOn.defaultPrice)}
-                      </span>
-                    </label>
-                  ))}
+                <div className="space-y-3">
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+                    <input
+                      type="text"
+                      value={addOnSearch}
+                      onChange={(event) => setAddOnSearch(event.target.value)}
+                      placeholder="Search or select add-ons"
+                      className={`${inputClass} w-full pl-10`}
+                    />
+                  </label>
+                  {selectedAddOns.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedAddOns.map((addOn) => (
+                        <span
+                          key={addOn.id}
+                          className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-primary-tint px-3 py-1 text-sm font-medium text-primary"
+                        >
+                          {addOn.name}
+                          <span className="text-primary/70">
+                            {formatCurrency(addOn.defaultPrice)}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="max-h-72 overflow-y-auto rounded-xl border border-border-soft">
+                    {filteredAddOns.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-ink-muted">No add-ons found</p>
+                    ) : (
+                      filteredAddOns.map((addOn) => {
+                        const selected = selectedAddOnIds.includes(addOn.id);
+                        return (
+                          <button
+                            key={addOn.id}
+                            type="button"
+                            onClick={() => toggleAddOn(addOn.id)}
+                            className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                              selected ? "bg-primary-tint text-primary-strong" : "text-ink hover:bg-surface-muted"
+                            }`}
+                          >
+                            <span className="min-w-0 truncate font-medium">{addOn.name}</span>
+                            <span className="shrink-0 text-ink-muted">
+                              {selected ? "Selected" : `+${formatCurrency(addOn.defaultPrice)}`}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
             </div>

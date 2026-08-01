@@ -379,7 +379,7 @@ export function OrderDetailsDrawer({
                           className="border-t border-border-soft"
                         >
                           <td className="px-3 py-2 text-ink">
-                            <div className="font-medium">{item.particular}</div>
+                            <div className="font-medium">{item.particular}{item.size?.trim() ? ` · ${item.size.trim()}` : ""}</div>
                             <div className="mt-1 flex flex-wrap gap-1.5">
                               {item.addOns && item.addOns.length > 0 && (
                                 <span className="rounded-full bg-primary-tint px-2 py-0.5 text-[11px] font-semibold text-primary">

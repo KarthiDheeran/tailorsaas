@@ -50,11 +50,14 @@ export interface DashboardData {
   overdueOrders: (Order & { daysLate: number })[];
   paymentPending: Order[];
   productionQueue: ProductionQueueStage[];
+  garmentSummary: { garment: string; stage: string; quantity: number }[];
+  garmentStages: string[];
 }
 
 export async function getDashboardData(
   supabase: SupabaseClient,
-  todayIso: string
+  todayIso: string,
+  filters?: { from?: string; to?: string; stage?: string }
 ): Promise<DashboardData> {
   const allOrders = await getAllOrders(supabase);
   const activeOrders = allOrders.filter(isActiveOrder);
@@ -98,6 +101,28 @@ export async function getDashboardData(
     getDashboardJobCardStats(supabase, todayIso),
     getDashboardExpenseStats(supabase, todayIso),
   ]);
+  const summaryFrom = filters?.from || todayIso;
+  const summaryTo = filters?.to || todayIso;
+  const orderDates = new Map(allOrders.map((order) => [order.id, order.orderDate]));
+  let garmentSummary: DashboardData["garmentSummary"] = [];
+  let garmentStages: string[] = [];
+  try {
+    const cards = await getJobCards(supabase, todayIso);
+    garmentStages = Array.from(new Set(cards.map((card) => card.stage))).sort();
+    const grouped = new Map<string, DashboardData["garmentSummary"][number]>();
+    for (const card of cards) {
+      const orderDate = orderDates.get(card.orderId) ?? "";
+      if (orderDate < summaryFrom || orderDate > summaryTo) continue;
+      if (filters?.stage && filters.stage !== "all" && card.stage !== filters.stage) continue;
+      const key = `${card.garment}\u0000${card.stage}`;
+      const row = grouped.get(key) ?? { garment: card.garment, stage: card.stage, quantity: 0 };
+      row.quantity += 1;
+      grouped.set(key, row);
+    }
+    garmentSummary = Array.from(grouped.values()).sort((a, b) => a.garment.localeCompare(b.garment) || a.stage.localeCompare(b.stage));
+  } catch (error) {
+    if (!isMissingJobCardsSchemaError(error)) throw error;
+  }
 
   const orderDelta = ordersToday.length - ordersYesterday.length;
   const orderDeltaLabel =
@@ -175,6 +200,8 @@ export async function getDashboardData(
     overdueOrders,
     paymentPending,
     productionQueue: jobCardStats?.productionQueue ?? [],
+    garmentSummary,
+    garmentStages,
   };
 }
 

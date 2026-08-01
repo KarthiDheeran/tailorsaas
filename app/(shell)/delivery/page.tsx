@@ -100,6 +100,7 @@ function DeliveryDeskContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DeliveryFilter>("all");
+  const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -151,6 +152,8 @@ function DeliveryDeskContent() {
     const needle = query.trim().toLowerCase();
     return rows.filter((row) => {
       const order = row.order;
+      if (dateRange.from && order.deliveryDate < dateRange.from) return false;
+      if (dateRange.to && order.deliveryDate > dateRange.to) return false;
       if (filter === "ready" && order.status !== "Ready") return false;
       if (filter === "due" && order.deliveryDate > today) return false;
       if (filter === "balance" && !isReceivableOrder(order)) return false;
@@ -169,7 +172,7 @@ function DeliveryDeskContent() {
         .toLowerCase();
       return haystack.includes(needle);
     });
-  }, [rows, query, filter, today]);
+  }, [rows, query, filter, today, dateRange]);
 
   function replaceOrder(order: Order) {
     setRows((current) =>
@@ -312,6 +315,8 @@ function DeliveryDeskContent() {
             />
           </div>
           <div className="flex flex-wrap gap-2">
+            <input aria-label="Delivery from date" type="date" value={dateRange.from} onChange={(event) => setDateRange((value) => ({ ...value, from: event.target.value }))} className="h-10 rounded-lg border border-border bg-white px-3 text-sm" />
+            <input aria-label="Delivery to date" type="date" value={dateRange.to} onChange={(event) => setDateRange((value) => ({ ...value, to: event.target.value }))} className="h-10 rounded-lg border border-border bg-white px-3 text-sm" />
             {[
               ["all", "All"],
               ["ready", "Ready"],

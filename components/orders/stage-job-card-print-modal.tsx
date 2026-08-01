@@ -189,7 +189,7 @@ export function StageJobCardPrintModal({
                 <option value="">Select worker</option>
                 {activeStaff.map((member) => (
                   <option key={member.id} value={member.id}>
-                    {member.name} - {member.role}
+                    {member.staffNumber} — {member.name} — {member.role}
                   </option>
                 ))}
               </select>

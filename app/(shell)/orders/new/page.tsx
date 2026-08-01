@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, CheckCircle2, Loader2, UserRound } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Loader2, UserRound } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
@@ -117,7 +117,7 @@ const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
 const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
-type MeasurementStaffOption = { id: string; name: string; staff_number: string };
+type MeasurementStaffOption = { id: string; name: string; staff_number: string; staff_code?: number };
 
 function customerBrowserCacheKey(scopeId: string | undefined) {
   return `tailorsaas:new-order-customers:${scopeId ?? "anonymous"}:v2`;
@@ -335,6 +335,9 @@ function NewOrderPageContent() {
   );
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const advanceAmountRef = useRef<HTMLInputElement | null>(null);
+  const [createdByOperatorId, setCreatedByOperatorId] = useState("");
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
@@ -371,6 +374,15 @@ function NewOrderPageContent() {
   const [measurementTakenByOperatorId, setMeasurementTakenByOperatorId] = useState("");
 
   useEffect(() => {
+    if (!finalizeOpen) return;
+    const timer = window.setTimeout(() => {
+      advanceAmountRef.current?.focus();
+      advanceAmountRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [finalizeOpen]);
+
+  useEffect(() => {
     if (!orderSection && currentUser?.allowed_order_sections.length === 1) {
       setOrderSection(currentUser.allowed_order_sections[0]);
     }
@@ -381,7 +393,10 @@ function NewOrderPageContent() {
     Promise.all([getActiveOperatorStaffAction(), getOperatorModeAction()]).then(([staffResult, mode]) => {
       if (cancelled) return;
       if (staffResult.success) setMeasurementStaff(staffResult.data);
-      if (mode.operator) setMeasurementTakenByOperatorId((current) => current || mode.operator!.id);
+      if (mode.operator) {
+        setMeasurementTakenByOperatorId((current) => current || mode.operator!.id);
+        setCreatedByOperatorId((current) => current || mode.operator!.id);
+      }
     });
     return () => {
       cancelled = true;
@@ -761,6 +776,10 @@ function NewOrderPageContent() {
 
   const trimmedNewPhone = newCustomer.phone.trim();
   const trimmedNewName = newCustomer.name.trim();
+  const exactDuplicateCustomer = Boolean(
+    phoneDuplicateCustomer &&
+    phoneDuplicateCustomer.name.trim().toLocaleLowerCase() === trimmedNewName.toLocaleLowerCase()
+  );
   const isCreatingNewCustomer = customerMode === "new";
   const hasSelectedCustomer = customerMode === "selected" && matchedCustomer;
   const phoneInvalid =
@@ -831,8 +850,8 @@ function NewOrderPageContent() {
           : undefined
       : undefined,
     phoneDuplicate:
-      isCreatingNewCustomer && phoneDuplicateCustomer
-        ? "A customer with this phone number already exists."
+      isCreatingNewCustomer && phoneDuplicateCustomer && phoneDuplicateCustomer.name.trim().toLocaleLowerCase() === trimmedNewName.toLocaleLowerCase()
+        ? "A customer with this name and phone number already exists."
         : undefined,
     name:
       isCreatingNewCustomer && !trimmedNewName
@@ -1000,8 +1019,8 @@ function NewOrderPageContent() {
       setCustomerCreationError("Enter a valid 10-digit phone number.");
       return;
     }
-    if (phoneDuplicateCustomer) {
-      setCustomerCreationError("This phone number already belongs to an existing customer.");
+    if (phoneDuplicateCustomer && phoneDuplicateCustomer.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()) {
+      setCustomerCreationError("A customer with this name and phone number already exists.");
       return;
     }
 
@@ -1167,6 +1186,7 @@ function NewOrderPageContent() {
         advancePaid,
         paymentMode,
         measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
+        createdByOperatorId: createdByOperatorId || undefined,
       });
     } else {
       const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
@@ -1195,6 +1215,7 @@ function NewOrderPageContent() {
           advancePaid,
           paymentMode,
           measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
+          createdByOperatorId: createdByOperatorId || undefined,
         },
       });
     }
@@ -1356,7 +1377,7 @@ function NewOrderPageContent() {
                           {matchedCustomer.name}
                         </p>
                         <p className="truncate text-[15px] text-ink-muted">
-                          {matchedCustomer.phone} <span aria-hidden="true">�</span> {matchedCustomer.area || "-"}
+                          {matchedCustomer.phone} <span aria-hidden="true">·</span> {matchedCustomer.area || "-"}
                         </p>
                       </div>
                     </div>
@@ -1524,7 +1545,7 @@ function NewOrderPageContent() {
                     placeholder="10-digit phone number"
                     className={cn(
                       inputClass,
-                      (phoneDuplicateCustomer ||
+                      (exactDuplicateCustomer ||
                         (submitAttempted && errors.phone)) &&
                         "border-chip-red-fg"
                     )}
@@ -1594,7 +1615,7 @@ function NewOrderPageContent() {
                       <button
                         type="button"
                         onClick={() => void handleSaveCustomerAndContinue()}
-                        disabled={creatingCustomer || !!phoneDuplicateCustomer}
+                        disabled={creatingCustomer || exactDuplicateCustomer}
                         className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-white px-3.5 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {creatingCustomer ? "Creating..." : "Create Customer & Continue"}
@@ -1798,17 +1819,6 @@ function NewOrderPageContent() {
           </div>
 
           <div className="min-w-0 space-y-3">
-            <div className="rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-              <h3 className="mb-4 flex items-center gap-2.5 text-[21px] font-bold tracking-tight text-ink">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-tint text-primary"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span>
-                {t("orders.orderDates")}
-              </h3>
-              <div className="space-y-4">
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">{t("orders.orderDate")}</span><input type="date" required value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint" /></label>
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">{t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span></span><input type="date" required value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className={cn("h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint", submitAttempted && errors.deliveryDate && "border-chip-red-fg")} />{submitAttempted && errors.deliveryDate && <p className="text-xs text-chip-red-fg">{errors.deliveryDate}</p>}</label>
-                <label className="flex flex-col gap-1.5"><span className="text-[15px] font-semibold text-ink">Measurements taken by <span className="font-normal text-ink-muted">(optional)</span></span><select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="h-11 w-full rounded-[10px] border border-border bg-white px-3.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name} � {staff.staff_number}</option>)}</select><span className="text-xs text-ink-muted">Can be different from the desktop operator.</span></label>
-              </div>
-            </div>
             <NewOrderSummaryPanel
               customer={matchedCustomer}
               detail={customerDetail}
@@ -1868,7 +1878,7 @@ function NewOrderPageContent() {
             </button>
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => setFinalizeOpen(true)}
               disabled={saving}
               className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
@@ -1877,6 +1887,24 @@ function NewOrderPageContent() {
           </div>
         </div>
       </div>
+
+      {finalizeOpen && !savedOrder && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-bold text-ink">Finalize Order</h2>
+            <p className="mt-1 text-sm text-ink-muted">Confirm the delivery and payment details discussed with the customer.</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-ink">Order date<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
+              <label className="text-sm font-semibold text-ink">Delivery date<input type="date" value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
+              <label className="text-sm font-semibold text-ink">Measurements taken by<select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Created by<select value={createdByOperatorId} onChange={(event) => setCreatedByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Active operator</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
+              <label className="text-sm font-semibold text-ink sm:col-span-2">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3">{paymentModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-primary px-6 font-semibold text-white disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
+          </div>
+        </div>
+      )}
 
       {savedOrder && (
         <>

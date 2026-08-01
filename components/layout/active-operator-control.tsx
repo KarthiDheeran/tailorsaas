@@ -8,7 +8,7 @@ import { getActiveOperatorStaffAction, getOperatorModeAction, startOperatorSessi
 export function ActiveOperatorControl() {
   const [enabled, setEnabled] = useState(false);
   const [operator, setOperator] = useState<ActiveOperator>();
-  const [staff, setStaff] = useState<{ id: string; name: string; staff_number: string }[]>([]);
+  const [staff, setStaff] = useState<{ id: string; name: string; staff_number: string; staff_code?: number }[]>([]);
   const [open, setOpen] = useState(false);
   const [staffId, setStaffId] = useState("");
   const [pin, setPin] = useState("");
@@ -46,7 +46,7 @@ export function ActiveOperatorControl() {
     {open && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
         <div className="flex items-center gap-3"><span className="rounded-xl bg-primary-tint p-2 text-primary"><ShieldCheck className="h-5 w-5" /></span><div><h2 className="font-bold text-ink">Active Operator</h2><p className="text-sm text-ink-muted">Select staff and enter PIN.</p></div></div>
-        <label className="mt-5 block text-sm font-semibold text-ink">Staff<select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-border bg-white px-3" autoFocus disabled={staffLoading || Boolean(staffLoadError)}><option value="">{staffLoading ? "Loading staff…" : "Select staff"}</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.staff_number}</option>)}</select></label>
+        <label className="mt-5 block text-sm font-semibold text-ink">Staff<select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-border bg-white px-3" autoFocus disabled={staffLoading || Boolean(staffLoadError)}><option value="">{staffLoading ? "Loading staff…" : "Select staff"}</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.staff_code ?? member.staff_number} — {member.name}</option>)}</select></label>
         {staffLoadError && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{staffLoadError}</p>}
         <label className="mt-3 block text-sm font-semibold text-ink">PIN<input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} inputMode="numeric" type="password" className="mt-1.5 h-11 w-full rounded-lg border border-border px-3" /></label>
         {error && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{error}</p>}

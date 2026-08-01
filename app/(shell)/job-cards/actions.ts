@@ -397,12 +397,29 @@ export async function quickTallyJobCardStageSlipAction(
         (sum, addOn) => sum + Number(addOn.amount ?? 0),
         0
       );
+      const perUnitWageAmount = wageRate + labourAddOnsTotal;
+      // Assign every internal garment unit first. The operation is idempotent
+      // for the same worker/stage, so an interrupted batch can be retried
+      // while the still-unassigned slip remains safely unpayable.
+      for (let offset = 0; offset < slip.quantity; offset += 1) {
+        await assignJobCardForStageSlip(admin, {
+          orderId: slip.orderId,
+          orderItemSerialNo: slip.orderItemSerialNo,
+          unitNo: slip.unitNo + offset,
+          taskType: slip.stage,
+          staffId: staff.id,
+          wageRate,
+          wageAmount: perUnitWageAmount,
+          notes: slip.notes,
+        });
+      }
+
       const assignedSlip = await assignJobCardStageSlipForTally(admin, {
         id: slip.id,
         staffId: staff.id,
         staffName: staff.name,
         wageRate,
-        wageAmount: wageRate + labourAddOnsTotal,
+        wageAmount: perUnitWageAmount * slip.quantity,
       });
       if (!assignedSlip) {
         const latest = await getJobCardStageSlipById(admin, slip.id);
@@ -411,17 +428,6 @@ export async function quickTallyJobCardStageSlipAction(
           : { success: false, error: "This job card is no longer available for tally." };
       }
       tallySlip = assignedSlip;
-
-      await assignJobCardForStageSlip(admin, {
-        orderId: tallySlip.orderId,
-        orderItemSerialNo: tallySlip.orderItemSerialNo,
-        unitNo: tallySlip.unitNo,
-        taskType: tallySlip.stage,
-        staffId: tallySlip.staffId!,
-        wageRate: tallySlip.wageRate,
-        wageAmount: tallySlip.wageAmount,
-        notes: tallySlip.notes,
-      });
     }
 
     const result = await confirmStageSlipTally(tallySlip, guard.userId);
@@ -478,21 +484,17 @@ export async function createProductionPrintBundleAction(
       const order = await getOrderById(supabase, orderId);
       if (!order || order.status === "Cancelled" || order.status === "Delivered") continue;
       for (const item of order.items) {
-        for (let unitNo = 1; unitNo <= Math.max(1, item.qty); unitNo += 1) {
-          for (const stage of ["Cutting", "Stitching"] as const) {
-            const existing = await getPendingJobCardStageSlip(supabase, {
-              orderId,
-              orderItemSerialNo: item.serialNo,
-              unitNo,
-              stage,
-            });
-            slips.push(existing ?? await createJobCardStageSlip(supabase, {
-              orderId,
-              orderItemSerialNo: item.serialNo,
-              unitNo,
-              stage,
-            }));
-          }
+        const quantity = Math.max(1, item.qty);
+        for (const stage of ["Cutting", "Stitching"] as const) {
+          const input = {
+            orderId,
+            orderItemSerialNo: item.serialNo,
+            unitNo: 1,
+            quantity,
+            stage,
+          };
+          const existing = await getPendingJobCardStageSlip(supabase, input);
+          slips.push(existing ?? await createJobCardStageSlip(supabase, input));
         }
       }
     }
@@ -506,7 +508,17 @@ export async function getProductionPrintBundleAction(ids: string[]): Promise<Job
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.printJobCard");
   if (!guard.ok) return [];
-  return getJobCardStageSlipsByIds(supabase, Array.from(new Set(ids.filter(Boolean))));
+  const slips = await getJobCardStageSlipsByIds(supabase, Array.from(new Set(ids.filter(Boolean))));
+  const orderIds = Array.from(new Set(slips.map((slip) => slip.orderId)));
+  const orders = await Promise.all(orderIds.map((orderId) => getOrderById(supabase, orderId)));
+  const ordersById = new Map(orders.filter(Boolean).map((order) => [order!.id, order!]));
+  return slips.map((slip) => {
+    const item = ordersById
+      .get(slip.orderId)
+      ?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
+    const color = item?.size?.trim();
+    return color ? { ...slip, garmentType: `${item!.particular} · ${color}` } : slip;
+  });
 }
 
 async function confirmStageSlipTally(
@@ -522,36 +534,46 @@ async function confirmStageSlipTally(
     const admin = createAdminClient();
     const todayIso = new Date().toISOString().slice(0, 10);
     const finalStage = await getFinalWorkStage(admin);
-    const completion = await completeJobCardStageSlip(
-      admin,
-      {
-        orderId: slip.orderId,
-        orderItemSerialNo: slip.orderItemSerialNo,
-        unitNo: slip.unitNo,
-        taskType: slip.stage,
-        staffId: slip.staffId,
-        wageRate: slip.wageRate,
-        wageAmount: slip.wageAmount,
-        // This shop moves cards to Ready manually after Stitching. A final
-        // stage is therefore optional; when one is configured it still keeps
-        // the established automatic-ready behaviour.
-        isFinalStage: finalStage?.stageKey === slip.stage,
-      },
-      todayIso
-    );
+    const perUnitWageAmount = slip.quantity > 0
+      ? slip.wageAmount / slip.quantity
+      : slip.wageAmount;
+    const completions = [];
+    for (let offset = 0; offset < slip.quantity; offset += 1) {
+      completions.push(await completeJobCardStageSlip(
+        admin,
+        {
+          orderId: slip.orderId,
+          orderItemSerialNo: slip.orderItemSerialNo,
+          unitNo: slip.unitNo + offset,
+          taskType: slip.stage,
+          staffId: slip.staffId,
+          wageRate: slip.wageRate,
+          wageAmount: perUnitWageAmount,
+          // This shop moves cards to Ready manually after Stitching. A final
+          // stage is therefore optional; when one is configured it still keeps
+          // the established automatic-ready behaviour.
+          isFinalStage: finalStage?.stageKey === slip.stage,
+        },
+        todayIso
+      ));
+    }
+    const completion = completions[0];
+    if (!completion) return { success: false, error: "This job card has no garment units." };
     await syncOrderStatusFromJobCards(admin, completion.orderId);
 
-    if (!completion.alreadyCompleted) {
-      await logJobCardActivityBestEffort({
-        jobCardId: completion.jobCardId,
-        orderId: completion.orderId,
-        actionType: completion.toStage === "Ready" ? "Completed" : "Stage Moved",
-        fromStage: completion.fromStage,
-        toStage: completion.toStage,
-        assignedStaffId: slip.staffId,
-        notes: `Completed by tally scan: ${slip.slipCode}`,
-        performedBy,
-      });
+    for (const unitCompletion of completions) {
+      if (!unitCompletion.alreadyCompleted) {
+        await logJobCardActivityBestEffort({
+          jobCardId: unitCompletion.jobCardId,
+          orderId: unitCompletion.orderId,
+          actionType: unitCompletion.toStage === "Ready" ? "Completed" : "Stage Moved",
+          fromStage: unitCompletion.fromStage,
+          toStage: unitCompletion.toStage,
+          assignedStaffId: slip.staffId,
+          notes: `Completed by batch tally scan: ${slip.slipCode}`,
+          performedBy,
+        });
+      }
     }
 
     const tallied = await markJobCardStageSlipTallied(admin, slip.id);

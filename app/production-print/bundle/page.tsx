@@ -9,8 +9,11 @@ import { barcodeSvgDataUri } from "@/lib/barcode-code128";
 import {
   historicalGarmentValueText,
   resolveHistoricalGarmentDisplayFields,
+  shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
+
+const MEASUREMENT_NOTES_KEY = "__measurementNotes";
 
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
   const value = `TS|JOB|${slip.scanToken}`;
@@ -18,10 +21,10 @@ function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
   return (
     <div className="production-barcode">
       <Image
-        src={barcodeSvgDataUri(value, 34)}
+        src={barcodeSvgDataUri(value, 26)}
         alt={`Barcode for ${slip.stage} ${slip.slipCode}`}
-        width={230}
-        height={34}
+        width={185}
+        height={26}
         unoptimized
       />
       <span>{slip.slipCode}</span>
@@ -39,15 +42,12 @@ function CuttingTicket({ slip }: { slip: JobCardStageSlip }) {
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
         <span>
-          {slip.garmentType} · Unit {slip.unitNo} · Qty {slip.quantity}
+          {slip.garmentType} · Qty {slip.quantity}
         </span>
       </div>
 
       <SlipBarcode slip={slip} />
 
-      <p className="production-hint">
-        Scan this barcode only after Cutting is completed.
-      </p>
     </section>
   );
 }
@@ -60,10 +60,14 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
 
   const visible = fields.filter(
     (field) =>
+      (shouldPrintMeasurementsOnJobCard(slip.fieldSchemaSnapshot) || field.fieldType !== "measurement") &&
       field.value !== null &&
       field.value !== "" &&
       (!Array.isArray(field.value) || field.value.length > 0),
   );
+  const measurementNotesValue = slip.measurementsSnapshot?.[MEASUREMENT_NOTES_KEY];
+  const measurementNotes =
+    typeof measurementNotesValue === "string" ? measurementNotesValue.trim() : "";
 
   return (
     <section className="production-ticket production-stitching">
@@ -74,18 +78,14 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
         <span>
-          {slip.garmentType} · Unit {slip.unitNo} · Qty {slip.quantity}
+          {slip.garmentType} · Qty {slip.quantity}
         </span>
       </div>
 
       <div className="production-fields">
         {visible.length ? (
           visible.map((field) => (
-            <div key={field.code}>
-              <span>
-                {field.label}
-                {field.unit ? ` (${field.unit})` : ""}
-              </span>
+            <div key={field.code} title={field.label} aria-label={field.label}>
               <strong>{historicalGarmentValueText(field.value)}</strong>
             </div>
           ))
@@ -94,11 +94,12 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         )}
       </div>
 
+      {measurementNotes && (
+        <p className="production-measurement-notes">Note: {measurementNotes}</p>
+      )}
+
       <SlipBarcode slip={slip} />
 
-      <p className="production-hint">
-        Scan this barcode only after Stitching is completed.
-      </p>
     </section>
   );
 }
@@ -163,60 +164,68 @@ function ProductionPrintBundleContent() {
         .production-ticket {
           position: relative;
           display: grid;
-          grid-template-columns: 1fr 250px;
-          gap: 8px 14px;
+          grid-template-columns: 1fr 195px;
+          gap: 4px 8px;
           border: 1px solid #111;
           border-bottom: 2px dashed #555;
-          padding: 9px 10px 16px;
+          padding: 5px 7px 7px;
           break-inside: avoid;
           page-break-inside: avoid;
         }
 
         .production-ticket + .production-ticket {
-          margin-top: 10px;
+          margin-top: 5px;
         }
 
         .production-stage {
           grid-column: 1 / -1;
           font-weight: 800;
-          font-size: 13px;
+          font-size: 11px;
           letter-spacing: 0.14em;
           border-bottom: 1px solid #111;
-          padding-bottom: 4px;
+          padding-bottom: 2px;
         }
 
         .production-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 4px 12px;
-          font-size: 12px;
+          gap: 2px 8px;
+          font-size: 10px;
           align-content: start;
         }
 
         .production-fields {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 5px 8px;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 3px 4px;
           grid-column: 1 / -1;
           border-top: 1px solid #aaa;
-          padding-top: 6px;
-          font-size: 11px;
+          padding-top: 4px;
+          font-size: 10px;
         }
 
         .production-fields div {
           border: 1px solid #777;
-          padding: 3px 5px;
-          min-height: 34px;
-        }
-
-        .production-fields span {
-          display: block;
-          font-size: 9px;
-          color: #444;
+          display: flex;
+          min-height: 23px;
+          align-items: center;
+          justify-content: center;
+          padding: 2px 4px;
+          text-align: center;
         }
 
         .production-fields strong {
-          font-size: 12px;
+          font-size: 11px;
+        }
+
+        .production-measurement-notes {
+          grid-column: 1 / -1;
+          margin: 0;
+          border: 1px solid #777;
+          padding: 3px 5px;
+          font-size: 10px;
+          font-weight: 700;
+          white-space: pre-wrap;
         }
 
         .production-barcode {
@@ -233,9 +242,9 @@ function ProductionPrintBundleContent() {
 
         .production-barcode span {
           display: block;
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 700;
-          margin-top: 2px;
+          margin-top: 1px;
         }
 
         .production-hint {

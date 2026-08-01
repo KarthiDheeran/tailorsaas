@@ -440,6 +440,7 @@ function StaffPayablesTable({
   onRecordPayment: (staff: Staff) => void;
   onViewDetails: (staff: Staff) => void;
 }) {
+  const [staffSearch, setStaffSearch] = useState("");
   const rows = useMemo(
     () =>
       staffRows.map(({ staff }) => {
@@ -470,6 +471,9 @@ function StaffPayablesTable({
       }),
     [earnings, payments, period, staffRows, todayIso]
   );
+  const visibleRows = staffSearch.trim()
+    ? rows.filter((row) => `${row.staff.name} ${row.staff.staffNumber}`.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase()))
+    : [];
   return (
     <div className="rounded-xl border border-border-soft bg-white shadow-soft">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
@@ -479,7 +483,7 @@ function StaffPayablesTable({
             {payablePeriodLabel(period, todayIso, "All recorded work and payments")}
           </p>
         </div>
-        <div className="flex rounded-lg border border-border bg-white p-1">
+        <div className="flex flex-wrap items-center gap-2"><input value={staffSearch} onChange={(event) => setStaffSearch(event.target.value)} placeholder="Search staff name or code" className="h-10 min-w-60 rounded-lg border border-border px-3 text-sm" /><div className="flex rounded-lg border border-border bg-white p-1">
           {(["This Week", "This Month", "All"] as PayablePeriod[]).map((option) => (
             <button
               key={option}
@@ -495,7 +499,7 @@ function StaffPayablesTable({
               {option}
             </button>
           ))}
-        </div>
+        </div></div>
       </div>
       <div className="overflow-x-auto">
       <table className="w-full text-left">
@@ -511,7 +515,7 @@ function StaffPayablesTable({
           </tr>
         </thead>
         <tbody className="text-[13px]">
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <tr key={row.staff.id} className="border-t border-border-soft hover:bg-surface-muted">
               <td className="whitespace-nowrap px-5 py-3">
                 <div className="font-semibold text-ink">{row.staff.name}</div>
@@ -565,6 +569,7 @@ function StaffPayablesTable({
               </td>
             </tr>
           ))}
+          {visibleRows.length === 0 && <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-ink-muted">Search for a staff member to view payable amounts.</td></tr>}
         </tbody>
       </table>
       </div>

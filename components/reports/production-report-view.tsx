@@ -157,7 +157,7 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
               <option value="">{t("reports.allStaff")}</option>
               {staffList.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}
+                  {s.staffNumber} — {s.name}
                 </option>
               ))}
             </select>

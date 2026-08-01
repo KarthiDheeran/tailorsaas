@@ -68,6 +68,7 @@ function TallyContent() {
   const [code, setCode] = useState("");
   const [scanned, setScanned] = useState<JobCardStageSlip[]>([]);
   const [tallyDate, setTallyDate] = useState(todayIso);
+  const [tallyToDate, setTallyToDate] = useState(todayIso);
   const [message, setMessage] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -99,8 +100,8 @@ function TallyContent() {
   }, []);
 
   const visibleSlips = useMemo(
-    () => scanned.filter((slip) => localDateKey(slip.talliedAt) === tallyDate),
-    [scanned, tallyDate]
+    () => scanned.filter((slip) => { const date = localDateKey(slip.talliedAt); return date >= tallyDate && date <= tallyToDate; }),
+    [scanned, tallyDate, tallyToDate]
   );
 
   const totals = useMemo(() => {
@@ -219,7 +220,7 @@ function TallyContent() {
           </div>
         </div>
         <form
-          className="grid gap-3 xl:grid-cols-[180px_240px_auto_minmax(280px,1fr)]"
+          className="grid gap-3 xl:grid-cols-[170px_170px_240px_auto_minmax(280px,1fr)]"
           onSubmit={(event) => {
             event.preventDefault();
             void scan();
@@ -235,6 +236,10 @@ function TallyContent() {
             />
           </label>
           <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+            To Date
+            <input type="date" value={tallyToDate} min={tallyDate} onChange={(event) => setTallyToDate(event.target.value)} className="h-12 rounded-[10px] border border-border px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
             Staff member
             <select
               value={selectedStaffId}
@@ -243,7 +248,7 @@ function TallyContent() {
               className="h-12 rounded-[10px] border border-border bg-white px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted"
             >
               <option value="">Select staff</option>
-              {staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+              {staff.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name}</option>)}
             </select>
           </label>
           {sessionActive ? (

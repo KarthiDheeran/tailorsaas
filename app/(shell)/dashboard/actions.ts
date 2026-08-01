@@ -24,7 +24,8 @@ import { withPerformanceContext } from "@/lib/performance/query-profiler";
 // ---------------------------------------------------------------------------
 
 export async function getDashboardDataAction(
-  todayIso: string
+  todayIso: string,
+  filters?: { from?: string; to?: string; stage?: string }
 ): Promise<DashboardData | null> {
   return withPerformanceContext("getDashboardDataAction", async () => {
   const supabase = createServerClient();
@@ -32,6 +33,6 @@ export async function getDashboardDataAction(
   if (!guard.ok) return null;
 
   const admin = createAdminClient();
-  return getDashboardData(admin, todayIso);
+  return getDashboardData(admin, todayIso, filters);
   });
 }

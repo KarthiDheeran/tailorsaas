@@ -40,10 +40,12 @@ type ReceiptRow =
       type: "addon";
       key: string;
       label: string;
-      amount: number;
+      qty: number;
+      rate: number;
+      total: number;
     };
 
-const ROWS_PER_RECEIPT_PAGE = 8;
+const ROWS_PER_RECEIPT_PAGE = 28;
 
 function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   const counted = payments.filter((p) => !p.voided);
@@ -66,28 +68,30 @@ function paymentModeLabel(summary: PaymentModeSummary) {
 }
 
 function receiptRows(order: Order): ReceiptRow[] {
-  return order.items.flatMap((item) => {
-    const baseTotal = item.qty * item.rate;
-    const rows: ReceiptRow[] = [
-      {
-        type: "item",
-        key: `item-${item.serialNo}`,
-        particular: item.particular,
-        qty: item.qty,
-        rate: item.rate,
-        total: baseTotal,
-      },
-    ];
-    (item.addOns ?? []).forEach((addOn, index) => {
-      rows.push({
-        type: "addon",
-        key: `item-${item.serialNo}-addon-${addOn.key}-${index}`,
-        label: addOn.label,
-        amount: addOn.amount,
-      });
-    });
-    return rows;
-  });
+  const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
+  for (const item of order.items) {
+    const color = item.size?.trim() ?? "";
+    const displayParticular = color ? `${item.particular} · ${color}` : item.particular;
+    const groupKey = `${item.particular.trim().toLocaleLowerCase()}|${color.toLocaleLowerCase()}|${item.rate}`;
+    let group = groups.get(groupKey);
+    if (!group) {
+      group = {
+        item: { type: "item", key: `item-${groupKey}`, particular: displayParticular, qty: 0, rate: item.rate, total: 0 },
+        addOns: new Map(),
+      };
+      groups.set(groupKey, group);
+    }
+    group.item.qty += item.qty;
+    group.item.total += item.qty * item.rate;
+    for (const addOn of item.addOns ?? []) {
+      const addOnKey = `${addOn.label.trim().toLocaleLowerCase()}|${addOn.amount}`;
+      const row = group.addOns.get(addOnKey) ?? { type: "addon" as const, key: `addon-${groupKey}-${addOnKey}`, label: addOn.label, qty: 0, rate: addOn.amount, total: 0 };
+      row.qty += item.qty;
+      row.total += item.qty * addOn.amount;
+      group.addOns.set(addOnKey, row);
+    }
+  }
+  return Array.from(groups.values()).flatMap((group) => [group.item, ...Array.from(group.addOns.values())]);
 }
 
 function paginateRows(rows: ReceiptRow[]) {
@@ -188,9 +192,9 @@ function ReceiptPage({
               ) : (
                 <tr key={row.key} className="addon-row">
                   <td>+ {row.label}</td>
-                  <td className="num" />
-                  <td className="num">{formatCurrency(row.amount)}</td>
-                  <td className="num">{formatCurrency(row.amount)}</td>
+                  <td className="num">{row.qty}</td>
+                  <td className="num">{formatCurrency(row.rate)}</td>
+                  <td className="num">{formatCurrency(row.total)}</td>
                 </tr>
               )
             )}
@@ -306,28 +310,28 @@ function CustomerReceiptPrintPageContent({
     <PrintPageFrame showClose contentClassName="receipt-preview-frame">
       <style jsx global>{`
         @page {
-          size: 6in 4in;
+          size: A4 portrait;
           margin: 0;
         }
 
         .receipt-preview-frame {
-          width: fit-content;
-          max-width: none;
+          width: 210mm;
+          max-width: 210mm;
           padding: 0;
           background: transparent;
           box-shadow: none;
         }
 
         .receipt-page {
-          width: 6in;
-          height: 4in;
+          width: 210mm;
+          height: 297mm;
           box-sizing: border-box;
           overflow: hidden;
           break-after: page;
           page-break-after: always;
           display: grid;
           grid-template-rows: auto 1fr auto;
-          padding: 0.2in;
+          padding: 10mm;
           background: white;
           color: #111827;
           font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -543,19 +547,11 @@ function CustomerReceiptPrintPageContent({
           }
         }
 
-        @media screen and (max-width: 760px) {
-          .receipt-page {
-            transform: scale(calc((100vw - 24px) / 576));
-            transform-origin: top center;
-            margin-bottom: calc(-4in + ((100vw - 24px) / 1.5));
-          }
-        }
-
         @media print {
           html,
           body {
-            width: 6in;
-            min-height: 4in;
+            width: 210mm;
+            min-height: 297mm;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
