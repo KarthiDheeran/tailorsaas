@@ -139,7 +139,7 @@ export function GarmentFormFields({
   errors?: Record<string, string>;
   disabled?: boolean;
   showSectionHeadings?: boolean;
-  layout?: "stack" | "columns";
+  layout?: "stack" | "columns" | "instructions";
   onChange: (code: string, value: GarmentFieldValue) => void;
   firstControlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
@@ -161,7 +161,7 @@ export function GarmentFormFields({
       {showSectionHeadings && (
         <h4 className="mb-3 text-[15px] font-semibold text-ink">{section}</h4>
       )}
-      <div className={layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
+      <div className={layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" : layout === "instructions" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
         {group.map((field) => {
           const isFirst = controlIndex++ === 0;
           return <FieldControl

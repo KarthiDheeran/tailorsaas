@@ -1078,7 +1078,7 @@ function ConfigureItemModal({
 
                 {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
                   <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
-                  <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} />
+                  <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
                 </section>}
 
                 <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
