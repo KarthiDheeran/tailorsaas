@@ -70,14 +70,29 @@ function OrderPreferencesContent() {
         <div><h1 className="text-[26px] font-semibold text-ink">Order Delivery Defaults</h1><p className="text-sm text-ink-muted">Set the promised delivery date automatically for every new order.</p></div>
       </div>
       {error && <div className="mb-5"><LoadError message={error} /></div>}
-      {!enabled && <div className="mb-5 rounded-lg border border-chip-peach bg-chip-peach px-4 py-3 text-sm font-medium text-chip-peach-fg">Order preferences migration is pending. New orders are currently using the default three-week promise.</div>}
+      {!enabled && <div className="mb-5 rounded-lg border border-chip-peach bg-chip-peach px-4 py-3 text-sm font-medium text-chip-peach-fg">Order preferences migration is pending. New orders are currently using the default 21-day promise.</div>}
       <form onSubmit={submit} className="rounded-xl border border-border-soft bg-white p-6 shadow-soft">
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-semibold text-ink">Default delivery lead time</span>
-          <select value={preferences.defaultDeliveryLeadDays} disabled={!enabled || !canManage} onChange={(event) => { setPreferences({ defaultDeliveryLeadDays: Number(event.target.value) }); setSaved(false); }} className="h-11 rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted disabled:text-ink-faint">
-            <option value={0}>Same day</option><option value={7}>1 week</option><option value={14}>2 weeks</option><option value={21}>3 weeks</option><option value={28}>4 weeks</option><option value={42}>6 weeks</option><option value={56}>8 weeks</option>
-          </select>
-          <span className="text-xs text-ink-muted">Example: choosing 3 weeks automatically sets a new order&apos;s delivery date to 21 days after its order date. Staff can still change an individual order&apos;s date.</span>
+          <span className="text-sm font-semibold text-ink">Default delivery lead time in days</span>
+          <div className="flex max-w-xs items-center overflow-hidden rounded-lg border border-border bg-white focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-tint">
+            <input
+              type="number"
+              min={0}
+              max={365}
+              step={1}
+              value={preferences.defaultDeliveryLeadDays}
+              disabled={!enabled || !canManage}
+              onChange={(event) => {
+                setPreferences({ defaultDeliveryLeadDays: Number(event.target.value) });
+                setSaved(false);
+              }}
+              className="h-11 w-full border-0 bg-transparent px-3.5 text-sm text-ink outline-none disabled:bg-surface-muted disabled:text-ink-faint"
+            />
+            <span className="border-l border-border bg-surface-muted px-3 py-3 text-sm font-semibold text-ink-muted">
+              days
+            </span>
+          </div>
+          <span className="text-xs text-ink-muted">Example: entering 10 automatically sets a new order&apos;s delivery date to 10 days after its order date. Staff can still change an individual order&apos;s date.</span>
         </label>
         <div className="mt-6 flex items-center justify-between border-t border-border-soft pt-4"><p className="text-sm text-ink-muted">{saved ? "Saved. New orders will use this promise window." : "This never changes existing orders."}</p><button type="submit" disabled={!enabled || !canManage || saving} className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving..." : "Save Delivery Default"}</button></div>
       </form>

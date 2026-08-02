@@ -8,7 +8,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { ArrowRightLeft, CheckCircle2, Loader2, UserRound } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
@@ -61,6 +60,7 @@ import {
   orderItemToDraftItem,
   type DraftItem,
 } from "@/components/orders/new-order-items-card";
+import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
 import {
   OrderAttachmentDraftCard,
   uploadQueuedOrderAttachmentsDetailed,
@@ -347,6 +347,9 @@ function NewOrderPageContent() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const advanceAmountRef = useRef<HTMLInputElement | null>(null);
+  const deliveryDateInputRef = useRef<HTMLInputElement | null>(null);
+  const finalizeDialogRef = useRef<HTMLDivElement | null>(null);
+  const finalizeConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
   const [createdByOperatorId, setCreatedByOperatorId] = useState("");
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -442,8 +445,11 @@ function NewOrderPageContent() {
   useEffect(() => {
     if (!finalizeOpen) return;
     const timer = window.setTimeout(() => {
-      advanceAmountRef.current?.focus();
-      advanceAmountRef.current?.select();
+      deliveryDateInputRef.current?.focus();
+      finalizeConfirmButtonRef.current =
+        Array.from(finalizeDialogRef.current?.querySelectorAll("button") ?? []).find((button) =>
+          button.textContent?.includes("Confirm")
+        ) ?? null;
     }, 0);
     return () => window.clearTimeout(timer);
   }, [finalizeOpen]);
@@ -1446,9 +1452,14 @@ function NewOrderPageContent() {
     router.push(`/orders/${savedOrder.id}#attachments`);
   }
 
-  function handleBackToOrders() {
+  function handleCreateAnotherOrder() {
     setLeavingToOrders(true);
-    router.push("/orders?created=1");
+    window.location.assign("/orders/new");
+  }
+
+  function handlePrintCustomerReceiptAndCreateNext(order: Order) {
+    window.open(`/orders/${order.id}/print/customer`, "_blank", "noopener,noreferrer");
+    window.setTimeout(handleCreateAnotherOrder, 150);
   }
 
   function handleWhatsAppConfirmation(order: Order) {
@@ -1489,12 +1500,15 @@ function NewOrderPageContent() {
   const isClassicEntry = orderEntryView === "classic";
 
   return (
-    <div className={cn("pb-24", isClassicEntry && "bg-slate-100")}>
+    <div className={cn("pb-24", isClassicEntry && "bg-[#f5f8ff]")}>
       <div className={cn(
         "mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]",
         isClassicEntry && "max-w-none p-2 sm:px-3 sm:py-2 lg:px-4 2xl:max-w-none"
       )}>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+        <div className={cn(
+          "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 shadow-[0_2px_8px_rgba(15,23,42,0.05)]",
+          isClassicEntry && "border-[#c9d7ea] bg-white shadow-[0_2px_8px_rgba(30,64,175,0.06)]"
+        )}>
           <div>
             <h1 className={cn("font-bold tracking-tight text-ink", isClassicEntry ? "text-lg" : "text-2xl")}>
               {isClassicEntry ? "Classic Order Entry" : "New Order"}
@@ -1533,7 +1547,7 @@ function NewOrderPageContent() {
             <div
               className={cn(
                 "min-h-[110px] rounded-2xl border border-border bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6",
-                isClassicEntry && "min-h-0 rounded-lg p-3 sm:p-3"
+                isClassicEntry && "min-h-0 rounded-lg border-[#c9d7ea] bg-white p-3 shadow-[0_2px_8px_rgba(30,64,175,0.06)] sm:p-3"
               )}
             >
               <div className={cn(
@@ -1569,7 +1583,7 @@ function NewOrderPageContent() {
                 {customerMode === "selected" && matchedCustomer && (
                   <div className={cn(
                     "flex min-h-[62px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between",
-                    isClassicEntry && "min-h-0 gap-2 rounded-md border border-border-soft bg-surface-muted/30 p-2 sm:items-start"
+                    isClassicEntry && "min-h-0 gap-2 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2 sm:items-start"
                   )}>
                     <div className={cn("flex min-w-0 items-center gap-3.5", isClassicEntry && "gap-2")}>
                       <div className={cn(
@@ -1720,7 +1734,7 @@ function NewOrderPageContent() {
                 )}
                 {customerMode === "new" && (
                   <>
-                  <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", isClassicEntry && "gap-2 md:grid-cols-3")}>
+                  <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", isClassicEntry && "grid-cols-2 gap-2")}>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     Customer Name
@@ -1781,7 +1795,7 @@ function NewOrderPageContent() {
                     onChange={(e) =>
                       setNewCustomer((current) => ({ ...current, area: e.target.value }))
                     }
-                    className={inputClass}
+                    className={cn(inputClass, isClassicEntry && "h-8 rounded-md px-2 text-xs")}
                   />
                 </label>
                 <label ref={addressSuggestionsRef} className="relative flex flex-col gap-1.5">
@@ -1796,7 +1810,7 @@ function NewOrderPageContent() {
                       setAddressSuggestionsOpen(true);
                     }}
                     onKeyDown={handleAddressSuggestionKeyDown}
-                    className={inputClass}
+                    className={cn(inputClass, isClassicEntry && "h-8 rounded-md px-2 text-xs")}
                   />
                   {addressSuggestionsOpen && addressSuggestions.length > 0 && (
                     <div
@@ -1848,59 +1862,28 @@ function NewOrderPageContent() {
                     ))}
                   </div>
                 </div>
-                {isClassicEntry && (
-                  <details className="rounded-md border border-border-soft bg-white px-2 py-1.5 md:col-span-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-primary">More details</summary>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <label className="flex flex-col gap-1">
-                        <span className="text-[11px] font-medium text-ink-muted">Secondary phone</span>
-                        <input
-                          disabled
-                          placeholder="Optional"
-                          className="h-8 rounded-md border border-border bg-surface-muted px-2 text-xs text-ink-muted"
-                        />
-                      </label>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[11px] font-medium text-ink-muted">
-                          {t("common.gender")}
-                        </span>
-                        <div className="flex gap-1.5">
-                          {(["Male", "Female"] as Gender[]).map((g) => (
-                            <button
-                              key={g}
-                              type="button"
-                              onClick={() =>
-                                setNewCustomer((current) => ({ ...current, gender: g }))
-                              }
-                              className={cn(
-                                "h-8 flex-1 rounded-md border text-xs font-semibold transition-colors",
-                                newCustomer.gender === g
-                                  ? "border-primary bg-primary text-white"
-                                  : "border-border bg-white text-ink hover:bg-surface-muted"
-                              )}
-                            >
-                              {g === "Male" ? t("common.male") : t("common.female")}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                )}
                   </div>
                   {canCreateCustomers && (
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-primary-tint px-3.5 py-3">
+                    <div className={cn(
+                      "mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-primary-tint px-3.5 py-3",
+                      isClassicEntry && "mt-2 gap-2 rounded-md px-2 py-2"
+                    )}>
                       <div>
-                        <p className="text-sm font-semibold text-success">Save customer before adding garments</p>
-                        <p className="mt-0.5 text-xs text-ink-muted">The customer is added to this browser&apos;s search list immediately.</p>
+                        <p className={cn("text-sm font-semibold text-success", isClassicEntry && "text-xs")}>Save customer before adding garments</p>
+                        {!isClassicEntry && (
+                          <p className="mt-0.5 text-xs text-ink-muted">The customer is added to this browser&apos;s search list immediately.</p>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={() => void handleSaveCustomerAndContinue()}
                         disabled={creatingCustomer || exactDuplicateCustomer}
-                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-white px-3.5 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-60"
+                        className={cn(
+                          "inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-white px-3.5 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-60",
+                          isClassicEntry && "h-8 rounded-md px-2.5 text-xs"
+                        )}
                       >
-                        {creatingCustomer ? "Creating..." : "Create Customer & Continue"}
+                        {creatingCustomer ? "Creating..." : isClassicEntry ? "Create & Continue" : "Create Customer & Continue"}
                       </button>
                     </div>
                   )}
@@ -1932,8 +1915,11 @@ function NewOrderPageContent() {
                     </div>
                   )}
                   {!phoneDuplicateCustomer && samePhoneCustomers.length > 0 && (
-                    <div className="rounded-lg border border-border-soft bg-surface-muted px-3.5 py-3 text-sm">
-                      <div className="mb-2 font-semibold text-ink">
+                    <div className={cn(
+                      "rounded-lg border border-border-soft bg-surface-muted px-3.5 py-3 text-sm",
+                      isClassicEntry && "rounded-md px-2 py-2 text-xs"
+                    )}>
+                      <div className={cn("mb-2 font-semibold text-ink", isClassicEntry && "mb-1 text-xs")}>
                         Same phone number used by family/customer
                       </div>
                       <div className="divide-y divide-border-soft">
@@ -1964,22 +1950,25 @@ function NewOrderPageContent() {
                         {similarNameCustomers.map((customer) => (
                           <div
                             key={customer.id}
-                            className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                            className={cn(
+                              "flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0",
+                              isClassicEntry && "gap-2 py-1"
+                            )}
                           >
                             <div className="min-w-0">
-                              <div className="truncate font-semibold text-ink">
+                              <div className={cn("truncate font-semibold text-ink", isClassicEntry && "text-xs leading-4")}>
                                 {customer.name}
                               </div>
-                              <div className="text-ink-muted">
+                              <div className={cn("text-ink-muted", isClassicEntry && "text-[11px] leading-4")}>
                                 {customer.phone} · {customer.area || "-"}
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleSelectCustomer(customer)}
-                              className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                              className={cn("shrink-0 text-xs font-semibold text-primary hover:underline", isClassicEntry && "text-[11px]")}
                             >
-                              Use Existing Customer
+                              {isClassicEntry ? "Use Existing" : "Use Existing Customer"}
                             </button>
                           </div>
                         ))}
@@ -1999,7 +1988,7 @@ function NewOrderPageContent() {
               </div>
               <div className={cn(
                 "min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0",
-                isClassicEntry && "rounded-md border border-border-soft bg-surface-muted/30 p-2 lg:border lg:p-2"
+                isClassicEntry && "rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2 lg:border lg:p-2"
               )}>
                 <div className={cn("flex flex-col gap-1.5", isClassicEntry && "gap-1")}>
                   <span className={cn("text-[15px] font-semibold text-ink", isClassicEntry && "text-sm")}>Order Details</span>
@@ -2019,7 +2008,7 @@ function NewOrderPageContent() {
                 <div ref={setGarmentSelectorTarget} className={cn("mt-4", isClassicEntry && "mt-2")} />
               </div>
               {isClassicEntry && (
-                <div className="min-w-0 rounded-md border border-border-soft bg-surface-muted/30 p-2">
+                <div className="min-w-0 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-ink">Photo / Attachments</span>
                   </div>
@@ -2033,7 +2022,7 @@ function NewOrderPageContent() {
                 </div>
               )}
               {isClassicEntry && (
-                <div className="min-w-0 rounded-md border border-border-soft bg-surface-muted/30 p-2">
+                <div className="min-w-0 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-ink">Today Items</span>
                     <span className="text-[11px] font-semibold text-ink-muted">
@@ -2042,12 +2031,12 @@ function NewOrderPageContent() {
                         : `${todayItemSummary.reduce((sum, row) => sum + row.qty, 0)} pcs`}
                     </span>
                   </div>
-                  <div className="overflow-x-auto rounded-md border border-border-soft bg-white">
+                  <div className="overflow-x-auto rounded-md border border-[#d5e0f0] bg-white">
                     {todayItemSummaryLoading ? (
                       <div className="px-2 py-3 text-center text-[11px] text-ink-muted">Loading...</div>
                     ) : todayItemSummary.length > 0 ? (
                       <table className="min-w-full text-center text-[11px]">
-                        <thead className="bg-surface-muted text-ink-muted">
+                        <thead className="bg-[#eef4ff] text-ink-muted">
                           <tr>
                             {todayItemSummary.map((row) => (
                               <th
@@ -2100,7 +2089,7 @@ function NewOrderPageContent() {
                 canViewPayments ? (
                   <div className={cn(
                     "grid gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]",
-                    isClassicEntry && "gap-2 rounded-md p-2 sm:grid-cols-5 xl:grid-cols-5"
+                    isClassicEntry && "gap-2 rounded-md bg-[#eef4ff] p-2 sm:grid-cols-5 xl:grid-cols-5"
                   )}>
                     <div className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
                       <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
@@ -2272,12 +2261,21 @@ function NewOrderPageContent() {
 
       {finalizeOpen && !savedOrder && (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+          <div
+            ref={finalizeDialogRef}
+            onKeyDownCapture={(event) =>
+              handleEnterAsNextField(event, {
+                rootRef: finalizeDialogRef,
+                finalButtonRef: finalizeConfirmButtonRef,
+              })
+            }
+            className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl"
+          >
             <h2 className="text-xl font-bold text-ink">Finalize Order</h2>
             <p className="mt-1 text-sm text-ink-muted">Confirm the delivery and payment details discussed with the customer.</p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-semibold text-ink">Order date<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
-              <label className="text-sm font-semibold text-ink">Delivery date<input type="date" value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
+              <label className="text-sm font-semibold text-ink">Delivery date<input ref={deliveryDateInputRef} type="date" value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
               <label className="text-sm font-semibold text-ink">Measurements taken by<select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
               <label className="text-sm font-semibold text-ink">Created by<select value={createdByOperatorId} onChange={(event) => setCreatedByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Active operator</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
               <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
@@ -2337,14 +2335,15 @@ function NewOrderPageContent() {
               )}
               <div className="mt-5 space-y-2">
                 {canPrintReceipt && (
-                  <Link
-                    href={`/orders/${savedOrder.id}/print/customer`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => handlePrintCustomerReceiptAndCreateNext(savedOrder)}
+                    disabled={leavingToOrders}
+                    aria-busy={leavingToOrders}
                     className="flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
                   >
                     {t("orders.printCustomerReceipt")}
-                  </Link>
+                  </button>
                 )}
                 {attachmentUploadFailures.length > 0 && (
                   <button
@@ -2363,7 +2362,10 @@ function NewOrderPageContent() {
                 {savedOrder.customerSnapshot?.phone && (
                   <button
                     type="button"
-                    onClick={() => handleWhatsAppConfirmation(savedOrder)}
+                    onClick={() => {
+                      handleWhatsAppConfirmation(savedOrder);
+                      window.setTimeout(handleCreateAnotherOrder, 150);
+                    }}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary-tint px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
                   >
                     <WhatsAppIcon className="h-4 w-4" />
@@ -2380,15 +2382,15 @@ function NewOrderPageContent() {
                   {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
                   {leavingToOrders ? "Opening orders..." : t("orders.viewOrder")}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleBackToOrders}
-                  disabled={leavingToOrders}
-                  aria-busy={leavingToOrders}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-muted disabled:cursor-wait disabled:opacity-70"
-                >
+                  <button
+                    type="button"
+                    onClick={handleCreateAnotherOrder}
+                    disabled={leavingToOrders}
+                    aria-busy={leavingToOrders}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-muted disabled:cursor-wait disabled:opacity-70"
+                  >
                   {leavingToOrders && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {leavingToOrders ? "Opening orders..." : t("orders.backToOrders")}
+                  {leavingToOrders ? "Opening new order..." : "Create Next Order"}
                 </button>
               </div>
             </div>

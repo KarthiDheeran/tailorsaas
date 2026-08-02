@@ -135,12 +135,20 @@ function TallyContent() {
   const latestLiveSlip = visibleSlips[0];
   const hasLiveScanFailure = scanState === "error" || scanState === "duplicate";
 
+  function focusScanField() {
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   async function scan(rawCode = code) {
     const trimmed = rawCode.trim();
-    if (!trimmed || isScanning) return;
+    if (!trimmed || isScanning) {
+      focusScanField();
+      return;
+    }
     if (!sessionActive || !selectedStaffId) {
       setScanState("error");
-      setMessage("Select a staff member and start the scan session first.");
+      setMessage(`Scanned ${trimmed}: Select a staff member and start the scan session first.`);
+      focusScanField();
       return;
     }
     setIsScanning(true);
@@ -151,7 +159,7 @@ function TallyContent() {
 
     if (!result.success) {
       setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
-      setMessage(result.error);
+      setMessage(`Scanned ${trimmed}: ${result.error}`);
       return;
     }
 
@@ -168,11 +176,12 @@ function TallyContent() {
     );
     } catch {
       setScanState("error");
-      setMessage("The scan could not be recorded. Please try the same barcode again.");
+      setMessage(`Scanned ${trimmed}: The scan could not be recorded. Please try the same barcode again.`);
     } finally {
       setIsScanning(false);
       setCode("");
-      window.setTimeout(() => inputRef.current?.focus(), 0);
+      if (inputRef.current) inputRef.current.value = "";
+      focusScanField();
     }
   }
 
@@ -195,12 +204,13 @@ function TallyContent() {
     setSessionPayable(0);
     setScanState("idle");
     setMessage("");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    focusScanField();
   }
 
   function changeStaff() {
     setSessionActive(false);
     setCode("");
+    if (inputRef.current) inputRef.current.value = "";
     setScanState("idle");
     setMessage("");
   }
@@ -230,7 +240,7 @@ function TallyContent() {
           className="grid gap-3 xl:grid-cols-[170px_170px_240px_auto_minmax(280px,1fr)]"
           onSubmit={(event) => {
             event.preventDefault();
-            void scan();
+            void scan(inputRef.current?.value ?? code);
           }}
         >
           <label className="grid gap-1 text-xs font-semibold text-ink-muted">
@@ -283,10 +293,11 @@ function TallyContent() {
             <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
             <input
               ref={inputRef}
-              value={code}
               onChange={(event) => setCode(event.target.value)}
               disabled={!sessionActive || isScanning}
               placeholder="Scan barcode or enter slip code"
+              autoComplete="off"
+              data-raw-barcode-input="true"
               className="h-12 w-full rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted"
             />
             </span>

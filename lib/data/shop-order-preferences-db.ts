@@ -7,7 +7,7 @@ export interface ShopOrderPreferences {
 const SETTINGS_COLUMNS = "default_delivery_lead_days";
 
 export const DEFAULT_SHOP_ORDER_PREFERENCES: ShopOrderPreferences = {
-  // Three weeks is a practical tailoring-shop default and keeps new orders
+  // 21 days is a practical tailoring-shop default and keeps new orders
   // usable while the optional database migration is waiting to be applied.
   defaultDeliveryLeadDays: 21,
 };

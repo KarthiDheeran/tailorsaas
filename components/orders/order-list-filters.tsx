@@ -73,6 +73,7 @@ export function OrderListFilters({
   onOrderDateRangeChange,
   onClearFilters,
   onSelectCustomer,
+  compact = false,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
@@ -88,6 +89,7 @@ export function OrderListFilters({
   onOrderDateRangeChange: (range: DeliveryCustomRange) => void;
   onClearFilters: () => void;
   onSelectCustomer: (customer: Customer) => void;
+  compact?: boolean;
 }) {
   const { t } = useLanguage();
   const statusOptions = STATUS_FILTER_VALUES.map((s) => ({
@@ -133,8 +135,8 @@ export function OrderListFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-end gap-2.5 rounded-xl border border-border-soft bg-white/90 p-3 shadow-soft">
-      <div className="relative w-full sm:w-[340px] lg:flex-1 lg:min-w-[280px] lg:max-w-[380px]">
+    <div className={`mb-6 flex flex-wrap items-end gap-2.5 rounded-xl border border-border-soft bg-white/90 p-3 shadow-soft ${compact ? "mb-2 gap-2 rounded-lg border-[#c9d7ea] bg-white p-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]" : ""}`}>
+      <div className={`relative w-full sm:w-[340px] lg:flex-1 lg:min-w-[280px] lg:max-w-[380px] ${compact ? "sm:w-[300px] lg:min-w-[260px] lg:max-w-[340px]" : ""}`}>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
         <input
           type="text"
@@ -142,7 +144,7 @@ export function OrderListFilters({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={t("orders.searchPlaceholder")}
-          className="h-11 w-full rounded-lg border border-border bg-input-fill pl-10 pr-3.5 text-sm font-medium text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary-tint"
+          className={`h-11 w-full rounded-lg border border-border bg-input-fill pl-10 pr-3.5 text-sm font-medium text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary-tint ${compact ? "h-9 rounded-md bg-white text-xs" : ""}`}
         />
         {query.trim() && customerSuggestions.length > 0 && (
           <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-lg border border-border-soft bg-white shadow-soft">
@@ -186,8 +188,8 @@ export function OrderListFilters({
         minWidthClass="min-w-[145px]"
       />
 
-      <label className="w-[145px] text-xs font-semibold text-ink-muted">Order from<input type="date" value={orderDateRange.from} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, from: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2`} /></label>
-      <label className="w-[145px] text-xs font-semibold text-ink-muted">Order to<input type="date" value={orderDateRange.to} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, to: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2`} /></label>
+      <label className={`${compact ? "w-[128px]" : "w-[145px]"} text-xs font-semibold text-ink-muted`}>Order from<input type="date" value={orderDateRange.from} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, from: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2 ${compact ? "h-9 rounded-md text-xs" : ""}`} /></label>
+      <label className={`${compact ? "w-[128px]" : "w-[145px]"} text-xs font-semibold text-ink-muted`}>Order to<input type="date" value={orderDateRange.to} onChange={(event) => onOrderDateRangeChange({ ...orderDateRange, to: event.target.value })} className={`${CONTROL_CLASS} mt-1 w-full px-2 ${compact ? "h-9 rounded-md text-xs" : ""}`} /></label>
 
       {deliveryFilter === "custom" && (
         <>
@@ -221,7 +223,7 @@ export function OrderListFilters({
         <button
           type="button"
           onClick={onClearFilters}
-          className="flex h-11 items-center px-1 text-sm font-medium text-primary hover:text-primary-dark hover:underline"
+          className={`flex h-11 items-center px-1 text-sm font-medium text-primary hover:text-primary-dark hover:underline ${compact ? "h-9 text-xs" : ""}`}
         >
           {t("common.clearFilters")}
         </button>

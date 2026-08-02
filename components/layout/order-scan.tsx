@@ -169,6 +169,14 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
 
       if (event.key.length !== 1) return;
 
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement.dataset.rawBarcodeInput === "true"
+      ) {
+        return;
+      }
+
       if (!state.value || now - state.lastAt > MAX_SCANNER_KEY_GAP_MS) {
         scanRef.current = { value: event.key, startedAt: now, lastAt: now };
         return;

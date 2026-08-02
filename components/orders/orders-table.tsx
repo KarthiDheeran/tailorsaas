@@ -52,12 +52,14 @@ export const ORDER_STATUS_LABEL_KEYS: Record<OrderStatus, TranslationKey> = {
   Cancelled: "orders.cancelled",
 };
 
-export function OrderStatusChip({ status }: { status: OrderStatus }) {
+export function OrderStatusChip({ status, compact = false }: { status: OrderStatus; compact?: boolean }) {
   const { t } = useLanguage();
   const style = ORDER_STATUS_STYLES[status];
   return (
     <span
-      className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.fg}`}
+      className={`inline-block font-semibold ${style.bg} ${style.fg} ${
+        compact ? "rounded px-1.5 py-0 text-[10px] leading-4" : "rounded-full px-3 py-1 text-xs"
+      }`}
     >
       {t(ORDER_STATUS_LABEL_KEYS[status])}
     </span>
@@ -67,9 +69,11 @@ export function OrderStatusChip({ status }: { status: OrderStatus }) {
 export function OrderStatusEditor({
   order,
   onStatusChange,
+  compact = false,
 }: {
   order: Order;
   onStatusChange: () => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -94,7 +98,7 @@ export function OrderStatusEditor({
   // No status this user is allowed to set — fall back to a read-only chip
   // rather than an editor with an empty menu.
   if (availableStatuses.length === 0) {
-    return <OrderStatusChip status={order.status} />;
+    return <OrderStatusChip status={order.status} compact={compact} />;
   }
 
   async function handleSelect(status: OrderStatus, e: MouseEvent) {
@@ -116,7 +120,9 @@ export function OrderStatusEditor({
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.fg}`}
+        className={`inline-block font-semibold ${style.bg} ${style.fg} ${
+          compact ? "rounded px-1.5 py-0 text-[10px] leading-4" : "rounded-full px-3 py-1 text-xs"
+        }`}
       >
         {t(ORDER_STATUS_LABEL_KEYS[order.status])}
       </button>
@@ -168,11 +174,14 @@ export function formatOptionalDate(iso?: string | null) {
   return iso && isIsoDateValue(iso) ? formatDate(iso) : "";
 }
 
-export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: string }) {
+export function BalanceBadge({ order, todayIso, compact = false }: { order: Order; todayIso: string; compact?: boolean }) {
   const { t } = useLanguage();
+  const chipClass = compact
+    ? "inline-block rounded px-1.5 py-0 text-[10px] font-semibold leading-4"
+    : "inline-block rounded-full px-3 py-1 text-xs font-semibold";
   if (order.balance <= 0) {
     return (
-      <span className="inline-block rounded-full bg-chip-mint px-3 py-1 text-xs font-semibold text-chip-mint-fg">
+      <span className={`${chipClass} bg-chip-mint text-chip-mint-fg`}>
         {t("common.paid")}
       </span>
     );
@@ -181,13 +190,13 @@ export function BalanceBadge({ order, todayIso }: { order: Order; todayIso: stri
   const amount = formatCurrency(order.balance);
   if (isOverdue) {
     return (
-      <span className="inline-block rounded-full bg-chip-red px-3 py-1 text-xs font-semibold text-chip-red-fg">
+      <span className={`${chipClass} bg-chip-red text-chip-red-fg`}>
         {amount} {t("orders.overdue")}
       </span>
     );
   }
   return (
-    <span className="inline-block rounded-full bg-chip-peach px-3 py-1 text-xs font-semibold text-chip-peach-fg">
+    <span className={`${chipClass} bg-chip-peach text-chip-peach-fg`}>
       {amount} {t("orders.due")}
     </span>
   );
@@ -283,6 +292,7 @@ export function OrdersTable({
   onRowClick,
   showActions = false,
   onDelete,
+  compact = false,
 }: {
   orders: Order[];
   // Optional: a caller that already has a fresher/fuller Customer record
@@ -300,6 +310,7 @@ export function OrdersTable({
   onRowClick?: (order: Order) => void;
   showActions?: boolean;
   onDelete?: (order: Order) => void;
+  compact?: boolean;
 }) {
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see formatDate's hydration-mismatch note).
@@ -318,13 +329,13 @@ export function OrdersTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
-      <table className="w-full text-left">
-        <thead className="bg-chip-info/80 text-[13px] font-bold text-ink-muted">
+    <div className={`overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft ${compact ? "rounded-md border-[#8f9bad] shadow-none" : ""}`}>
+      <table className={`w-full text-left ${compact ? "border-collapse text-[11px] leading-none" : ""}`}>
+        <thead className={`bg-chip-info/80 text-[13px] font-bold text-ink-muted ${compact ? "bg-[#e7edf7] text-[11px] text-ink" : ""}`}>
           <tr className="border-b border-border-soft">
-            <th className="whitespace-nowrap px-5 py-3">{t("orders.orderNo")}</th>
-            <th className="whitespace-nowrap px-5 py-3">{t("orders.customer")}</th>
-            <th className="whitespace-nowrap px-5 py-3">
+            <th className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.orderNo")}</th>
+            <th className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.customer")}</th>
+            <th className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>
               {sortKey && onSort ? (
                 <SortableHeader
                   label={t("orders.orderDate")}
@@ -337,7 +348,7 @@ export function OrdersTable({
                 t("orders.orderDate")
               )}
             </th>
-            <th className="whitespace-nowrap px-5 py-3">
+            <th className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>
               {sortKey && onSort ? (
                 <SortableHeader
                   label={t("orders.deliveryDate")}
@@ -350,18 +361,18 @@ export function OrdersTable({
                 t("orders.deliveryDate")
               )}
             </th>
-            <th className="px-5 py-3">{t("orders.items")}</th>
-            <th className="whitespace-nowrap px-5 py-3">{t("orders.orderStatus")}</th>
+            <th className={`px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.items")}</th>
+            <th className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.orderStatus")}</th>
             {canViewPayments && (
               <>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("orders.total")}</th>
-                <th className="whitespace-nowrap px-5 py-3 text-right">{t("orders.balance")}</th>
+                <th className={`whitespace-nowrap px-5 py-3 text-right ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.total")}</th>
+                <th className={`whitespace-nowrap px-5 py-3 text-right ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>{t("orders.balance")}</th>
               </>
             )}
-            {showActions && <th className="whitespace-nowrap px-5 py-3 text-right">Actions</th>}
+            {showActions && <th className={`whitespace-nowrap px-5 py-3 text-right ${compact ? "border border-[#8f9bad] px-2 py-1" : ""}`}>Actions</th>}
           </tr>
         </thead>
-        <tbody className="text-[13px]">
+        <tbody className={compact ? "text-xs" : "text-[13px]"}>
           {orders.map((order) => {
             // Falls back to the order's own customerSnapshot (captured at
             // creation time) rather than a live customer lookup, so this
@@ -376,13 +387,25 @@ export function OrdersTable({
               <tr
                 key={order.id}
                 onClick={() => onRowClick?.(order)}
-                className="cursor-pointer border-t border-border-soft transition-colors hover:bg-emerald-50/50"
+                className={`cursor-pointer border-t border-border-soft transition-colors hover:bg-emerald-50/50 ${compact ? "h-7 border-t-0" : ""}`}
               >
-                <td className="whitespace-nowrap px-5 py-3 font-semibold text-primary">
+                <td className={`whitespace-nowrap px-5 py-3 font-semibold text-primary ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {order.orderNumber}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3">
-                  {customer ? (
+                <td className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
+                  {customer && compact ? (
+                    <div className="flex max-w-[190px] items-center gap-1 truncate">
+                      <Link
+                        href={`/customers/${order.customerId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="truncate font-semibold text-ink hover:text-primary hover:underline"
+                      >
+                        {customer.name}
+                      </Link>
+                      <span className="text-ink-faint">·</span>
+                      <span className="truncate font-medium text-ink-muted">{customer.phone}</span>
+                    </div>
+                  ) : customer ? (
                     <Link
                       href={`/customers/${order.customerId}`}
                       onClick={(e) => e.stopPropagation()}
@@ -394,42 +417,43 @@ export function OrdersTable({
                     <div className="text-ink">{t("common.unknown")}</div>
                   )}
                   {customer && (
-                    <div className="text-xs font-medium text-ink-faint">{customer.phone}</div>
+                    !compact && <div className="text-xs font-medium text-ink-faint">{customer.phone}</div>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-muted">
+                <td className={`whitespace-nowrap px-5 py-3 font-medium text-ink-muted ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {formatDate(order.orderDate)}
                 </td>
-                <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-muted">
+                <td className={`whitespace-nowrap px-5 py-3 font-medium text-ink-muted ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {formatDate(order.deliveryDate)}
                 </td>
-                <td className="px-5 py-3 font-medium text-ink-muted">{itemsSummary}</td>
-                <td className="whitespace-nowrap px-5 py-3">
+                <td className={`px-5 py-3 font-medium text-ink-muted ${compact ? "max-w-[360px] truncate border border-[#aeb8c8] px-2 py-0.5" : ""}`} title={itemsSummary}>{itemsSummary}</td>
+                <td className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {editableStatus && onStatusChange ? (
                     <OrderStatusEditor
                       order={order}
                       onStatusChange={onStatusChange}
+                      compact={compact}
                     />
                   ) : (
-                    <OrderStatusChip status={order.status} />
+                    <OrderStatusChip status={order.status} compact={compact} />
                   )}
                 </td>
                 {canViewPayments && (
                   <>
-                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">
+                    <td className={`whitespace-nowrap px-5 py-3 text-right font-semibold text-ink ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                       {formatCurrency(order.totalAmount)}
                     </td>
-                    <td className="whitespace-nowrap px-5 py-3 text-right">
-                      <BalanceBadge order={order} todayIso={todayIso} />
+                    <td className={`whitespace-nowrap px-5 py-3 text-right ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
+                      <BalanceBadge order={order} todayIso={todayIso} compact={compact} />
                     </td>
                   </>
                 )}
                 {showActions && (
-                  <td className="whitespace-nowrap px-5 py-3 text-right">
-                    <span className="inline-flex items-center gap-1">
-                      <Link href={`/orders/${order.id}`} onClick={(event) => event.stopPropagation()} aria-label={`View ${order.orderNumber}`} className="rounded-md p-2 text-primary hover:bg-primary-tint"><Eye className="h-4 w-4" /></Link>
-                      <Link href={`/orders/${order.id}/edit`} onClick={(event) => event.stopPropagation()} aria-label={`Edit ${order.orderNumber}`} className="rounded-md p-2 text-ink-muted hover:bg-surface-muted hover:text-ink"><Pencil className="h-4 w-4" /></Link>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); onDelete?.(order); }} aria-label={`Delete ${order.orderNumber}`} className="rounded-md p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                  <td className={`whitespace-nowrap px-5 py-3 text-right ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
+                    <span className={`inline-flex items-center ${compact ? "gap-0.5" : "gap-1"}`}>
+                      <Link href={`/orders/${order.id}`} onClick={(event) => event.stopPropagation()} aria-label={`View ${order.orderNumber}`} className={`rounded-md p-2 text-primary hover:bg-primary-tint ${compact ? "p-0.5" : ""}`}><Eye className={compact ? "h-3 w-3" : "h-4 w-4"} /></Link>
+                      <Link href={`/orders/${order.id}/edit`} onClick={(event) => event.stopPropagation()} aria-label={`Edit ${order.orderNumber}`} className={`rounded-md p-2 text-ink-muted hover:bg-surface-muted hover:text-ink ${compact ? "p-0.5" : ""}`}><Pencil className={compact ? "h-3 w-3" : "h-4 w-4"} /></Link>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); onDelete?.(order); }} aria-label={`Delete ${order.orderNumber}`} className={`rounded-md p-2 text-red-600 hover:bg-red-50 ${compact ? "p-0.5" : ""}`}><Trash2 className={compact ? "h-3 w-3" : "h-4 w-4"} /></button>
                     </span>
                   </td>
                 )}

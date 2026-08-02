@@ -1358,7 +1358,7 @@ export function NewOrderItemsCard({
   return (
     <div className={cn(
       "rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5",
-      compact && "rounded-lg p-2 sm:p-2"
+      compact && "rounded-lg border-[#c9d7ea] bg-white p-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)] sm:p-2"
     )}>
       <div className={cn("mb-3 flex flex-wrap items-end justify-between gap-3", compact && "mb-2 gap-2")}>
         <div className="flex min-w-0 items-center gap-2.5">
@@ -1381,13 +1381,13 @@ export function NewOrderItemsCard({
           <p className="text-sm text-ink-muted">Choose a garment type above to add the first item.</p>
         </div>
       ) : (
-        <div className={cn("overflow-x-auto rounded-xl border border-border", compact && "rounded-md")}>
+        <div className={cn("overflow-x-auto rounded-xl border border-border", compact && "rounded-md border-[#c9d7ea]")}>
           <table className={cn("w-full text-left text-sm", compact && "text-xs")}>
-            <thead className={cn("bg-surface-muted text-[14px] font-bold text-ink-muted", compact && "text-[11px]")}>
+            <thead className={cn("bg-surface-muted text-[14px] font-bold text-ink-muted", compact && "bg-[#eef4ff] text-[11px]")}>
               <tr>
                 {compact && <th className="whitespace-nowrap px-2 py-1.5">S.No</th>}
                 <th className={cn("whitespace-nowrap px-4 py-2.5", compact && "px-2 py-1.5")}>Garment</th>
-                {compact && <th className="whitespace-nowrap px-2 py-1.5">Book/Code</th>}
+                {compact && <th className="whitespace-nowrap px-2 py-1.5">Add-ons</th>}
                 <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Qty</th>
                 <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Rate</th>
                 {!compact && <th className="whitespace-nowrap px-4 py-2.5">Add-ons</th>}
@@ -1411,7 +1411,17 @@ export function NewOrderItemsCard({
                         <span>{garment ? formatGarmentCodeName(garment) : "Unknown garment"}{item.color.trim() && <small className="mt-0.5 block font-medium text-ink-muted">Color: {item.color.trim()}</small>}</span>
                       </span>
                     </td>
-                    {compact && <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-primary">{garment ? garmentCodeLabel(garment) : "-"}</td>}
+                    {compact && (
+                      <td className="max-w-[220px] px-2 py-1.5 text-ink-muted">
+                        {selected.length > 0 ? (
+                          <span className="block truncate" title={selected.map((addOn) => addOn.name).join(", ")}>
+                            {selected.map((addOn) => addOn.name).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-ink-faint">None</span>
+                        )}
+                      </td>
+                    )}
                     <td className={cn("whitespace-nowrap px-4 py-3.5 text-right text-ink", compact && "px-2 py-1.5")}>
                       <input
                         ref={(node) => {

@@ -42,6 +42,8 @@ import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 const PAGE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ORDERS_VIEW_KEY = "tailorsaas:orders-view";
+type OrdersView = "classic" | "modern";
 
 // Same plain YYYY-MM-DD string date-math convention as lib/dashboard.ts
 // (never Date/Intl formatting) so server/client rendering stays consistent.
@@ -77,6 +79,7 @@ function OrdersPageContent() {
   const [openingNewOrderHref, setOpeningNewOrderHref] = useState<string | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [ordersView, setOrdersView] = useState<OrdersView>("classic");
 
   // Phase 5A: orders + customers now come from Server Actions (both reads
   // and writes go through app/(shell)/orders/actions.ts and
@@ -87,6 +90,24 @@ function OrdersPageContent() {
   // Only gates the very first load — refreshTick-triggered refetches (status
   // change, edit save, etc.) shouldn't re-blank the table with a spinner.
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(ORDERS_VIEW_KEY);
+      if (saved === "classic" || saved === "modern") setOrdersView(saved);
+    } catch {
+      // Preference is optional.
+    }
+  }, []);
+
+  function handleOrdersViewChange(view: OrdersView) {
+    setOrdersView(view);
+    try {
+      window.localStorage.setItem(ORDERS_VIEW_KEY, view);
+    } catch {
+      // Preference persistence must not block the page.
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -397,8 +418,13 @@ function OrdersPageContent() {
     setPage(1);
   }
 
+  const isClassicOrdersView = ordersView === "classic";
+
   return (
-    <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]">
+    <div className={cn(
+      "mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:max-w-[1760px]",
+      isClassicOrdersView && "max-w-none bg-[#f5f8ff] p-2 sm:px-3 sm:py-2 lg:px-4 2xl:max-w-none"
+    )}>
       {showCreatedToast && (
         <div className="fixed right-8 top-6 z-50 flex items-center gap-2 rounded-lg border border-border-soft bg-white px-4 py-3 shadow-soft">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
@@ -415,14 +441,34 @@ function OrdersPageContent() {
           </button>
         </div>
       )}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-soft bg-white px-5 py-4 shadow-soft sm:px-6">
+      <div className={cn(
+        "mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-soft bg-white px-5 py-4 shadow-soft sm:px-6",
+        isClassicOrdersView && "mb-2 rounded-lg border-[#c9d7ea] px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]"
+      )}>
         <div>
-          <h1 className="text-[28px] font-bold tracking-tight text-ink">{t("orders.title")}</h1>
-          <p className="mt-0.5 text-sm font-medium text-ink-muted">
+          <h1 className={cn("text-[28px] font-bold tracking-tight text-ink", isClassicOrdersView && "text-lg")}>{t("orders.title")}</h1>
+          <p className={cn("mt-0.5 text-sm font-medium text-ink-muted", isClassicOrdersView && "text-xs")}>
             {t("orders.subtitle")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex overflow-hidden rounded-md border border-border bg-surface-muted p-0.5 text-xs font-semibold">
+            {(["classic", "modern"] as OrdersView[]).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => handleOrdersViewChange(view)}
+                className={cn(
+                  "h-8 px-3 transition-colors",
+                  ordersView === view
+                    ? "rounded bg-white text-primary shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                )}
+              >
+                {view === "classic" ? "Classic Compact View" : "Modern View"}
+              </button>
+            ))}
+          </div>
           <ExportCsvButton
             onClick={handleExportOrders}
             disabled={isLoading || (selectedCustomer ? customerOrders.length === 0 : allOrders.length === 0)}
@@ -433,7 +479,10 @@ function OrdersPageContent() {
               href="/orders/new"
               onClick={() => setOpeningNewOrderHref("/orders/new")}
               aria-busy={openingNewOrderHref === "/orders/new"}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              className={cn(
+                "flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark",
+                isClassicOrdersView && "rounded-md px-3 text-xs"
+              )}
             >
               {openingNewOrderHref === "/orders/new" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -475,6 +524,7 @@ function OrdersPageContent() {
           onOrderDateRangeChange={(range) => { setOrderDateRange(range); setPage(1); }}
           onClearFilters={handleClearFilters}
           onSelectCustomer={handleSelectCustomer}
+          compact={isClassicOrdersView}
         /></>
       )}
 
@@ -482,7 +532,10 @@ function OrdersPageContent() {
         <LoadingState label="Loading orders..." />
       ) : selectedCustomer ? (
         <div>
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+          <div className={cn(
+            "mb-4 flex items-center justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft",
+            isClassicOrdersView && "mb-2 rounded-lg border-[#c9d7ea] p-3 shadow-[0_2px_8px_rgba(30,64,175,0.06)]"
+          )}>
             <div>
               <p className="font-medium text-ink">{selectedCustomer.name}</p>
               <p className="text-sm text-ink-muted">
@@ -496,7 +549,10 @@ function OrdersPageContent() {
                   href={selectedCustomerNewOrderHref}
                   onClick={() => setOpeningNewOrderHref(selectedCustomerNewOrderHref)}
                   aria-busy={openingNewOrderHref === selectedCustomerNewOrderHref}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark",
+                    isClassicOrdersView && "rounded-md px-3 py-1.5 text-xs"
+                  )}
                 >
                   {openingNewOrderHref === selectedCustomerNewOrderHref ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -515,7 +571,10 @@ function OrdersPageContent() {
               )}
               <button
                 onClick={clearSelection}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+                className={cn(
+                  "rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink",
+                  isClassicOrdersView && "rounded-md px-3 py-1.5 text-xs"
+                )}
               >
                 {t("orders.backToAllOrders")}
               </button>
@@ -532,6 +591,7 @@ function OrdersPageContent() {
             onRowClick={setDetailsOrder}
             showActions={canEdit}
             onDelete={handleDeleteOrder}
+            compact={isClassicOrdersView}
           />
         </div>
       ) : (
@@ -547,9 +607,10 @@ function OrdersPageContent() {
             onRowClick={setDetailsOrder}
             showActions={canEdit}
             onDelete={handleDeleteOrder}
+            compact={isClassicOrdersView}
           />
           {allOrders.length > 0 && (
-            <div className="mt-5 flex items-center justify-between text-sm">
+            <div className={cn("mt-5 flex items-center justify-between text-sm", isClassicOrdersView && "mt-2 text-xs")}>
               <span className="text-ink-muted">
                 {t("common.showing")} {rangeStart} {t("common.to")} {rangeEnd}{" "}
                 {t("common.of")} {allOrders.length} {t("orders.ordersLabel")}

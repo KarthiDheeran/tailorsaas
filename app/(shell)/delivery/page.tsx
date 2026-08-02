@@ -184,6 +184,10 @@ function DeliveryDeskContent() {
     setRows((current) => current.filter((row) => row.order.id !== orderId));
   }
 
+  function focusQuickScanField() {
+    window.setTimeout(() => quickScanRef.current?.focus(), 0);
+  }
+
   function markDelivered(orderId: string) {
     setPendingOrderId(orderId);
     startTransition(async () => {
@@ -197,24 +201,28 @@ function DeliveryDeskContent() {
     });
   }
 
-  async function scanQuickDelivery() {
-    const value = quickCode.trim();
-    if (!value || quickBusy) return;
+  async function scanQuickDelivery(rawCode = quickCode) {
+    const value = rawCode.trim();
+    if (!value || quickBusy) {
+      focusQuickScanField();
+      return;
+    }
     setQuickBusy(true);
     setQuickMessage("");
     try {
       const result = await getQuickDeliveryOrderAction(value);
       if (!result.success) {
         setQuickOrder(null);
-        setQuickMessage(result.error);
+        setQuickMessage(`Scanned ${value}: ${result.error}`);
         return;
       }
       setQuickOrder(result.data);
       setQuickAmount(String(Math.max(0, result.data.order.balance)));
       setQuickCode("");
+      if (quickScanRef.current) quickScanRef.current.value = "";
     } finally {
       setQuickBusy(false);
-      window.setTimeout(() => quickScanRef.current?.focus(), 0);
+      focusQuickScanField();
     }
   }
 
@@ -231,7 +239,7 @@ function DeliveryDeskContent() {
         notes: "Quick delivery scan",
       });
       if (!result.success) {
-        setQuickMessage(result.error);
+        setQuickMessage(`Order ${quickOrder.order.orderNumber}: ${result.error}`);
         return;
       }
       removeOrder(result.data.id);
@@ -239,9 +247,10 @@ function DeliveryDeskContent() {
       setQuickOrder(null);
       setQuickAmount("");
       setQuickCode("");
+      if (quickScanRef.current) quickScanRef.current.value = "";
     } finally {
       setQuickBusy(false);
-      window.setTimeout(() => quickScanRef.current?.focus(), 0);
+      focusQuickScanField();
     }
   }
 
@@ -271,11 +280,11 @@ function DeliveryDeskContent() {
           </div>
           {quickBusy && <span className="rounded-full bg-primary-tint px-3 py-1 text-sm font-semibold text-primary">Processing…</span>}
         </div>
-        <form onSubmit={(event) => { event.preventDefault(); void scanQuickDelivery(); }} className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <form onSubmit={(event) => { event.preventDefault(); void scanQuickDelivery(quickScanRef.current?.value ?? quickCode); }} className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <label className="relative block min-w-0 flex-1">
             <span className="mb-1 block text-xs font-semibold text-ink-muted">Receipt barcode / Order number</span>
             <Barcode className="pointer-events-none absolute bottom-3 left-3 h-4 w-4 text-ink-faint" />
-            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter 1" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted" />
+            <input ref={quickScanRef} value={quickCode} onChange={(event) => setQuickCode(event.target.value)} disabled={quickBusy} placeholder="Scan receipt barcode or enter 1" autoComplete="off" data-raw-barcode-input="true" className="h-11 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted" />
           </label>
           <button type="submit" disabled={quickBusy || !quickCode.trim()} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Find Order</button>
         </form>

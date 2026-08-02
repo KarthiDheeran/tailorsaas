@@ -45,7 +45,20 @@ type ReceiptRow =
       total: number;
     };
 
-const ROWS_PER_RECEIPT_PAGE = 11;
+const ROWS_PER_RECEIPT_PAGE = 14;
+const RECEIPT_PRINT_PAGE_WIDTH_MM = 210;
+const RECEIPT_PRINT_PAGE_HEIGHT_MM = 297;
+const CUSTOMER_RECEIPT_WIDTH = "6in";
+const CUSTOMER_RECEIPT_HEIGHT = "4in";
+const CUSTOMER_RECEIPT_WIDTH_MM = 152.4;
+const CUSTOMER_RECEIPT_HEIGHT_MM = 101.6;
+const CUSTOMER_RECEIPT_PADDING_MM = 4;
+const CUSTOMER_RECEIPT_CONTENT_WIDTH_MM = 132;
+const CUSTOMER_RECEIPT_BARCODE_OPTIONS = {
+  height: 32,
+  moduleWidth: 1.35,
+  quietZoneModules: 10,
+};
 
 function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   const counted = payments.filter((p) => !p.voided);
@@ -126,96 +139,97 @@ function ReceiptPage({
   const modeSummary = summarizePaymentModes(payments);
   const modeLabel = paymentModeLabel(modeSummary);
   const isFinalPage = pageNumber === pageCount;
-  const barcodeMetrics = barcodeSvgMetrics(scanPayload);
+  const barcodeMetrics = barcodeSvgMetrics(scanPayload, CUSTOMER_RECEIPT_BARCODE_OPTIONS);
 
   return (
     <section className="receipt-page">
-      <header className="receipt-header">
-        <div className="receipt-shop">
-          <div className="receipt-shop-name">{billingSettings.shopName || "NewLook"}</div>
-          {billingSettings.tagline && (
-            <div className="receipt-tagline">{billingSettings.tagline}</div>
-          )}
-          <dl className="receipt-details">
-            <div>
-              <dt>Order No</dt>
-              <dd>{order.orderNumber}</dd>
-            </div>
-            <div>
-              <dt>Order Date</dt>
-              <dd>{formatDate(order.orderDate)}</dd>
-            </div>
-            <div>
-              <dt>Delivery Date</dt>
-              <dd>{formatDate(order.deliveryDate)}</dd>
-            </div>
-          </dl>
-        </div>
-        <div className="receipt-customer">
-          <dl className="receipt-details">
-            <div>
-              <dt>Name</dt>
-              <dd>{customer?.name ?? "-"}</dd>
-            </div>
-            <div>
-              <dt>Mobile</dt>
-              <dd>{customer?.phone ?? "-"}</dd>
-            </div>
-            {customer?.area && (
+      <div className="receipt-main-content">
+        <header className="receipt-header">
+          <div className="receipt-shop">
+            <div className="receipt-shop-name">{billingSettings.shopName || "NewLook"}</div>
+            {billingSettings.tagline && (
+              <div className="receipt-tagline">{billingSettings.tagline}</div>
+            )}
+            <dl className="receipt-details">
               <div>
-                <dt>Area</dt>
-                <dd>{customer.area}</dd>
+                <dt>Order No</dt>
+                <dd>{order.orderNumber}</dd>
               </div>
-            )}
-          </dl>
-        </div>
-      </header>
+              <div>
+                <dt>Order Date</dt>
+                <dd>{formatDate(order.orderDate)}</dd>
+              </div>
+              <div>
+                <dt>Delivery Date</dt>
+                <dd>{formatDate(order.deliveryDate)}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="receipt-customer">
+            <dl className="receipt-details">
+              <div>
+                <dt>Name</dt>
+                <dd>{customer?.name ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Mobile</dt>
+                <dd>{customer?.phone ?? "-"}</dd>
+              </div>
+              {customer?.area && (
+                <div>
+                  <dt>Area</dt>
+                  <dd>{customer.area}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </header>
 
-      <main className="receipt-body">
-        <table className="receipt-items">
-          <thead>
-            <tr>
-              <th>Particular</th>
-              <th className="num">Qty</th>
-              <th className="num">Rate</th>
-              <th className="num">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) =>
-              row.type === "item" ? (
-                <tr key={row.key}>
-                  <td>{row.particular}</td>
-                  <td className="num">{row.qty}</td>
-                  <td className="num">{formatCurrency(row.rate)}</td>
-                  <td className="num">{formatCurrency(row.total)}</td>
-                </tr>
-              ) : (
-                <tr key={row.key} className="addon-row">
-                  <td>+ {row.label}</td>
-                  <td className="num">{row.qty}</td>
-                  <td className="num">{formatCurrency(row.rate)}</td>
-                  <td className="num">{formatCurrency(row.total)}</td>
-                </tr>
-              )
-            )}
-          </tbody>
-        </table>
-      </main>
+        <main className="receipt-body">
+          <table className="receipt-items">
+            <thead>
+              <tr>
+                <th>Particular</th>
+                <th className="num">Qty</th>
+                <th className="num">Rate</th>
+                <th className="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) =>
+                row.type === "item" ? (
+                  <tr key={row.key}>
+                    <td>{row.particular}</td>
+                    <td className="num">{row.qty}</td>
+                    <td className="num">{formatCurrency(row.rate)}</td>
+                    <td className="num">{formatCurrency(row.total)}</td>
+                  </tr>
+                ) : (
+                  <tr key={row.key} className="addon-row">
+                    <td>+ {row.label}</td>
+                    <td className="num">{row.qty}</td>
+                    <td className="num">{formatCurrency(row.rate)}</td>
+                    <td className="num">{formatCurrency(row.total)}</td>
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
+        </main>
+      </div>
 
-      <footer className="receipt-footer">
-        <div className="receipt-note">
-          <div className="receipt-barcode" aria-label={`Scan to open ${order.orderNumber}`}>
+      <footer className="receipt-bottom-row">
+        <div className="receipt-preprinted-reserved" aria-hidden="true" />
+        <div className="receipt-barcode" aria-label={`Scan to open ${order.orderNumber}`}>
             <Image
-              src={barcodeSvgDataUri(scanPayload)}
+              src={barcodeSvgDataUri(scanPayload, CUSTOMER_RECEIPT_BARCODE_OPTIONS)}
               alt=""
               width={barcodeMetrics.width}
               height={barcodeMetrics.height}
               unoptimized
             />
             <span>{order.orderNumber}</span>
-          </div>
-          <span>{billingSettings.footerNote || "Please bring this receipt during pickup."}</span>
+          <small>{billingSettings.footerNote || "Please bring this receipt during pickup."}</small>
           {pageCount > 1 && (
             <span className="receipt-page-number">
               Page {pageNumber} of {pageCount}
@@ -223,7 +237,7 @@ function ReceiptPage({
           )}
         </div>
         {canViewPayments && isFinalPage && (
-          <div className="receipt-summary">
+          <div className="receipt-amount-summary">
             <div>
               <span>Bill Amount</span>
               <strong>{formatCurrency(order.totalAmount)}</strong>
@@ -311,82 +325,116 @@ function CustomerReceiptPrintPageContent({
     <PrintPageFrame showClose contentClassName="receipt-preview-frame">
       <style jsx global>{`
         @page {
-          size: 6in 4in;
+          size: A4 portrait;
           margin: 0;
         }
 
         .receipt-preview-frame {
-          width: 6in;
-          max-width: 6in;
+          width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm;
+          max-width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm;
+          padding: 0;
+          background: transparent;
+          box-shadow: none;
+        }
+
+        .receipt-print-page {
+          position: relative;
+          width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm;
+          height: ${RECEIPT_PRINT_PAGE_HEIGHT_MM}mm;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          background: white;
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .receipt-print-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+
+        .receipt-preview-frame {
           padding: 0;
           background: transparent;
           box-shadow: none;
         }
 
         .receipt-page {
-          width: 6in;
-          height: 4in;
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: ${CUSTOMER_RECEIPT_WIDTH};
+          height: ${CUSTOMER_RECEIPT_HEIGHT};
+          --customer-receipt-width-mm: ${CUSTOMER_RECEIPT_WIDTH_MM};
+          --customer-receipt-height-mm: ${CUSTOMER_RECEIPT_HEIGHT_MM};
+          --customer-receipt-content-width: ${CUSTOMER_RECEIPT_CONTENT_WIDTH_MM}mm;
           box-sizing: border-box;
           overflow: hidden;
-          break-after: page;
-          page-break-after: always;
-          display: grid;
-          grid-template-rows: auto 1fr auto;
-          padding: 0.22in 0.25in 0.18in;
+          display: flex;
+          flex-direction: column;
+          padding: ${CUSTOMER_RECEIPT_PADDING_MM}mm 5mm;
+          transform: translateX(-50%);
           background: white;
           color: #111827;
           font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
 
-        .receipt-page:last-child {
-          break-after: auto;
-          page-break-after: auto;
+        .receipt-main-content {
+          width: 100%;
+          max-width: var(--customer-receipt-content-width);
+          margin: 0 auto;
+          min-height: 0;
         }
 
         .receipt-header {
           display: grid;
           grid-template-columns: 1.25fr 1fr;
-          gap: 0.14in;
+          gap: 3mm;
           border-bottom: 1px solid #111827;
-          padding-bottom: 0.04in;
+          padding-bottom: 1mm;
         }
 
         .receipt-shop-name {
-          font-size: 16px;
+          font-size: 14px;
           line-height: 1;
           font-weight: 800;
           letter-spacing: 0;
         }
 
         .receipt-tagline {
-          margin-top: 2px;
+          margin-top: 1px;
           font-size: 7.5px;
           color: #4b5563;
         }
 
         .receipt-details {
-          margin: 0.04in 0 0;
+          margin: 1mm 0 0;
           display: grid;
-          gap: 1px;
-          font-size: 7.8px;
+          gap: 0.4mm;
+          font-size: 8.5px;
+          line-height: 1.08;
         }
 
         .receipt-details div {
           display: grid;
-          grid-template-columns: 0.62in 1fr;
-          gap: 0.05in;
+          grid-template-columns: 17mm 1fr;
+          gap: 1.5mm;
           min-width: 0;
         }
 
         .receipt-customer .receipt-details div {
-          grid-template-columns: 0.42in 1fr;
+          grid-template-columns: 12mm 1fr;
         }
 
         .receipt-barcode {
-          margin-bottom: 0.03in;
-          display: grid;
-          gap: 2px;
-          justify-items: center;
+          display: flex;
+          min-width: 35mm;
+          max-width: 42mm;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 1px;
           overflow: visible;
           flex-shrink: 0;
         }
@@ -404,15 +452,25 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-barcode span {
-          max-width: 2.6in;
+          max-width: 42mm;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           font-family: Arial, Helvetica, sans-serif;
-          font-size: 11px;
+          font-size: 9px;
           line-height: 1.1;
           font-weight: 800;
           color: #111827;
+        }
+
+        .receipt-barcode small {
+          max-width: 42mm;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 6.8px;
+          line-height: 1;
+          color: #4b5563;
         }
 
         .receipt-details dt {
@@ -431,22 +489,23 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-body {
           min-height: 0;
-          padding-top: 0.04in;
+          padding-top: 1mm;
+          overflow: hidden;
         }
 
         .receipt-items {
           width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          font-size: 7.8px;
-          line-height: 1.08;
+          font-size: 9.8px;
+          line-height: 1.12;
         }
 
         .receipt-items th {
           border-bottom: 1px solid #111827;
-          padding: 2px 2px;
+          padding: 1.5px 2px;
           text-align: left;
-          font-size: 8px;
+          font-size: 9.2px;
           font-weight: 800;
         }
 
@@ -464,7 +523,7 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td {
-          padding: 2px 2px;
+          padding: 1.8px 2px;
           vertical-align: top;
           border-bottom: 1px solid #e5e7eb;
           break-inside: avoid;
@@ -479,12 +538,12 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-items .addon-row td {
           color: #4b5563;
-          font-size: 7.2px;
+          font-size: 9px;
           border-bottom-color: #f1f5f9;
         }
 
         .receipt-items .addon-row td:first-child {
-          padding-left: 0.14in;
+          padding-left: 4mm;
           font-weight: 500;
         }
 
@@ -493,21 +552,24 @@ function CustomerReceiptPrintPageContent({
           white-space: nowrap;
         }
 
-        .receipt-footer {
+        .receipt-bottom-row {
+          margin-top: auto;
           display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 0.1in;
+          width: 100%;
+          max-width: var(--customer-receipt-content-width);
+          margin-left: auto;
+          margin-right: auto;
+          grid-template-columns: minmax(42mm, 1fr) auto 34mm;
+          column-gap: 4mm;
           align-items: end;
           border-top: 1px solid #111827;
-          padding-top: 0.04in;
+          padding-top: 1mm;
+          min-height: 0;
         }
 
-        .receipt-note {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          font-size: 6.8px;
-          color: #4b5563;
+        .receipt-preprinted-reserved {
+          min-width: 42mm;
+          min-height: 20mm;
         }
 
         .receipt-page-number {
@@ -515,53 +577,58 @@ function CustomerReceiptPrintPageContent({
           color: #111827;
         }
 
-        .receipt-summary {
-          width: 1.45in;
-          font-size: 7.6px;
+        .receipt-amount-summary {
+          width: 34mm;
+          justify-self: end;
+          font-size: 8px;
+          line-height: 1.08;
+          text-align: right;
         }
 
-        .receipt-summary div {
-          display: flex;
-          justify-content: space-between;
-          gap: 0.12in;
-          padding: 1px 0;
+        .receipt-amount-summary div {
+          display: grid;
+          grid-template-columns: 1fr;
+          justify-items: end;
+          padding: 0.5px 0;
         }
 
-        .receipt-summary span {
+        .receipt-amount-summary span {
           color: #4b5563;
           white-space: nowrap;
         }
 
-        .receipt-summary strong {
+        .receipt-amount-summary strong {
           white-space: nowrap;
           font-weight: 800;
         }
 
-        .receipt-summary .balance {
-          margin-top: 2px;
+        .receipt-amount-summary .balance {
+          margin-top: 1px;
           border-top: 1px solid #111827;
-          padding-top: 2px;
-          font-size: 8.6px;
+          padding-top: 1px;
+          font-size: 9px;
         }
 
         @media screen {
           .receipt-preview-frame {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
+            display: block;
+          }
+
+          .receipt-print-page {
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+            outline: 1px solid #d1d5db;
           }
 
           .receipt-page {
-            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+            outline: 1px dashed #9ca3af;
           }
         }
 
         @media print {
           html,
           body {
-            width: 6in;
-            min-height: 4in;
+            width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm;
+            height: ${RECEIPT_PRINT_PAGE_HEIGHT_MM}mm;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
@@ -576,26 +643,47 @@ function CustomerReceiptPrintPageContent({
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
+            width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm !important;
+            max-width: none !important;
+          }
+
+          .receipt-print-page {
+            position: relative !important;
+            width: ${RECEIPT_PRINT_PAGE_WIDTH_MM}mm !important;
+            height: ${RECEIPT_PRINT_PAGE_HEIGHT_MM}mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            box-shadow: none !important;
           }
 
           .receipt-page {
+            position: absolute !important;
+            top: 0 !important;
+            left: 50% !important;
+            width: ${CUSTOMER_RECEIPT_WIDTH} !important;
+            height: ${CUSTOMER_RECEIPT_HEIGHT} !important;
+            margin: 0 !important;
+            padding: ${CUSTOMER_RECEIPT_PADDING_MM}mm 5mm !important;
             box-shadow: none !important;
+            transform: translateX(-50%) !important;
           }
         }
       `}</style>
       {pages.map((pageRows, index) => (
-        <ReceiptPage
-          key={index}
-          order={order}
-          customer={customer}
-          payments={payments}
-          billingSettings={billingSettings}
-          scanPayload={scanPayload}
-          rows={pageRows}
-          pageNumber={index + 1}
-          pageCount={pages.length}
-          canViewPayments={canViewPayments}
-        />
+        <div className="receipt-print-page" key={index}>
+          <ReceiptPage
+            order={order}
+            customer={customer}
+            payments={payments}
+            billingSettings={billingSettings}
+            scanPayload={scanPayload}
+            rows={pageRows}
+            pageNumber={index + 1}
+            pageCount={pages.length}
+            canViewPayments={canViewPayments}
+          />
+        </div>
       ))}
     </PrintPageFrame>
   );

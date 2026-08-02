@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { jobSlipCodeCandidatesFromBarcodeValue } from "@/lib/barcode-code128";
 import { getOrderById } from "@/lib/data/orders-db";
 import { getStaffById } from "@/lib/data/staff-db";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
@@ -204,26 +205,20 @@ export async function getJobCardStageSlipByScanCode(
   const normalized = code.trim().toUpperCase();
   if (!normalized) return undefined;
 
-  const fullCodeMatch = normalized.match(/^JCS-(\d{4})-(\d{5,})$/);
-  const shortCodeMatch = normalized.match(/^(\d{2})-(\d{5,})$/);
   const legacyShortMatch = normalized.match(/^J-(\d{5,})$/);
-  const exactSlipCode = fullCodeMatch
-    ? normalized
-    : shortCodeMatch
-      ? `JCS-20${shortCodeMatch[1]}-${shortCodeMatch[2]}`
-      : undefined;
 
-  if (exactSlipCode) {
+  const slipCodeCandidates = jobSlipCodeCandidatesFromBarcodeValue(normalized);
+  for (const slipCode of slipCodeCandidates) {
     const { data, error } = await supabase
       .from("job_card_stage_slips")
       .select(JOB_CARD_STAGE_SLIP_COLUMNS)
-      .eq("slip_code", exactSlipCode)
+      .ilike("slip_code", slipCode)
       .maybeSingle();
     if (error) {
       if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
       throw error;
     }
-    return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+    if (data) return mapSlip(data as unknown as JobCardStageSlipRow);
   }
 
   if (!legacyShortMatch) return undefined;

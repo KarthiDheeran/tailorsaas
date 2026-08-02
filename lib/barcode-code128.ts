@@ -32,6 +32,38 @@ export function toBarcodeValue(slipCode: string) {
   return `${match[1].slice(-2)}-${match[2]}`;
 }
 
+export function jobSlipCodeCandidatesFromBarcodeValue(value: string) {
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return [];
+
+  const fullCodeMatch = normalized.match(/^JCS-(\d{4})-(\d+)$/);
+  if (fullCodeMatch) {
+    const [, year, sequence] = fullCodeMatch;
+    const numericSequence = String(Number(sequence));
+    return Array.from(
+      new Set([
+        normalized,
+        `JCS-${year}-${sequence.padStart(5, "0")}`,
+        Number.isFinite(Number(sequence)) ? `JCS-${year}-${numericSequence}` : normalized,
+      ])
+    );
+  }
+
+  const shortCodeMatch = normalized.match(/^(\d{2})-(\d+)$/);
+  if (!shortCodeMatch) return [];
+
+  const [, shortYear, sequence] = shortCodeMatch;
+  const year = `20${shortYear}`;
+  const numericSequence = String(Number(sequence));
+  return Array.from(
+    new Set([
+      `JCS-${year}-${sequence}`,
+      `JCS-${year}-${sequence.padStart(5, "0")}`,
+      Number.isFinite(Number(sequence)) ? `JCS-${year}-${numericSequence}` : `JCS-${year}-${sequence}`,
+    ])
+  );
+}
+
 function code128BValues(value: string) {
   const printable = value.replace(/[^\x20-\x7e]/g, "");
   const values = [104];
