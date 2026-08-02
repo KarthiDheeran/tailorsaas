@@ -44,6 +44,7 @@ import {
   measurementValuesOnly,
   type GarmentMeasurementDraft,
 } from "@/components/orders/garment-measurement-modal";
+import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
 
@@ -1258,6 +1259,7 @@ export function NewOrderItemsCard({
   garmentSection,
   excludeOrderId,
   garmentSelectorTarget,
+  compact = false,
 }: {
   customerId: string | null;
   items: DraftItem[];
@@ -1273,6 +1275,7 @@ export function NewOrderItemsCard({
   garmentSection?: GarmentSection | null;
   excludeOrderId?: string;
   garmentSelectorTarget?: HTMLElement | null;
+  compact?: boolean;
 }) {
   const selectorRef = useRef<HTMLInputElement | null>(null);
   const editButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -1330,9 +1333,9 @@ export function NewOrderItemsCard({
   }
 
   const garmentSelector = (
-    <label className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-        <Shirt className="h-4 w-4 text-primary" aria-hidden="true" />
+    <label className={cn("flex flex-col gap-1.5", compact && "gap-1")}>
+      <span className={cn("flex items-center gap-2 text-[15px] font-semibold text-ink", compact && "text-xs")}>
+        <Shirt className={cn("h-4 w-4 text-primary", compact && "h-3.5 w-3.5")} aria-hidden="true" />
         Garment Type
       </span>
       <GarmentTypeCombobox
@@ -1345,26 +1348,32 @@ export function NewOrderItemsCard({
         }}
         onChange={openAddModal}
         onSelected={() => undefined}
-        inputClassName="h-[50px] rounded-[10px] border-border bg-white px-4 text-base focus:border-primary focus:ring-2 focus:ring-primary-tint"
+        inputClassName={cn(
+          "h-[50px] rounded-[10px] border-border bg-white px-4 text-base focus:border-primary focus:ring-2 focus:ring-primary-tint",
+          compact && "h-8 rounded-md px-2 text-xs"
+        )}
       />
     </label>
   );
   return (
-    <div className="rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+    <div className={cn(
+      "rounded-2xl border border-border bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5",
+      compact && "rounded-lg p-2 sm:p-2"
+    )}>
+      <div className={cn("mb-3 flex flex-wrap items-end justify-between gap-3", compact && "mb-2 gap-2")}>
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
+          <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary", compact && "h-7 w-7 rounded-md")}>
             <ShoppingBag className="h-4.5 w-4.5" aria-hidden="true" />
           </span>
-          <h3 className="text-[21px] font-bold tracking-tight text-ink">Order Items</h3>
+          <h3 className={cn("text-[21px] font-bold tracking-tight text-ink", compact && "text-base")}>Order Items</h3>
         </div>
-        {!garmentSelectorTarget && <div className="w-full max-w-sm">{garmentSelector}</div>}
+        {!garmentSelectorTarget && <div className={cn("w-full max-w-sm", compact && "max-w-xs")}>{garmentSelector}</div>}
       </div>
 
       {garmentSelectorTarget && createPortal(garmentSelector, garmentSelectorTarget)}
 
       {rows.length === 0 ? (
-        <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface-muted px-4 py-5 text-center">
+        <div className={cn("flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface-muted px-4 py-5 text-center", compact && "min-h-16 rounded-md py-3")}>
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-tint text-primary">
             <Shirt className="h-5 w-5" aria-hidden="true" />
           </span>
@@ -1372,16 +1381,18 @@ export function NewOrderItemsCard({
           <p className="text-sm text-ink-muted">Choose a garment type above to add the first item.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
+        <div className={cn("overflow-x-auto rounded-xl border border-border", compact && "rounded-md")}>
+          <table className={cn("w-full text-left text-sm", compact && "text-xs")}>
+            <thead className={cn("bg-surface-muted text-[14px] font-bold text-ink-muted", compact && "text-[11px]")}>
               <tr>
-                <th className="whitespace-nowrap px-4 py-2.5">Garment</th>
-                <th className="whitespace-nowrap px-4 py-2.5 text-right">Qty</th>
-                <th className="whitespace-nowrap px-4 py-2.5 text-right">Rate</th>
-                <th className="whitespace-nowrap px-4 py-2.5">Add-ons</th>
-                <th className="whitespace-nowrap px-4 py-2.5 text-right">Amount</th>
-                <th className="whitespace-nowrap px-4 py-2.5 text-right">Actions</th>
+                {compact && <th className="whitespace-nowrap px-2 py-1.5">S.No</th>}
+                <th className={cn("whitespace-nowrap px-4 py-2.5", compact && "px-2 py-1.5")}>Garment</th>
+                {compact && <th className="whitespace-nowrap px-2 py-1.5">Book/Code</th>}
+                <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Qty</th>
+                <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Rate</th>
+                {!compact && <th className="whitespace-nowrap px-4 py-2.5">Add-ons</th>}
+                <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Amount</th>
+                <th className={cn("whitespace-nowrap px-4 py-2.5 text-right", compact && "px-2 py-1.5")}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1391,15 +1402,17 @@ export function NewOrderItemsCard({
                 const amount = computeAmount(item, garmentTypes, addOns);
                 return (
                   <tr key={item.draftKey} className="border-t border-border-soft transition-colors hover:bg-surface-muted">
-                    <td className="whitespace-nowrap px-5 py-3.5 font-bold text-[16px] text-ink">
+                    {compact && <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-ink-muted">{index + 1}</td>}
+                    <td className={cn("whitespace-nowrap px-5 py-3.5 font-bold text-[16px] text-ink", compact && "px-2 py-1.5 text-xs")}>
                       <span className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary">
+                        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary", compact && "hidden")}>
                           <Shirt className="h-4 w-4" aria-hidden="true" />
                         </span>
                         <span>{garment ? formatGarmentCodeName(garment) : "Unknown garment"}{item.color.trim() && <small className="mt-0.5 block font-medium text-ink-muted">Color: {item.color.trim()}</small>}</span>
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right text-ink">
+                    {compact && <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-primary">{garment ? garmentCodeLabel(garment) : "-"}</td>}
+                    <td className={cn("whitespace-nowrap px-4 py-3.5 text-right text-ink", compact && "px-2 py-1.5")}>
                       <input
                         ref={(node) => {
                           qtyInputRefs.current[item.draftKey] = node;
@@ -1416,10 +1429,13 @@ export function NewOrderItemsCard({
                             rateInputRefs.current[item.draftKey]?.focus();
                           }
                         }}
-                        className="h-11 w-24 rounded-[10px] border border-border bg-white px-2.5 text-center text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                        className={cn(
+                          "h-11 w-24 rounded-[10px] border border-border bg-white px-2.5 text-center text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+                          compact && "h-8 w-16 rounded-md px-1.5 text-xs"
+                        )}
                       />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right text-ink">
+                    <td className={cn("whitespace-nowrap px-4 py-3.5 text-right text-ink", compact && "px-2 py-1.5")}>
                       <input
                         ref={(node) => {
                           rateInputRefs.current[item.draftKey] = node;
@@ -1433,20 +1449,23 @@ export function NewOrderItemsCard({
                             rateOverridden: true,
                           })
                         }
-                        className="h-11 w-32 rounded-[10px] border border-border bg-white px-3 text-right text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                        className={cn(
+                          "h-11 w-32 rounded-[10px] border border-border bg-white px-3 text-right text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+                          compact && "h-8 w-20 rounded-md px-1.5 text-xs"
+                        )}
                       />
                     </td>
-                    <td className="px-4 py-3.5 text-[15px] text-ink-muted">
+                    {!compact && <td className="px-4 py-3.5 text-[15px] text-ink-muted">
                       {selected.length > 0 ? (
                         selected.map((addOn) => addOn.name).join(", ")
                       ) : (
                         <span className="inline-flex rounded-full bg-chip-info px-2.5 py-1 text-xs font-medium text-ink-muted">None</span>
                       )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right text-[18px] font-bold text-primary">
+                    </td>}
+                    <td className={cn("whitespace-nowrap px-4 py-3.5 text-right text-[18px] font-bold text-primary", compact && "px-2 py-1.5 text-xs")}>
                       {formatCurrency(amount)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5">
+                    <td className={cn("whitespace-nowrap px-4 py-3.5", compact && "px-2 py-1.5")}>
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
@@ -1460,7 +1479,10 @@ export function NewOrderItemsCard({
                             returnKey: item.draftKey,
                           })}
                           aria-label={`Edit ${garment ? formatGarmentCodeName(garment) : "order item"}`}
-                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
+                          className={cn(
+                            "flex h-10 items-center gap-1.5 rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint",
+                            compact && "h-7 rounded-md px-2 text-[11px]"
+                          )}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Edit
@@ -1469,7 +1491,10 @@ export function NewOrderItemsCard({
                           type="button"
                           onClick={() => deleteRow(index)}
                           aria-label={`Delete ${garment ? formatGarmentCodeName(garment) : "order item"}`}
-                          className="flex h-10 items-center gap-1.5 rounded-[9px] border border-danger/30 bg-white px-3 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-danger-soft"
+                          className={cn(
+                            "flex h-10 items-center gap-1.5 rounded-[9px] border border-danger/30 bg-white px-3 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-danger-soft",
+                            compact && "h-7 rounded-md px-2 text-[11px]"
+                          )}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
@@ -1485,7 +1510,7 @@ export function NewOrderItemsCard({
       )}
 
       {paymentStrip && (
-        <div className="mt-4 border-t border-border pt-4">
+        <div className={cn("mt-4 border-t border-border pt-4", compact && "mt-2 pt-2")}>
           {paymentStrip}
         </div>
       )}

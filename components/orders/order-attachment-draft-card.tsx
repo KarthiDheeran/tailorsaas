@@ -227,6 +227,7 @@ export function OrderAttachmentDraftCard({
   error,
   embedded = false,
   inlineSummary = false,
+  compactSummary = false,
 }: {
   queued: QueuedOrderAttachment[];
   onQueuedChange: (attachments: QueuedOrderAttachment[]) => void;
@@ -236,6 +237,7 @@ export function OrderAttachmentDraftCard({
   error?: string | null;
   embedded?: boolean;
   inlineSummary?: boolean;
+  compactSummary?: boolean;
 }) {
   const [preview, setPreview] = useState<{ src: string; name: string } | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -321,22 +323,31 @@ export function OrderAttachmentDraftCard({
           ? ""
           : cn(
               "rounded-xl border border-border-soft bg-white shadow-soft",
-              inlineSummary
+              compactSummary
+                ? "rounded-md border-border bg-white p-2 shadow-none"
+                : inlineSummary
                 ? "flex h-full flex-col rounded-2xl border-border p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-5 lg:min-h-[96px] lg:p-4"
                 : "p-3"
             )
       )}
     >
-      <div className="flex w-full flex-wrap items-center justify-between gap-3">
+      <div className={cn("flex w-full flex-wrap items-center justify-between gap-3", compactSummary && "gap-2")}>
         <div className="flex min-w-0 items-center gap-2">
-          {inlineSummary && (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
-              <FileUp className="h-5 w-5" aria-hidden="true" />
+          {(inlineSummary || compactSummary) && (
+            <span className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary",
+              compactSummary && "h-7 w-7 rounded-md"
+            )}>
+              <FileUp className={cn("h-5 w-5", compactSummary && "h-3.5 w-3.5")} aria-hidden="true" />
             </span>
           )}
           <div className="min-w-0">
-            <span className={cn("font-semibold text-ink", inlineSummary ? "whitespace-nowrap text-[20px] font-bold tracking-tight text-ink" : "text-[13px]")}>
-              {inlineSummary ? "Attachments" : `Photos - ${attachmentCount}`}
+            <span className={cn(
+              "font-semibold text-ink",
+              inlineSummary ? "whitespace-nowrap text-[20px] font-bold tracking-tight text-ink" : "text-[13px]",
+              compactSummary && "whitespace-nowrap text-xs font-bold"
+            )}>
+              {compactSummary ? `${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}` : inlineSummary ? "Attachments" : `Photos - ${attachmentCount}`}
             </span>
           </div>
           {!inlineSummary && summaryAttachments.length > 0 && (
@@ -374,25 +385,27 @@ export function OrderAttachmentDraftCard({
             </div>
           )}
         </div>
-        {(attachmentCount > 0 || inlineSummary) && (
+        {(attachmentCount > 0 || inlineSummary || compactSummary) && (
           <button
             type="button"
             onClick={() => setManagerOpen(true)}
             className={cn(
               "shrink-0 border bg-white font-semibold transition-colors",
-              inlineSummary
+              compactSummary
+                ? "inline-flex h-7 items-center gap-1 rounded-md border-primary px-2 text-[11px] text-primary hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
+                : inlineSummary
                 ? "inline-flex h-[42px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-primary px-4 text-sm text-primary hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
                 : "h-8 rounded-md border-border px-2.5 text-xs text-ink hover:bg-surface-muted"
             )}
           >
-            {inlineSummary && <FileUp className="h-4 w-4" aria-hidden="true" />}
-            {inlineSummary ? "Manage Attachments" : "Manage"}
+            {(inlineSummary || compactSummary) && <FileUp className={cn("h-4 w-4", compactSummary && "h-3 w-3")} aria-hidden="true" />}
+            {compactSummary ? "Manage" : inlineSummary ? "Manage Attachments" : "Manage"}
           </button>
         )}
         <label
           className={cn(
             "h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted",
-            inlineSummary ? "hidden" : "flex"
+            inlineSummary || compactSummary ? "hidden" : "flex"
           )}
         >
           <FileUp className="h-4 w-4" />
@@ -410,7 +423,7 @@ export function OrderAttachmentDraftCard({
         </label>
       </div>
 
-      {inlineSummary && (
+      {inlineSummary && !compactSummary && (
         <div className="mt-3 flex min-h-9 w-full flex-wrap items-center gap-2.5">
           <span className="inline-flex h-[26px] shrink-0 items-center rounded-full border border-border-soft bg-surface-muted px-2.5 text-[13px] font-semibold text-ink-muted">
             {attachmentCount} {attachmentCount === 1 ? "file" : "files"}

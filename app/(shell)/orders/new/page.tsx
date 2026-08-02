@@ -26,6 +26,7 @@ import {
   createOrderAction,
   createOrderForNewCustomerAction,
   generateNextOrderNumberAction,
+  getOrdersAction,
 } from "@/app/(shell)/orders/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
@@ -106,6 +107,7 @@ const inputClass =
   "h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint";
 
 type CustomerEntryMode = "search" | "selected" | "new";
+type OrderEntryView = "classic" | "modern";
 const ORDER_SECTION_OPTIONS = GARMENT_SECTIONS.map((section, index) => ({
   section,
   code: index + 1,
@@ -117,9 +119,11 @@ const CUSTOMER_SEARCH_DEBOUNCE_MS = 250;
 const CUSTOMER_SEARCH_MIN_LENGTH = 2;
 const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
 const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
+const ORDER_ENTRY_VIEW_KEY = "tailorsaas:new-order-entry-view";
 
 type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
 type MeasurementStaffOption = { id: string; name: string; staff_number: string; staff_code?: number };
+type TodayItemSummaryRow = { garment: string; qty: number };
 
 function customerBrowserCacheKey(scopeId: string | undefined) {
   return `tailorsaas:new-order-customers:${scopeId ?? "anonymous"}:v2`;
@@ -170,12 +174,14 @@ function OrderSectionCombobox({
   inputRef,
   onChange,
   hasError = false,
+  compact = false,
 }: {
   value: GarmentSection | "";
   options: { section: GarmentSection; code: number }[];
   inputRef: React.RefObject<HTMLInputElement>;
   onChange: (section: GarmentSection) => void;
   hasError?: boolean;
+  compact?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -256,6 +262,7 @@ function OrderSectionCombobox({
         placeholder="Type 1, 2, or 3"
         className={cn(
           "h-[50px] w-full rounded-[10px] border border-border bg-white px-4 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+          compact && "h-8 rounded-md px-2 text-xs",
           hasError && "border-chip-red-fg"
         )}
       />
@@ -319,6 +326,7 @@ function NewOrderPageContent() {
   const [customerCreationError, setCustomerCreationError] = useState<string | null>(null);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [orderNumberPreview, setOrderNumberPreview] = useState("");
+  const [orderEntryView, setOrderEntryView] = useState<OrderEntryView>("classic");
 
   const [orderDate, setOrderDate] = useState(todayIso());
   const trialDate = "";
@@ -374,6 +382,62 @@ function NewOrderPageContent() {
   const [orderSection, setOrderSection] = useState<GarmentSection | "">("");
   const [measurementStaff, setMeasurementStaff] = useState<MeasurementStaffOption[]>([]);
   const [measurementTakenByOperatorId, setMeasurementTakenByOperatorId] = useState("");
+  const [todayItemSummary, setTodayItemSummary] = useState<TodayItemSummaryRow[]>([]);
+  const [todayItemSummaryLoading, setTodayItemSummaryLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(ORDER_ENTRY_VIEW_KEY);
+      if (saved === "modern" || saved === "classic") {
+        setOrderEntryView(saved);
+      }
+    } catch {
+      // Browser preference is optional; Classic remains the safe default.
+    }
+  }, []);
+
+  function handleOrderEntryViewChange(view: OrderEntryView) {
+    setOrderEntryView(view);
+    try {
+      window.localStorage.setItem(ORDER_ENTRY_VIEW_KEY, view);
+    } catch {
+      // Preference persistence must not block order entry.
+    }
+  }
+
+  useEffect(() => {
+    if (orderEntryView !== "classic") return;
+    let cancelled = false;
+    setTodayItemSummaryLoading(true);
+    getOrdersAction()
+      .then((orders) => {
+        if (cancelled) return;
+        const today = todayIso();
+        const byGarment = new Map<string, number>();
+        orders
+          .filter((order) => order.orderDate === today && order.status !== "Cancelled")
+          .forEach((order) => {
+            order.items.forEach((item) => {
+              const garment = item.particular.trim() || "Item";
+              byGarment.set(garment, (byGarment.get(garment) ?? 0) + Number(item.qty || 0));
+            });
+          });
+        setTodayItemSummary(
+          Array.from(byGarment.entries())
+            .map(([garment, qty]) => ({ garment, qty }))
+            .sort((a, b) => b.qty - a.qty || a.garment.localeCompare(b.garment))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTodayItemSummary([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTodayItemSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderEntryView, savedOrder]);
 
   useEffect(() => {
     if (!finalizeOpen) return;
@@ -1422,22 +1486,62 @@ function NewOrderPageContent() {
     paymentMode,
     status: "In Progress",
   };
+  const isClassicEntry = orderEntryView === "classic";
 
   return (
-    <div className="pb-24">
-      <div className="mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]">
+    <div className={cn("pb-24", isClassicEntry && "bg-slate-100")}>
+      <div className={cn(
+        "mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]",
+        isClassicEntry && "max-w-none p-2 sm:px-3 sm:py-2 lg:px-4 2xl:max-w-none"
+      )}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+          <div>
+            <h1 className={cn("font-bold tracking-tight text-ink", isClassicEntry ? "text-lg" : "text-2xl")}>
+              {isClassicEntry ? "Classic Order Entry" : "New Order"}
+            </h1>
+            <p className="text-xs text-ink-muted">
+              {isClassicEntry
+                ? "Compact desktop layout for fast keyboard entry."
+                : "Modern order entry layout."}
+            </p>
+          </div>
+          <div className="flex overflow-hidden rounded-md border border-border bg-surface-muted p-0.5 text-xs font-semibold">
+            {(["classic", "modern"] as OrderEntryView[]).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => handleOrderEntryViewChange(view)}
+                className={cn(
+                  "h-8 px-3 transition-colors",
+                  orderEntryView === view
+                    ? "rounded bg-white text-primary shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                )}
+              >
+                {view === "classic" ? "Classic Compact View" : "Modern View"}
+              </button>
+            ))}
+          </div>
+        </div>
         <div
-          className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start"
+          className={cn(
+            "grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start",
+            isClassicEntry && "gap-2 lg:grid-cols-1"
+          )}
         >
-          <div className="min-w-0 space-y-3">
+          <div className={cn("min-w-0 space-y-3", isClassicEntry && "space-y-2")}>
             <div
               className={cn(
-                "min-h-[110px] rounded-2xl border border-border bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6"
+                "min-h-[110px] rounded-2xl border border-border bg-white p-5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] sm:p-6",
+                isClassicEntry && "min-h-0 rounded-lg p-3 sm:p-3"
               )}
             >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border-soft pb-3">
+              <div className={cn(
+                "mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border-soft pb-3",
+                isClassicEntry && "mb-2 pb-2"
+              )}>
                 <div>
-                  <p className="text-sm font-semibold text-ink">New Order</p>
+                  <p className="text-sm font-semibold text-ink">Order Information</p>
                   <p className="mt-0.5 text-xs text-ink-muted">Order number is confirmed when the order is saved.</p>
                 </div>
                 <span className="rounded-full border border-primary/30 bg-primary-tint px-3 py-1.5 text-sm font-bold text-primary">
@@ -1457,20 +1561,31 @@ function NewOrderPageContent() {
                 )}
               </div>
               )}
-              <div className="grid grid-cols-1 gap-5 lg:grid-cols-[11fr_9fr] lg:items-center lg:gap-6">
-              <div className={cn(customerMode !== "selected" && "space-y-3")}>
+              <div className={cn(
+                "grid grid-cols-1 gap-5 lg:grid-cols-[11fr_9fr] lg:items-center lg:gap-6",
+                isClassicEntry && "gap-2 xl:grid-cols-[340px_300px_220px_minmax(260px,1fr)] xl:items-start xl:justify-start xl:gap-2 2xl:grid-cols-[360px_320px_240px_minmax(280px,1fr)]"
+              )}>
+              <div className={cn(customerMode !== "selected" && "space-y-3", isClassicEntry && "space-y-2")}>
                 {customerMode === "selected" && matchedCustomer && (
-                  <div className="flex min-h-[62px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary">
-                        <UserRound className="h-6 w-6" aria-hidden="true" />
+                  <div className={cn(
+                    "flex min-h-[62px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between",
+                    isClassicEntry && "min-h-0 gap-2 rounded-md border border-border-soft bg-surface-muted/30 p-2 sm:items-start"
+                  )}>
+                    <div className={cn("flex min-w-0 items-center gap-3.5", isClassicEntry && "gap-2")}>
+                      <div className={cn(
+                        "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-tint text-primary",
+                        isClassicEntry && "h-8 w-8 rounded-md"
+                      )}>
+                        <UserRound className={cn("h-6 w-6", isClassicEntry && "h-4 w-4")} aria-hidden="true" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-ink-muted">Customer</p>
-                        <p className="truncate text-xl font-bold tracking-tight text-ink">
+                        <p className={cn("text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px] leading-4")}>
+                          Customer {matchedCustomer.customerNumber ? `· ${matchedCustomer.customerNumber}` : ""}
+                        </p>
+                        <p className={cn("truncate text-xl font-bold tracking-tight text-ink", isClassicEntry && "text-base leading-5")}>
                           {matchedCustomer.name}
                         </p>
-                        <p className="truncate text-[15px] text-ink-muted">
+                        <p className={cn("truncate text-[15px] text-ink-muted", isClassicEntry && "text-xs leading-4")}>
                           {matchedCustomer.phone} <span aria-hidden="true">·</span> {matchedCustomer.area || "-"}
                         </p>
                       </div>
@@ -1479,10 +1594,13 @@ function NewOrderPageContent() {
                       type="button"
                       onClick={handleChangeCustomer}
                       aria-label="Change customer"
-                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-primary bg-white px-4 text-[15px] font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint"
+                      className={cn(
+                        "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-primary bg-white px-4 text-[15px] font-semibold text-primary transition-colors hover:bg-primary-tint focus:outline-none focus:ring-2 focus:ring-primary-tint",
+                        isClassicEntry && "h-8 rounded-md px-2 text-xs"
+                      )}
                     >
-                      <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />
-                      Change Customer
+                      <ArrowRightLeft className={cn("h-4 w-4", isClassicEntry && "h-3.5 w-3.5")} aria-hidden="true" />
+                      {isClassicEntry ? "Change" : "Change Customer"}
                     </button>
                   </div>
                 )}
@@ -1516,6 +1634,7 @@ function NewOrderPageContent() {
                           placeholder="Search by phone number or customer name"
                           className={cn(
                             inputClass,
+                            isClassicEntry && "h-8 rounded-md px-2 text-xs",
                             (customerSearchLoading ||
                               (customerResultsOpen && customerSearchResults.length > 0)) &&
                               "rounded-b-none",
@@ -1601,7 +1720,7 @@ function NewOrderPageContent() {
                 )}
                 {customerMode === "new" && (
                   <>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", isClassicEntry && "gap-2 md:grid-cols-3")}>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     Customer Name
@@ -1615,6 +1734,7 @@ function NewOrderPageContent() {
                     }
                     className={cn(
                       inputClass,
+                      isClassicEntry && "h-8 rounded-md px-2 text-xs",
                       submitAttempted && errors.name && "border-chip-red-fg"
                     )}
                   />
@@ -1639,6 +1759,7 @@ function NewOrderPageContent() {
                     placeholder="10-digit phone number"
                     className={cn(
                       inputClass,
+                      isClassicEntry && "h-8 rounded-md px-2 text-xs",
                       (exactDuplicateCustomer ||
                         (submitAttempted && errors.phone)) &&
                         "border-chip-red-fg"
@@ -1703,7 +1824,7 @@ function NewOrderPageContent() {
                     </div>
                   )}
                 </label>
-                <div className="flex flex-col gap-1.5">
+                <div className={cn("flex flex-col gap-1.5", isClassicEntry && "hidden")}>
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.gender")}
                   </span>
@@ -1727,6 +1848,45 @@ function NewOrderPageContent() {
                     ))}
                   </div>
                 </div>
+                {isClassicEntry && (
+                  <details className="rounded-md border border-border-soft bg-white px-2 py-1.5 md:col-span-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-primary">More details</summary>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-medium text-ink-muted">Secondary phone</span>
+                        <input
+                          disabled
+                          placeholder="Optional"
+                          className="h-8 rounded-md border border-border bg-surface-muted px-2 text-xs text-ink-muted"
+                        />
+                      </label>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] font-medium text-ink-muted">
+                          {t("common.gender")}
+                        </span>
+                        <div className="flex gap-1.5">
+                          {(["Male", "Female"] as Gender[]).map((g) => (
+                            <button
+                              key={g}
+                              type="button"
+                              onClick={() =>
+                                setNewCustomer((current) => ({ ...current, gender: g }))
+                              }
+                              className={cn(
+                                "h-8 flex-1 rounded-md border text-xs font-semibold transition-colors",
+                                newCustomer.gender === g
+                                  ? "border-primary bg-primary text-white"
+                                  : "border-border bg-white text-ink hover:bg-surface-muted"
+                              )}
+                            >
+                              {g === "Male" ? t("common.male") : t("common.female")}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                )}
                   </div>
                   {canCreateCustomers && (
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-primary-tint px-3.5 py-3">
@@ -1837,23 +1997,88 @@ function NewOrderPageContent() {
                 </>
                 )}
               </div>
-              <div className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[15px] font-semibold text-ink">Order Section</span>
+              <div className={cn(
+                "min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0",
+                isClassicEntry && "rounded-md border border-border-soft bg-surface-muted/30 p-2 lg:border lg:p-2"
+              )}>
+                <div className={cn("flex flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                  <span className={cn("text-[15px] font-semibold text-ink", isClassicEntry && "text-sm")}>Order Details</span>
                   <OrderSectionCombobox
                     value={orderSection}
                     options={orderSectionOptions}
                     inputRef={orderSectionRef}
                     onChange={handleOrderSectionChange}
                     hasError={submitAttempted && !!errors.orderSection}
+                    compact={isClassicEntry}
                   />
-                  <p className="text-xs text-ink-muted">Type code: {orderSectionOptions.map((option) => `${option.code} ${option.section}`).join(" / ")}</p>
+                  <p className={cn("text-xs text-ink-muted", isClassicEntry && "text-[11px]")}>Type code: {orderSectionOptions.map((option) => `${option.code} ${option.section}`).join(" / ")}</p>
                 </div>
                 {submitAttempted && errors.orderSection && (
                   <p className="mt-1.5 text-xs font-medium text-chip-red-fg">{errors.orderSection}</p>
                 )}
-                <div ref={setGarmentSelectorTarget} className="mt-4" />
+                <div ref={setGarmentSelectorTarget} className={cn("mt-4", isClassicEntry && "mt-2")} />
               </div>
+              {isClassicEntry && (
+                <div className="min-w-0 rounded-md border border-border-soft bg-surface-muted/30 p-2">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-ink">Photo / Attachments</span>
+                  </div>
+                  <OrderAttachmentDraftCard
+                    inlineSummary
+                    compactSummary
+                    queued={queuedAttachments}
+                    onQueuedChange={setQueuedAttachments}
+                    error={(submitAttempted && errors.attachments) || attachmentError}
+                  />
+                </div>
+              )}
+              {isClassicEntry && (
+                <div className="min-w-0 rounded-md border border-border-soft bg-surface-muted/30 p-2">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-ink">Today Items</span>
+                    <span className="text-[11px] font-semibold text-ink-muted">
+                      {todayItemSummaryLoading
+                        ? "Loading"
+                        : `${todayItemSummary.reduce((sum, row) => sum + row.qty, 0)} pcs`}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-md border border-border-soft bg-white">
+                    {todayItemSummaryLoading ? (
+                      <div className="px-2 py-3 text-center text-[11px] text-ink-muted">Loading...</div>
+                    ) : todayItemSummary.length > 0 ? (
+                      <table className="min-w-full text-center text-[11px]">
+                        <thead className="bg-surface-muted text-ink-muted">
+                          <tr>
+                            {todayItemSummary.map((row) => (
+                              <th
+                                key={row.garment}
+                                className="max-w-[88px] truncate border-r border-border-soft px-2 py-1 font-semibold last:border-r-0"
+                                title={row.garment}
+                              >
+                                {row.garment}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t border-border-soft">
+                            {todayItemSummary.map((row) => (
+                              <td
+                                key={row.garment}
+                                className="border-r border-border-soft px-2 py-1.5 font-bold text-primary last:border-r-0"
+                              >
+                                {row.qty}
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="px-2 py-3 text-center text-[11px] text-ink-muted">No items today</div>
+                    )}
+                  </div>
+                </div>
+              )}
               </div>
             </div>
 
@@ -1873,18 +2098,21 @@ function NewOrderPageContent() {
               previousOrders={customerDetail?.orders ?? []}
               paymentStrip={
                 canViewPayments ? (
-                  <div className="grid gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]">
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-ink-muted">
+                  <div className={cn(
+                    "grid gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-2 xl:grid-cols-[0.8fr_1.1fr_0.9fr_1.2fr_1.1fr]",
+                    isClassicEntry && "gap-2 rounded-md p-2 sm:grid-cols-5 xl:grid-cols-5"
+                  )}>
+                    <div className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                      <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
                         {taxBreakdown && !taxBreakdown.pricesIncludeTax ? "Total" : "Subtotal"}
                       </span>
-                      <span className="flex h-11 items-center text-[21px] font-bold text-ink">
+                      <span className={cn("flex h-11 items-center text-[21px] font-bold text-ink", isClassicEntry && "h-8 text-sm")}>
                         {formatCurrency(totalAmount)}
                       </span>
                     </div>
-                    <label className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-ink-muted">
-                        {t("orders.paidAdvance")}
+                    <label className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                      <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
+                        Advance
                       </span>
                       <input
                         type="number"
@@ -1894,31 +2122,36 @@ function NewOrderPageContent() {
                         onChange={(e) => setAdvancePaid(Number(e.target.value))}
                         className={cn(
                           "h-11 w-full rounded-[10px] border border-border bg-white px-3 text-right text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint",
+                          isClassicEntry && "h-8 rounded-md px-2 text-xs",
                           submitAttempted &&
                             errors.advancePaid &&
                             "border-chip-red-fg"
                         )}
                       />
                     </label>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-ink-muted">
-                        {t("common.balance")}
+                    <div className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                      <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
+                        Balance
                       </span>
                       <span className={cn(
                         "flex h-11 items-center text-[22px] font-extrabold",
+                        isClassicEntry && "h-8 text-sm",
                         balance > 0 ? "text-warning" : "text-success"
                       )}>
                         {formatCurrency(balance)}
                       </span>
                     </div>
-                    <label className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-ink-muted">
-                        {t("orders.paymentMode")}
+                    <label className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                      <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
+                        Top
                       </span>
                       <Select
                         value={paymentMode}
                         onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                        className="h-11 rounded-[10px] border-border py-0 text-base focus:border-primary focus:ring-primary-tint"
+                        className={cn(
+                          "h-11 rounded-[10px] border-border py-0 text-base focus:border-primary focus:ring-primary-tint",
+                          isClassicEntry && "h-8 rounded-md py-0 text-xs"
+                        )}
                       >
                         {paymentModes.map((m) => (
                           <option key={m} value={m}>
@@ -1927,11 +2160,11 @@ function NewOrderPageContent() {
                         ))}
                       </Select>
                     </label>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <span className="block text-sm font-medium text-ink-muted">
-                        {t("orders.paymentStatus")}
+                    <div className={cn("flex min-w-0 flex-col gap-1.5", isClassicEntry && "gap-1")}>
+                      <span className={cn("block text-sm font-medium text-ink-muted", isClassicEntry && "text-[11px]")}>
+                        Bottom
                       </span>
-                      <div className="flex h-11 items-center">
+                      <div className={cn("flex h-11 items-center", isClassicEntry && "h-8")}>
                         {totalAmount === 0 ? (
                           <span className="inline-block rounded-full border border-border-soft bg-chip-info px-3 py-2 text-sm font-semibold text-ink-muted">
                             {t("orders.notCalculated")}
@@ -1953,18 +2186,21 @@ function NewOrderPageContent() {
               focusFirstGarmentRequest={garmentFocusRequest}
               garmentSection={orderSection || null}
               garmentSelectorTarget={garmentSelectorTarget}
+              compact={isClassicEntry}
             />
 
-            <OrderAttachmentDraftCard
-              inlineSummary
-              queued={queuedAttachments}
-              onQueuedChange={setQueuedAttachments}
-              error={(submitAttempted && errors.attachments) || attachmentError}
-            />
+            {!isClassicEntry && (
+              <OrderAttachmentDraftCard
+                inlineSummary
+                queued={queuedAttachments}
+                onQueuedChange={setQueuedAttachments}
+                error={(submitAttempted && errors.attachments) || attachmentError}
+              />
+            )}
 
           </div>
 
-          <div className="min-w-0 space-y-3">
+          <div className={cn("min-w-0 space-y-3", isClassicEntry && "hidden")}>
             <NewOrderSummaryPanel
               customer={matchedCustomer}
               detail={customerDetail}
