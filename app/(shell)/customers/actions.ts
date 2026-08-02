@@ -12,8 +12,10 @@ import {
 } from "@/lib/data/measurement-attachments-db";
 import {
   createCustomer,
+  getCustomerByNameAndPhone,
   getCustomerById,
   getCustomerByPhone,
+  getCustomersByPhone,
   getMeasurementHistoryForCustomer,
   getCustomerMeasurements,
   getCustomers,
@@ -22,6 +24,7 @@ import {
   getGarmentMeasurementsForCustomer,
   saveCustomerMeasurements,
   saveGarmentMeasurement,
+  searchCustomerAddresses,
   searchCustomers,
   searchCustomersByPhone,
   updateCustomer,
@@ -163,6 +166,32 @@ export async function getCustomerByPhoneAction(phone: string): Promise<Customer 
   return getCustomerByPhone(supabase, phone);
 }
 
+export async function getCustomersByPhoneAction(phone: string): Promise<Customer[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.view");
+  if (!guard.ok) return [];
+  return getCustomersByPhone(supabase, phone);
+}
+
+export async function getCustomerByNameAndPhoneAction(
+  name: string,
+  phone: string
+): Promise<Customer | undefined> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.view");
+  if (!guard.ok) return undefined;
+  return getCustomerByNameAndPhone(supabase, name, phone);
+}
+
+export async function searchCustomerAddressesAction(
+  query: string
+): Promise<{ address: string; area: string }[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.view");
+  if (!guard.ok) return [];
+  return searchCustomerAddresses(supabase, query);
+}
+
 export async function getCustomerListRowsAction(todayIso: string): Promise<CustomerListRow[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.view");
@@ -218,12 +247,23 @@ export async function createCustomerAction(
   if (!guard.ok) return { success: false, error: guard.error };
   if (!data.name.trim()) return { success: false, error: "Name is required." };
   if (!data.phone.trim()) return { success: false, error: "Phone is required." };
+  const existing = await getCustomerByNameAndPhone(
+    supabase,
+    data.name.trim(),
+    data.phone.trim()
+  );
+  if (existing) {
+    return {
+      success: false,
+      error: "A customer with this name and phone number already exists.",
+    };
+  }
   try {
     const customer = await createCustomer(supabase, data);
     return { success: true, data: customer };
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      return { success: false, error: "A customer with this phone number already exists." };
+      return { success: false, error: "A customer with this name and phone number already exists." };
     }
     throw error;
   }
@@ -238,9 +278,27 @@ export async function updateCustomerAction(
   if (!guard.ok) return { success: false, error: guard.error };
   if (!data.name.trim()) return { success: false, error: "Name is required." };
   if (!data.phone.trim()) return { success: false, error: "Phone is required." };
-  const customer = await updateCustomer(supabase, id, data);
-  if (!customer) return { success: false, error: "Customer not found." };
-  return { success: true, data: customer };
+  const existing = await getCustomerByNameAndPhone(
+    supabase,
+    data.name.trim(),
+    data.phone.trim()
+  );
+  if (existing && existing.id !== id) {
+    return {
+      success: false,
+      error: "A customer with this name and phone number already exists.",
+    };
+  }
+  try {
+    const customer = await updateCustomer(supabase, id, data);
+    if (!customer) return { success: false, error: "Customer not found." };
+    return { success: true, data: customer };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { success: false, error: "A customer with this name and phone number already exists." };
+    }
+    throw error;
+  }
 }
 
 export async function getCustomerMeasurementsAction(

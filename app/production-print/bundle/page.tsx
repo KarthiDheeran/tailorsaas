@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { getProductionPrintBundleAction } from "@/app/(shell)/job-cards/actions";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
-import { barcodeSvgDataUri } from "@/lib/barcode-code128";
+import { barcodeSvgDataUri, barcodeSvgMetrics, toBarcodeValue } from "@/lib/barcode-code128";
 import {
   historicalGarmentValueText,
   resolveHistoricalGarmentDisplayFields,
@@ -16,18 +16,19 @@ import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 const MEASUREMENT_NOTES_KEY = "__measurementNotes";
 
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
-  const value = `TS|JOB|${slip.scanToken}`;
+  const value = toBarcodeValue(slip.slipCode);
+  const metrics = barcodeSvgMetrics(value);
 
   return (
     <div className="production-barcode">
       <Image
-        src={barcodeSvgDataUri(value, 26)}
+        src={barcodeSvgDataUri(value)}
         alt={`Barcode for ${slip.stage} ${slip.slipCode}`}
-        width={185}
-        height={26}
+        width={metrics.width}
+        height={metrics.height}
         unoptimized
       />
-      <span>{slip.slipCode}</span>
+      <span title={slip.slipCode}>{value}</span>
     </div>
   );
 }
@@ -164,7 +165,7 @@ function ProductionPrintBundleContent() {
         .production-ticket {
           position: relative;
           display: grid;
-          grid-template-columns: 1fr 195px;
+          grid-template-columns: 1fr auto;
           gap: 4px 8px;
           border: 1px solid #111;
           border-bottom: 2px dashed #555;
@@ -180,7 +181,7 @@ function ProductionPrintBundleContent() {
         .production-stage {
           grid-column: 1 / -1;
           font-weight: 800;
-          font-size: 11px;
+          font-size: 12px;
           letter-spacing: 0.14em;
           border-bottom: 1px solid #111;
           padding-bottom: 2px;
@@ -233,18 +234,33 @@ function ProductionPrintBundleContent() {
           grid-row: 2;
           text-align: center;
           align-self: center;
+          justify-self: end;
+          padding: 0 3mm;
+          background: #fff;
+          overflow: visible;
+          flex-shrink: 0;
         }
 
         .production-barcode img {
           display: block;
           margin: 0 auto;
+          width: auto;
+          height: auto;
+          max-width: none;
+          object-fit: contain;
+          image-rendering: pixelated;
+          image-rendering: crisp-edges;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
         }
 
         .production-barcode span {
           display: block;
-          font-size: 9px;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 11px;
           font-weight: 700;
-          margin-top: 1px;
+          line-height: 1.1;
+          margin-top: 2px;
         }
 
         .production-hint {

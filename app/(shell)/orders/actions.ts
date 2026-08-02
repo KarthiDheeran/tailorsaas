@@ -37,7 +37,7 @@ import {
 import {
   createCustomer,
   deleteCustomer,
-  getCustomerByPhone,
+  getCustomerByNameAndPhone,
   getCustomers,
   getGarmentMeasurementDraftSeed,
 } from "@/lib/data/customers-db";
@@ -581,8 +581,12 @@ export async function createOrderForNewCustomerAction(data: {
   const dateError = validateOrderDates(data.order);
   if (dateError) return { success: false, error: dateError };
 
-  const existing = await getCustomerByPhone(supabase, data.customer.phone.trim());
-  if (existing && existing.name.trim().toLocaleLowerCase() === data.customer.name.trim().toLocaleLowerCase()) {
+  const existing = await getCustomerByNameAndPhone(
+    supabase,
+    data.customer.name.trim(),
+    data.customer.phone.trim()
+  );
+  if (existing) {
     return {
       success: false,
       error: "A customer with this name and phone number already exists.",

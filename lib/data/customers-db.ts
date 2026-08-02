@@ -136,7 +136,22 @@ export async function searchCustomersByPhone(
   return ((data as CustomerRow[]) ?? []).map(mapCustomer);
 }
 
-// Exact-phone lookup for the Add/Edit Customer form's duplicate-phone guard.
+export async function getCustomersByPhone(
+  supabase: SupabaseClient,
+  phone: string
+): Promise<Customer[]> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select(CUSTOMER_COLUMNS)
+    .eq("phone", phone)
+    .order("name")
+    .limit(20);
+  if (error) throw error;
+  return ((data as CustomerRow[]) ?? []).map(mapCustomer);
+}
+
+// Exact-phone lookup for places that need one suggested customer. Family
+// members can share a phone, so this intentionally returns the first match.
 export async function getCustomerByPhone(
   supabase: SupabaseClient,
   phone: string
@@ -145,9 +160,54 @@ export async function getCustomerByPhone(
     .from("customers")
     .select(CUSTOMER_COLUMNS)
     .eq("phone", phone)
-    .maybeSingle();
+    .order("name")
+    .limit(1);
   if (error) throw error;
-  return data ? mapCustomer(data as CustomerRow) : undefined;
+  const row = ((data as CustomerRow[]) ?? [])[0];
+  return row ? mapCustomer(row) : undefined;
+}
+
+export async function getCustomerByNameAndPhone(
+  supabase: SupabaseClient,
+  name: string,
+  phone: string
+): Promise<Customer | undefined> {
+  const normalizedName = name.trim().toLocaleLowerCase();
+  if (!normalizedName || !phone.trim()) return undefined;
+  const customers = await getCustomersByPhone(supabase, phone.trim());
+  return customers.find(
+    (customer) => customer.name.trim().toLocaleLowerCase() === normalizedName
+  );
+}
+
+export interface CustomerAddressSuggestion {
+  address: string;
+  area: string;
+}
+
+export async function searchCustomerAddresses(
+  supabase: SupabaseClient,
+  query: string
+): Promise<CustomerAddressSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const { data, error } = await supabase
+    .from("customers")
+    .select("address, area")
+    .ilike("address", `%${q}%`)
+    .limit(30);
+  if (error) throw error;
+  const seen = new Set<string>();
+  return ((data as Pick<CustomerRow, "address" | "area">[]) ?? [])
+    .map((row) => ({ address: row.address.trim(), area: row.area.trim() }))
+    .filter((row) => {
+      if (!row.address) return false;
+      const key = `${row.address.toLocaleLowerCase()}|${row.area.toLocaleLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
 }
 
 export async function createCustomer(

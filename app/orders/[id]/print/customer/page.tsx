@@ -18,7 +18,7 @@ import {
   DEFAULT_SHOP_BILLING_SETTINGS,
   type ShopBillingSettings,
 } from "@/lib/data/shop-billing-settings-db";
-import { barcodeSvgDataUri } from "@/lib/barcode-code128";
+import { barcodeSvgDataUri, barcodeSvgMetrics } from "@/lib/barcode-code128";
 import { formatCurrency } from "@/lib/currency";
 import type { Customer, Order, Payment } from "@/lib/types";
 
@@ -126,6 +126,7 @@ function ReceiptPage({
   const modeSummary = summarizePaymentModes(payments);
   const modeLabel = paymentModeLabel(modeSummary);
   const isFinalPage = pageNumber === pageCount;
+  const barcodeMetrics = barcodeSvgMetrics(scanPayload);
 
   return (
     <section className="receipt-page">
@@ -208,8 +209,8 @@ function ReceiptPage({
             <Image
               src={barcodeSvgDataUri(scanPayload)}
               alt=""
-              width={190}
-              height={36}
+              width={barcodeMetrics.width}
+              height={barcodeMetrics.height}
               unoptimized
             />
             <span>{order.orderNumber}</span>
@@ -304,7 +305,7 @@ function CustomerReceiptPrintPageContent({
   if (order === undefined) return null;
   if (order === null) notFound();
 
-  const scanPayload = order.scanToken ? `TS|ORD|${order.scanToken}` : order.orderNumber;
+  const scanPayload = order.orderNumber;
 
   return (
     <PrintPageFrame showClose contentClassName="receipt-preview-frame">
@@ -385,23 +386,32 @@ function CustomerReceiptPrintPageContent({
           margin-bottom: 0.03in;
           display: grid;
           gap: 2px;
-          justify-items: start;
+          justify-items: center;
+          overflow: visible;
+          flex-shrink: 0;
         }
 
         .receipt-barcode img {
           display: block;
-          width: 1.55in;
-          height: 0.26in;
+          width: auto;
+          height: auto;
+          max-width: none;
+          object-fit: contain;
+          image-rendering: pixelated;
           image-rendering: crisp-edges;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
         }
 
         .receipt-barcode span {
-          max-width: 1.55in;
+          max-width: 2.6in;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          font-size: 6.8px;
-          font-weight: 700;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 11px;
+          line-height: 1.1;
+          font-weight: 800;
           color: #111827;
         }
 

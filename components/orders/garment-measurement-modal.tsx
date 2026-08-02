@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
+import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
 import type { MeasurementFieldDef } from "@/lib/garment-catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 
@@ -81,6 +82,8 @@ export function GarmentMeasurementModal({
   const [updateCustomerMeasurements, setUpdateCustomerMeasurements] = useState(
     initial.updateCustomerMeasurements ?? false
   );
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -129,7 +132,16 @@ export function GarmentMeasurementModal({
             </button>
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form
+            ref={formRef}
+            onSubmit={handleSubmit}
+            onKeyDownCapture={(event) =>
+              handleEnterAsNextField(event, {
+                rootRef: formRef,
+                finalButtonRef: saveButtonRef,
+              })
+            }
+          >
             {fields.length > 0 ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {fields.map(({ key, label }) => (
@@ -137,15 +149,17 @@ export function GarmentMeasurementModal({
                     <span className="text-[13px] font-medium text-ink-muted">
                       {label}
                     </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={values[key] ?? ""}
-                      onChange={(e) =>
-                        setValues((prev) => ({ ...prev, [key]: e.target.value }))
-                      }
-                      className={inputClass}
-                    />
+                    <span className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={values[key] ?? ""}
+                        onChange={(e) =>
+                          setValues((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                        className={`${inputClass} min-w-0 flex-1`}
+                      />
+                    </span>
                   </label>
                 ))}
               </div>
@@ -183,6 +197,7 @@ export function GarmentMeasurementModal({
 
             <div className="mt-5 flex items-center gap-2">
               <button
+                ref={saveButtonRef}
                 type="submit"
                 className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >

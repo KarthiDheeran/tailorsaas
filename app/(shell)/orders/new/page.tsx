@@ -13,11 +13,13 @@ import { ArrowRightLeft, CheckCircle2, Loader2, UserRound } from "lucide-react";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
-  getCustomerByPhoneAction,
+  getCustomerByNameAndPhoneAction,
   getCustomerDetailAction,
+  getCustomersByPhoneAction,
   getCustomersAction,
   createCustomerAction,
   saveGarmentMeasurementAction,
+  searchCustomerAddressesAction,
   searchCustomersAction,
 } from "@/app/(shell)/customers/actions";
 import {
@@ -468,9 +470,14 @@ function NewOrderPageContent() {
   const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
   const [duplicateCustomer, setDuplicateCustomer] = useState<Customer | null>(null);
   const [phoneDuplicateCustomer, setPhoneDuplicateCustomer] = useState<Customer | null>(null);
+  const [samePhoneCustomers, setSamePhoneCustomers] = useState<Customer[]>([]);
   const [phoneDuplicateChecking, setPhoneDuplicateChecking] = useState(false);
   const [similarNameCustomers, setSimilarNameCustomers] = useState<Customer[]>([]);
   const [similarNameChecking, setSimilarNameChecking] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<{ address: string; area: string }[]>([]);
+  const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
+  const [activeAddressSuggestionIndex, setActiveAddressSuggestionIndex] = useState(-1);
+  const addressSuggestionsRef = useRef<HTMLLabelElement | null>(null);
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | undefined>(
     undefined
   );
@@ -654,10 +661,32 @@ function NewOrderPageContent() {
       if (!customerSearchRef.current?.contains(event.target as Node)) {
         setCustomerResultsOpen(false);
       }
+      if (!addressSuggestionsRef.current?.contains(event.target as Node)) {
+        setAddressSuggestionsOpen(false);
+      }
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    const query = newCustomer.address.trim();
+    if (customerMode !== "new" || query.length < 2) {
+      setAddressSuggestions([]);
+      setActiveAddressSuggestionIndex(-1);
+      return;
+    }
+    let cancelled = false;
+    searchCustomerAddressesAction(query).then((suggestions) => {
+      if (!cancelled) {
+        setAddressSuggestions(suggestions);
+        setActiveAddressSuggestionIndex(-1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerMode, newCustomer.address]);
 
   useEffect(() => {
     if (isCurrentUserLoading) return;
@@ -688,28 +717,41 @@ function NewOrderPageContent() {
     const phone = newCustomer.phone.trim();
     if (customerMode !== "new" || !/^\d{10}$/.test(phone)) {
       setPhoneDuplicateCustomer(null);
+      setSamePhoneCustomers([]);
       setPhoneDuplicateChecking(false);
       return;
     }
-    if (cachedCustomers !== null) {
+    const normalizedName = newCustomer.name.trim().toLocaleLowerCase();
+    const resolveMatches = (customers: Customer[]) => {
+      setSamePhoneCustomers(customers);
       setPhoneDuplicateCustomer(
-        cachedCustomers.find((customer) => customer.phone.replace(/\D/g, "") === phone) ?? null
+        normalizedName
+          ? customers.find(
+              (customer) =>
+                customer.name.trim().toLocaleLowerCase() === normalizedName
+            ) ?? null
+          : null
+      );
+    };
+    if (cachedCustomers !== null) {
+      resolveMatches(
+        cachedCustomers.filter((customer) => customer.phone.replace(/\D/g, "") === phone)
       );
       setPhoneDuplicateChecking(false);
       return;
     }
     let cancelled = false;
     setPhoneDuplicateChecking(true);
-    getCustomerByPhoneAction(phone).then((customer) => {
+    getCustomersByPhoneAction(phone).then((customers) => {
       if (cancelled) return;
-      setPhoneDuplicateCustomer(customer ?? null);
+      resolveMatches(customers);
       setPhoneDuplicateChecking(false);
     });
     return () => {
       cancelled = true;
       setPhoneDuplicateChecking(false);
     };
-  }, [cachedCustomers, customerMode, newCustomer.phone]);
+  }, [cachedCustomers, customerMode, newCustomer.name, newCustomer.phone]);
 
   useEffect(() => {
     const name = newCustomer.name.trim();
@@ -992,6 +1034,48 @@ function NewOrderPageContent() {
     setCustomerMode("new");
   }
 
+  function selectAddressSuggestion(suggestion: { address: string; area: string }) {
+    setNewCustomer((current) => ({
+      ...current,
+      address: suggestion.address,
+      area: suggestion.area || current.area,
+    }));
+    setAddressSuggestionsOpen(false);
+    setActiveAddressSuggestionIndex(-1);
+  }
+
+  function handleAddressSuggestionKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (addressSuggestions.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setAddressSuggestionsOpen(true);
+      setActiveAddressSuggestionIndex((current) =>
+        current < 0 ? 0 : Math.min(current + 1, addressSuggestions.length - 1)
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setAddressSuggestionsOpen(true);
+      setActiveAddressSuggestionIndex((current) =>
+        current < 0 ? addressSuggestions.length - 1 : Math.max(current - 1, 0)
+      );
+      return;
+    }
+    if (event.key === "Enter" && addressSuggestionsOpen) {
+      const suggestion =
+        addressSuggestions[activeAddressSuggestionIndex >= 0 ? activeAddressSuggestionIndex : 0];
+      if (!suggestion) return;
+      event.preventDefault();
+      selectAddressSuggestion(suggestion);
+      return;
+    }
+    if (event.key === "Escape" && addressSuggestionsOpen) {
+      event.preventDefault();
+      setAddressSuggestionsOpen(false);
+    }
+  }
+
   function refreshCustomerBrowserCache(customer: Customer) {
     setCachedCustomers((current) => {
       const next = [customer, ...(current ?? []).filter((item) => item.id !== customer.id)];
@@ -1048,6 +1132,10 @@ function NewOrderPageContent() {
     setNewCustomer(emptyCustomerDraft);
     setDuplicateCustomer(null);
     setPhoneDuplicateCustomer(null);
+    setSamePhoneCustomers([]);
+    setAddressSuggestions([]);
+    setAddressSuggestionsOpen(false);
+    setActiveAddressSuggestionIndex(-1);
     setSimilarNameCustomers([]);
     setCustomerSearchCompleted(false);
     setCustomerCreationError(null);
@@ -1189,12 +1277,15 @@ function NewOrderPageContent() {
         createdByOperatorId: createdByOperatorId || undefined,
       });
     } else {
-      const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
-      if (existingByPhone) {
+      const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
+        trimmedNewName,
+        trimmedNewPhone
+      );
+      if (existingByNameAndPhone) {
         setSaving(false);
-        setDuplicateCustomer(existingByPhone);
-        setPhoneDuplicateCustomer(existingByPhone);
-        setSaveError("A customer with this phone number already exists.");
+        setDuplicateCustomer(existingByNameAndPhone);
+        setPhoneDuplicateCustomer(existingByNameAndPhone);
+        setSaveError("A customer with this name and phone number already exists.");
         return;
       }
       created = await createOrderForNewCustomerAction({
@@ -1221,11 +1312,14 @@ function NewOrderPageContent() {
     }
     if (!created.success) {
       setSaving(false);
-      if (created.error === "A customer with this phone number already exists.") {
-        const existingByPhone = await getCustomerByPhoneAction(trimmedNewPhone);
-        if (existingByPhone) {
-          setPhoneDuplicateCustomer(existingByPhone);
-          setDuplicateCustomer(existingByPhone);
+      if (created.error === "A customer with this name and phone number already exists.") {
+        const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
+          trimmedNewName,
+          trimmedNewPhone
+        );
+        if (existingByNameAndPhone) {
+          setPhoneDuplicateCustomer(existingByNameAndPhone);
+          setDuplicateCustomer(existingByNameAndPhone);
         }
       }
       setSaveError(created.error);
@@ -1569,17 +1663,45 @@ function NewOrderPageContent() {
                     className={inputClass}
                   />
                 </label>
-                <label className="flex flex-col gap-1.5">
+                <label ref={addressSuggestionsRef} className="relative flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     {t("common.address")}
                   </span>
                   <input
                     value={newCustomer.address}
-                    onChange={(e) =>
-                      setNewCustomer((current) => ({ ...current, address: e.target.value }))
-                    }
+                    onFocus={() => setAddressSuggestionsOpen(true)}
+                    onChange={(e) => {
+                      setNewCustomer((current) => ({ ...current, address: e.target.value }));
+                      setAddressSuggestionsOpen(true);
+                    }}
+                    onKeyDown={handleAddressSuggestionKeyDown}
                     className={inputClass}
                   />
+                  {addressSuggestionsOpen && addressSuggestions.length > 0 && (
+                    <div
+                      role="listbox"
+                      className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-soft"
+                    >
+                      {addressSuggestions.map((suggestion, index) => (
+                        <button
+                          key={`${suggestion.address}|${suggestion.area}`}
+                          type="button"
+                          role="option"
+                          aria-selected={index === activeAddressSuggestionIndex}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onMouseEnter={() => setActiveAddressSuggestionIndex(index)}
+                          onClick={() => selectAddressSuggestion(suggestion)}
+                          className={cn(
+                            "block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted",
+                            index === activeAddressSuggestionIndex && "bg-primary-tint"
+                          )}
+                        >
+                          <span className="block truncate font-medium">{suggestion.address}</span>
+                          {suggestion.area && <span className="block truncate text-xs text-ink-muted">{suggestion.area}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </label>
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
@@ -1628,7 +1750,7 @@ function NewOrderPageContent() {
                   {phoneDuplicateCustomer && (
                     <div className="rounded-lg border border-chip-red-fg/20 bg-chip-red px-3.5 py-3 text-sm">
                       <div className="font-semibold text-chip-red-fg">
-                        A customer with this phone number already exists.
+                        A customer with this name and phone number already exists.
                       </div>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -1646,6 +1768,30 @@ function NewOrderPageContent() {
                         >
                           Use Existing Customer
                         </button>
+                      </div>
+                    </div>
+                  )}
+                  {!phoneDuplicateCustomer && samePhoneCustomers.length > 0 && (
+                    <div className="rounded-lg border border-border-soft bg-surface-muted px-3.5 py-3 text-sm">
+                      <div className="mb-2 font-semibold text-ink">
+                        Same phone number used by family/customer
+                      </div>
+                      <div className="divide-y divide-border-soft">
+                        {samePhoneCustomers.slice(0, 4).map((customer) => (
+                          <div key={customer.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-ink">{customer.name}</div>
+                              <div className="text-ink-muted">{customer.phone} · {customer.area || "-"}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCustomer(customer)}
+                              className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                            >
+                              Use Existing Customer
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1683,7 +1829,7 @@ function NewOrderPageContent() {
                   {similarNameChecking && similarNameCustomers.length === 0 && (
                     <p className="text-xs text-ink-muted">Checking similar names...</p>
                   )}
-                  {duplicateCustomer && !phoneDuplicateCustomer && (
+                  {duplicateCustomer && !phoneDuplicateCustomer && samePhoneCustomers.length === 0 && (
                     <div className="rounded-lg bg-chip-red px-3.5 py-2.5 text-xs font-medium text-chip-red-fg">
                       This phone number already belongs to {duplicateCustomer.name}. Select that customer instead.
                     </div>

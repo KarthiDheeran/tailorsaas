@@ -29,7 +29,7 @@ function looksLikeSupportedScan(value: string) {
 
 function shouldSuppressScannerCharacter(value: string) {
   const code = value.toUpperCase();
-  return code.startsWith("TS|ORD") || code.startsWith("ORD") || /^[MCB]-/.test(code) || /^\d+$/.test(code) || code.startsWith("TS|JOB") || code.startsWith("JCS");
+  return code.startsWith("TS|ORD") || code.startsWith("ORD") || /^[MCB]-/.test(code) || /^\d+$/.test(code) || /^\d{2}-\d{5}$/.test(code) || /^J-\d{5}$/.test(code);
 }
 
 function focusedTextControl() {

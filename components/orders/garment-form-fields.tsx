@@ -1,6 +1,6 @@
 "use client";
 
-import type { Ref } from "react";
+import { useCallback, type MutableRefObject, type Ref } from "react";
 import { ChevronDown } from "lucide-react";
 
 import type {
@@ -103,28 +103,30 @@ function FieldControl({
           <span className="text-sm text-ink">Yes</span>
         </span>
       ) : (
-        <input
-          ref={controlRef as Ref<HTMLInputElement>}
-          disabled={disabled}
-          required={field.required}
-          type={field.inputType === "number" ? "number" : "text"}
-          min={field.min ?? undefined}
-          max={field.max ?? undefined}
-          step={field.decimalPlaces === null ? undefined : 1 / 10 ** field.decimalPlaces}
-          value={(value as string | number | null) ?? ""}
-          placeholder={field.placeholder ?? undefined}
-          onChange={(event) =>
-            onChange(
-              field.code,
-              field.inputType === "number"
-                ? event.target.value === ""
-                  ? null
-                  : Number(event.target.value)
-                : event.target.value
-            )
-          }
-          className="h-10 rounded-md border border-border bg-white px-2 text-sm text-ink"
-        />
+        <span className="block">
+          <input
+            ref={controlRef as Ref<HTMLInputElement>}
+            disabled={disabled}
+            required={field.required}
+            type={field.inputType === "number" ? "number" : "text"}
+            min={field.min ?? undefined}
+            max={field.max ?? undefined}
+            step={field.decimalPlaces === null ? undefined : 1 / 10 ** field.decimalPlaces}
+            value={(value as string | number | null) ?? ""}
+            placeholder={field.placeholder ?? undefined}
+            onChange={(event) =>
+              onChange(
+                field.code,
+                field.inputType === "number"
+                  ? event.target.value === ""
+                    ? null
+                    : Number(event.target.value)
+                  : event.target.value
+              )
+            }
+            className="h-10 min-w-0 flex-1 rounded-md border border-border bg-white px-2 text-sm text-ink"
+          />
+        </span>
       )}
       {error && <span className="text-xs text-chip-red-fg">{error}</span>}
     </label>
@@ -150,6 +152,17 @@ export function GarmentFormFields({
   onChange: (code: string, value: GarmentFieldValue) => void;
   firstControlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
+  const setFirstControlRef = useCallback(
+    (node: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) => {
+      if (typeof firstControlRef === "function") {
+        firstControlRef(node);
+      } else if (firstControlRef && "current" in firstControlRef) {
+        (firstControlRef as MutableRefObject<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>).current = node;
+      }
+    },
+    [firstControlRef]
+  );
+
   const groups = fields.reduce<Record<string, RuntimeGarmentField[]>>((all, field) => {
     (all[field.sectionName] ??= []).push(field);
     return all;
@@ -178,7 +191,7 @@ export function GarmentFormFields({
             error={errors[field.code]}
             disabled={disabled}
             onChange={onChange}
-            controlRef={isFirst ? firstControlRef : undefined}
+            controlRef={isFirst ? setFirstControlRef : undefined}
           />;
         })}
       </div>

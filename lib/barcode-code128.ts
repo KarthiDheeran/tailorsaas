@@ -15,6 +15,23 @@ const CODE128_PATTERNS = [
   "211214", "211232", "2331112",
 ];
 
+export type BarcodeSvgOptions = {
+  height?: number;
+  moduleWidth?: number;
+  quietZoneModules?: number;
+};
+
+const DEFAULT_BARCODE_HEIGHT = 55;
+const DEFAULT_MODULE_WIDTH = 2;
+const DEFAULT_QUIET_ZONE_MODULES = 10;
+
+export function toBarcodeValue(slipCode: string) {
+  const normalized = slipCode.trim().toUpperCase();
+  const match = normalized.match(/^JCS-(\d{4})-(\d+)$/);
+  if (!match) return normalized;
+  return `${match[1].slice(-2)}-${match[2]}`;
+}
+
 function code128BValues(value: string) {
   const printable = value.replace(/[^\x20-\x7e]/g, "");
   const values = [104];
@@ -28,22 +45,51 @@ function code128BValues(value: string) {
   return values;
 }
 
-export function barcodeSvgDataUri(value: string, height = 36) {
+export function barcodeSvgMetrics(
+  value: string,
+  options: BarcodeSvgOptions | number = {}
+) {
+  const normalizedOptions =
+    typeof options === "number" ? { height: options } : options;
+  const height = Math.max(1, Math.round(normalizedOptions.height ?? DEFAULT_BARCODE_HEIGHT));
+  const moduleWidth = Math.max(1, normalizedOptions.moduleWidth ?? DEFAULT_MODULE_WIDTH);
+  const quietZoneModules = Math.max(
+    10,
+    Math.round(normalizedOptions.quietZoneModules ?? DEFAULT_QUIET_ZONE_MODULES)
+  );
   const values = code128BValues(value);
-  let x = 0;
+  const symbolModules = values.reduce(
+    (sum, code) =>
+      sum +
+      CODE128_PATTERNS[code]
+        .split("")
+        .reduce((patternSum, widthChar) => patternSum + Number(widthChar), 0),
+    0
+  );
+  const width = (symbolModules + quietZoneModules * 2) * moduleWidth;
+  return { height, moduleWidth, quietZoneModules, symbolModules, width };
+}
+
+export function barcodeSvgDataUri(
+  value: string,
+  options: BarcodeSvgOptions | number = {}
+) {
+  const metrics = barcodeSvgMetrics(value, options);
+  const values = code128BValues(value);
+  let x = metrics.quietZoneModules * metrics.moduleWidth;
   const bars: string[] = [];
   for (const code of values) {
     const pattern = CODE128_PATTERNS[code];
     let isBar = true;
     for (const widthChar of pattern) {
-      const width = Number(widthChar);
+      const width = Number(widthChar) * metrics.moduleWidth;
       if (isBar) {
-        bars.push(`<rect x="${x}" y="0" width="${width}" height="${height}"/>`);
+        bars.push(`<rect x="${x}" y="0" width="${width}" height="${metrics.height}"/>`);
       }
       x += width;
       isBar = !isBar;
     }
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${x} ${height}" preserveAspectRatio="none"><rect width="${x}" height="${height}" fill="#fff"/>${bars.join("")}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${metrics.width}" height="${metrics.height}" viewBox="0 0 ${metrics.width} ${metrics.height}" shape-rendering="crispEdges" text-rendering="geometricPrecision"><rect width="${metrics.width}" height="${metrics.height}" fill="#fff"/>${bars.join("")}</svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

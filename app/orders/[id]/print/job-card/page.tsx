@@ -22,7 +22,7 @@ import {
   resolveHistoricalGarmentDisplayFields,
   shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
-import { barcodeSvgDataUri } from "@/lib/barcode-code128";
+import { barcodeSvgDataUri, barcodeSvgMetrics, toBarcodeValue } from "@/lib/barcode-code128";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
 import {
   DEFAULT_SHOP_BILLING_SETTINGS,
@@ -402,7 +402,8 @@ function StageSlipPrintV2({
   const labels = SLIP_LABELS[locale];
   const measurements = measurementEntries(slip.measurementsSnapshot, slip.fieldSchemaSnapshot);
   const measurementRows = chunkEntries(measurements, 4);
-  const barcodeValue = `TS|JOB|${slip.scanToken}`;
+  const barcodeValue = toBarcodeValue(slip.slipCode);
+  const barcodeMetrics = barcodeSvgMetrics(barcodeValue);
   const customerName = customer?.name ?? slip.customerSnapshot?.name ?? "-";
   const customerPhone = customer?.phone ?? slip.customerSnapshot?.phone ?? "-";
   const assignedWorker = slip.staffId ? slip.staffName : "";
@@ -489,20 +490,20 @@ function StageSlipPrintV2({
               <td className="stage-slip-footer" colSpan={3}>
                 {labels.workerSign}:
               </td>
-              <td className="stage-slip-remark" colSpan={2}>
+              <td className="stage-slip-remark" colSpan={4}>
                 {labels.remark}:
               </td>
-              <td className="stage-slip-barcode" colSpan={2}>
+            </tr>
+            <tr>
+              <td className="stage-slip-barcode" colSpan={7}>
                 <Image
-                  src={barcodeSvgDataUri(barcodeValue, 34)}
+                  src={barcodeSvgDataUri(barcodeValue)}
                   alt=""
-                  width={230}
-                  height={34}
+                  width={barcodeMetrics.width}
+                  height={barcodeMetrics.height}
                   unoptimized
-                  className="h-[34px] w-[230px]"
                 />
-                <span>{slip.orderNumber}</span>
-                <span className="stage-slip-code">{slip.slipCode}</span>
+                <span title={slip.slipCode}>{barcodeValue}</span>
               </td>
             </tr>
           </tbody>
@@ -585,16 +586,29 @@ function StageSlipPrintV2({
 
         .stage-slip-barcode {
           text-align: center;
+          background: #fff;
+          overflow: visible;
+          padding: 3px 8px !important;
         }
 
         .stage-slip-barcode img {
           display: block;
-          margin: 0 auto 1px;
+          width: auto;
+          height: auto;
+          max-width: none;
+          margin: 0 auto 2px;
+          object-fit: contain;
+          image-rendering: pixelated;
+          image-rendering: crisp-edges;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
         }
 
         .stage-slip-barcode span {
           display: block;
-          font-size: 8.5px;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 12px;
+          line-height: 1.1;
           font-weight: 800;
         }
 

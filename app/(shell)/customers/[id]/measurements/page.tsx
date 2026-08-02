@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
 import { CheckCircle2, ChevronDown, ChevronLeft, Printer } from "lucide-react";
@@ -16,6 +16,7 @@ import {
 import type { CatalogGarmentType } from "@/lib/catalog";
 import type { Customer, GarmentMeasurement } from "@/lib/types";
 import { CustomerMeasurementsForm } from "@/components/customers/customer-measurements-form";
+import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -127,6 +128,8 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const [pendingCopy, setPendingCopy] = useState<PendingCopy>(null);
   const [returningToCustomer, setReturningToCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
+  const pageFormRef = useRef<HTMLDivElement | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,7 +334,16 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6 lg:p-8">
+    <div
+      ref={pageFormRef}
+      onKeyDownCapture={(event) =>
+        handleEnterAsNextField(event, {
+          rootRef: pageFormRef,
+          finalButtonRef: saveButtonRef,
+        })
+      }
+      className="mx-auto max-w-5xl p-4 sm:p-6 lg:p-8"
+    >
       <button
         onClick={() => {
           setReturningToCustomer(true);
@@ -532,6 +544,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
       )}
 
       <button
+        ref={saveButtonRef}
         onClick={handleSave}
         disabled={saving || !selectedGarment}
         className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"

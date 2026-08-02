@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Gender } from "@/lib/types";
-import { getCustomerByPhoneAction } from "@/app/(shell)/customers/actions";
+import {
+  getCustomerByNameAndPhoneAction,
+  searchCustomerAddressesAction,
+} from "@/app/(shell)/customers/actions";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 
@@ -73,7 +76,42 @@ export function NewCustomerForm({
     id: string;
     name: string;
   } | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    { address: string; area: string }[]
+  >([]);
+  const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
+  const [activeAddressSuggestionIndex, setActiveAddressSuggestionIndex] = useState(-1);
+  const addressRef = useRef<HTMLLabelElement | null>(null);
   const isSubmitting = pendingAction !== null;
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!addressRef.current?.contains(event.target as Node)) {
+        setAddressSuggestionsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  useEffect(() => {
+    const query = address.trim();
+    if (query.length < 2) {
+      setAddressSuggestions([]);
+      setActiveAddressSuggestionIndex(-1);
+      return;
+    }
+    let cancelled = false;
+    searchCustomerAddressesAction(query).then((suggestions) => {
+      if (!cancelled) {
+        setAddressSuggestions(suggestions);
+        setActiveAddressSuggestionIndex(-1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
 
   async function buildValidatedValues(): Promise<NewCustomerFormValues | null> {
     const trimmedName = name.trim();
@@ -91,7 +129,7 @@ export function NewCustomerForm({
       return null;
     }
 
-    const existing = await getCustomerByPhoneAction(trimmedPhone);
+    const existing = await getCustomerByNameAndPhoneAction(trimmedName, trimmedPhone);
     if (existing && existing.id !== excludeCustomerId) {
       setDuplicateCustomer({ id: existing.id, name: existing.name });
       return null;
@@ -110,6 +148,45 @@ export function NewCustomerForm({
 
   function handlePhoneChange(value: string) {
     setPhone(value.replace(/\D/g, "").slice(0, 10));
+  }
+
+  function selectAddressSuggestion(suggestion: { address: string; area: string }) {
+    setAddress(suggestion.address);
+    if (suggestion.area) setArea(suggestion.area);
+    setAddressSuggestionsOpen(false);
+    setActiveAddressSuggestionIndex(-1);
+  }
+
+  function handleAddressKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (addressSuggestions.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setAddressSuggestionsOpen(true);
+      setActiveAddressSuggestionIndex((current) =>
+        current < 0 ? 0 : Math.min(current + 1, addressSuggestions.length - 1)
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setAddressSuggestionsOpen(true);
+      setActiveAddressSuggestionIndex((current) =>
+        current < 0 ? addressSuggestions.length - 1 : Math.max(current - 1, 0)
+      );
+      return;
+    }
+    if (event.key === "Enter" && addressSuggestionsOpen) {
+      const suggestion =
+        addressSuggestions[activeAddressSuggestionIndex >= 0 ? activeAddressSuggestionIndex : 0];
+      if (!suggestion) return;
+      event.preventDefault();
+      selectAddressSuggestion(suggestion);
+      return;
+    }
+    if (event.key === "Escape" && addressSuggestionsOpen) {
+      event.preventDefault();
+      setAddressSuggestionsOpen(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -192,7 +269,7 @@ export function NewCustomerForm({
           )}
           {duplicateCustomer && (
             <div className="mt-1 rounded-lg bg-chip-red px-3.5 py-2.5 text-xs font-medium text-chip-red-fg">
-              {t("customers.phoneExists")}{" "}
+              A customer with this name and phone number already exists.{" "}
               <Link
                 href={`/customers/${duplicateCustomer.id}`}
                 className="font-semibold underline hover:no-underline"
@@ -202,16 +279,48 @@ export function NewCustomerForm({
             </div>
           )}
         </label>
-        <label className="flex flex-col gap-1.5">
+        <label ref={addressRef} className="relative flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">
             {t("common.address")}
           </span>
           <input
             value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            onFocus={() => setAddressSuggestionsOpen(true)}
+            onChange={(e) => {
+              setAddress(e.target.value);
+              setAddressSuggestionsOpen(true);
+            }}
+            onKeyDown={handleAddressKeyDown}
             disabled={isSubmitting}
             className={cn(inputClass, isSubmitting && "cursor-not-allowed opacity-70")}
           />
+          {addressSuggestionsOpen && addressSuggestions.length > 0 && (
+            <div
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-soft"
+            >
+              {addressSuggestions.map((suggestion, index) => (
+                <button
+                  key={`${suggestion.address}|${suggestion.area}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeAddressSuggestionIndex}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveAddressSuggestionIndex(index)}
+                  onClick={() => selectAddressSuggestion(suggestion)}
+                  className={cn(
+                    "block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted",
+                    index === activeAddressSuggestionIndex && "bg-primary-tint"
+                  )}
+                >
+                  <span className="block truncate font-medium">{suggestion.address}</span>
+                  {suggestion.area && (
+                    <span className="block truncate text-xs text-ink-muted">{suggestion.area}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-ink-muted">

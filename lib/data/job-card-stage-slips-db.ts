@@ -202,33 +202,43 @@ export async function getJobCardStageSlipByScanCode(
   code: string
 ): Promise<JobCardStageSlip | undefined> {
   const normalized = code.trim().toUpperCase();
-  const token = normalized.startsWith("TS|JOB|")
-    ? normalized.slice("TS|JOB|".length)
-    : normalized;
-  if (!token) return undefined;
-  const lookupColumn = normalized.startsWith("JCS-") ? "slip_code" : "scan_token";
+  if (!normalized) return undefined;
+
+  const fullCodeMatch = normalized.match(/^JCS-(\d{4})-(\d{5,})$/);
+  const shortCodeMatch = normalized.match(/^(\d{2})-(\d{5,})$/);
+  const legacyShortMatch = normalized.match(/^J-(\d{5,})$/);
+  const exactSlipCode = fullCodeMatch
+    ? normalized
+    : shortCodeMatch
+      ? `JCS-20${shortCodeMatch[1]}-${shortCodeMatch[2]}`
+      : undefined;
+
+  if (exactSlipCode) {
+    const { data, error } = await supabase
+      .from("job_card_stage_slips")
+      .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+      .eq("slip_code", exactSlipCode)
+      .maybeSingle();
+    if (error) {
+      if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
+      throw error;
+    }
+    return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+  }
+
+  if (!legacyShortMatch) return undefined;
   const { data, error } = await supabase
     .from("job_card_stage_slips")
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
-    .eq(lookupColumn, token)
-    .maybeSingle();
+    .like("slip_code", `%-${legacyShortMatch[1]}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
   if (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) return undefined;
     throw error;
   }
-  if (data) return mapSlip(data as unknown as JobCardStageSlipRow);
-  if (lookupColumn === "slip_code") return undefined;
-
-  const { data: slipCodeData, error: slipCodeError } = await supabase
-    .from("job_card_stage_slips")
-    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
-    .eq("slip_code", normalized)
-    .maybeSingle();
-  if (slipCodeError) {
-    if (isMissingJobCardStageSlipsSchemaError(slipCodeError)) return undefined;
-    throw slipCodeError;
-  }
-  return slipCodeData ? mapSlip(slipCodeData as unknown as JobCardStageSlipRow) : undefined;
+  const row = ((data as unknown as JobCardStageSlipRow[]) ?? [])[0];
+  return row ? mapSlip(row) : undefined;
 }
 
 export async function markJobCardStageSlipTallied(

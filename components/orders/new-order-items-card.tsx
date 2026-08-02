@@ -29,6 +29,7 @@ import {
   type RuntimeGarmentField,
 } from "@/lib/garment-form-runtime";
 import { GarmentFormFields } from "@/components/orders/garment-form-fields";
+import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
 import type {
   AlterationChargeType,
   Order,
@@ -335,6 +336,7 @@ function ConfigureItemModal({
   const modalRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const footerRef = useRef<HTMLDivElement | null>(null);
+  const saveItemButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousMeasurementsRef = useRef<HTMLDivElement | null>(null);
   const addOnsComboboxRef = useRef<HTMLDivElement | null>(null);
   const addOnsInputRef = useRef<HTMLInputElement | null>(null);
@@ -998,7 +1000,17 @@ function ConfigureItemModal({
             </div>
           </div>
 
-          <form ref={formRef} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <form
+            ref={formRef}
+            onSubmit={handleSubmit}
+            onKeyDownCapture={(event) =>
+              handleEnterAsNextField(event, {
+                rootRef: formRef,
+                finalButtonRef: saveItemButtonRef,
+              })
+            }
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <div className="border-b border-border-soft px-5 py-3">
               <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                 <span className="w-20 shrink-0 text-sm font-medium text-ink-muted">
@@ -1099,6 +1111,7 @@ function ConfigureItemModal({
                         aria-expanded={addOnsOpen}
                         aria-controls={addOnsListId}
                         aria-autocomplete="list"
+                        data-enter-next-skip="true"
                         aria-label="Search or select add-ons"
                         placeholder="Search or select add-ons"
                         value={addOnSearch}
@@ -1142,6 +1155,7 @@ function ConfigureItemModal({
                 />
               </label>
               <button
+                ref={saveItemButtonRef}
                 type="submit"
                 className="min-w-48 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
