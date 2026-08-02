@@ -6,10 +6,13 @@ import { createStaffAction } from "@/app/(shell)/staff/actions";
 import { StaffForm, type StaffFormValues } from "@/components/staff/staff-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { clearNewOrderOperatorStaff } from "@/lib/new-order-reference-browser-cache";
 
 function AddStaffPageContent() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { currentUser } = useCurrentUser();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(values: StaffFormValues) {
@@ -19,6 +22,7 @@ function AddStaffPageContent() {
       setError(result.error);
       return;
     }
+    clearNewOrderOperatorStaff(currentUser?.id);
     router.push("/staff");
   }
 

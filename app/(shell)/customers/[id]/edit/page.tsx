@@ -15,10 +15,13 @@ import {
 } from "@/components/orders/new-customer-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { upsertNewOrderCustomer } from "@/lib/new-order-reference-browser-cache";
 
 function EditCustomerPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { t } = useLanguage();
+  const { currentUser } = useCurrentUser();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,7 @@ function EditCustomerPageContent({ params }: { params: { id: string } }) {
       setError(result.error);
       return { keepPending: false };
     }
+    upsertNewOrderCustomer(currentUser?.id, result.data);
     router.push(`/customers/${params.id}`);
     return { keepPending: true };
   }

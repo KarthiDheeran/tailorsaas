@@ -25,7 +25,7 @@ import {
   createOrderAction,
   createOrderForNewCustomerAction,
   generateNextOrderNumberAction,
-  getOrdersAction,
+  getTodayItemSummaryAction,
 } from "@/app/(shell)/orders/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
@@ -87,9 +87,14 @@ import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import {
   readNewOrderBillingSettings,
   readNewOrderCatalogReference,
+  readNewOrderCustomers,
+  readNewOrderOperatorStaff,
   readNewOrderPreferences,
+  upsertNewOrderCustomer,
   writeNewOrderBillingSettings,
   writeNewOrderCatalogReference,
+  writeNewOrderCustomers,
+  writeNewOrderOperatorStaff,
   writeNewOrderPreferences,
 } from "@/lib/new-order-reference-browser-cache";
 
@@ -118,16 +123,10 @@ const ORDER_SECTION_OPTIONS = GARMENT_SECTIONS.map((section, index) => ({
 const CUSTOMER_SEARCH_DEBOUNCE_MS = 250;
 const CUSTOMER_SEARCH_MIN_LENGTH = 2;
 const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
-const CUSTOMER_BROWSER_CACHE_TTL_MS = 10 * 60 * 1000;
 const ORDER_ENTRY_VIEW_KEY = "tailorsaas:new-order-entry-view";
 
-type CustomerBrowserCache = { savedAt: number; customers: Customer[] };
 type MeasurementStaffOption = { id: string; name: string; staff_number: string; staff_code?: number };
 type TodayItemSummaryRow = { garment: string; qty: number };
-
-function customerBrowserCacheKey(scopeId: string | undefined) {
-  return `tailorsaas:new-order-customers:${scopeId ?? "anonymous"}:v2`;
-}
 
 function customerMatchesSearch(customer: Customer, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -412,24 +411,10 @@ function NewOrderPageContent() {
     if (orderEntryView !== "classic") return;
     let cancelled = false;
     setTodayItemSummaryLoading(true);
-    getOrdersAction()
-      .then((orders) => {
+    getTodayItemSummaryAction(todayIso())
+      .then((summary) => {
         if (cancelled) return;
-        const today = todayIso();
-        const byGarment = new Map<string, number>();
-        orders
-          .filter((order) => order.orderDate === today && order.status !== "Cancelled")
-          .forEach((order) => {
-            order.items.forEach((item) => {
-              const garment = item.particular.trim() || "Item";
-              byGarment.set(garment, (byGarment.get(garment) ?? 0) + Number(item.qty || 0));
-            });
-          });
-        setTodayItemSummary(
-          Array.from(byGarment.entries())
-            .map(([garment, qty]) => ({ garment, qty }))
-            .sort((a, b) => b.qty - a.qty || a.garment.localeCompare(b.garment))
-        );
+        setTodayItemSummary(summary);
       })
       .catch(() => {
         if (!cancelled) setTodayItemSummary([]);
@@ -462,9 +447,14 @@ function NewOrderPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const cachedStaff = readNewOrderOperatorStaff(currentUserId);
+    if (cachedStaff) setMeasurementStaff(cachedStaff);
     Promise.all([getActiveOperatorStaffAction(), getOperatorModeAction()]).then(([staffResult, mode]) => {
       if (cancelled) return;
-      if (staffResult.success) setMeasurementStaff(staffResult.data);
+      if (staffResult.success) {
+        setMeasurementStaff(staffResult.data);
+        writeNewOrderOperatorStaff(currentUserId, staffResult.data);
+      }
       if (mode.operator) {
         setMeasurementTakenByOperatorId((current) => current || mode.operator!.id);
         setCreatedByOperatorId((current) => current || mode.operator!.id);
@@ -562,35 +552,20 @@ function NewOrderPageContent() {
   useEffect(() => {
     if (isCurrentUserLoading) return;
     let cancelled = false;
-    const cacheKey = customerBrowserCacheKey(currentUserId);
     setCachedCustomers(null);
-    try {
-      const cached = window.sessionStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached) as CustomerBrowserCache;
-        if (Array.isArray(parsed.customers) && Date.now() - parsed.savedAt < CUSTOMER_BROWSER_CACHE_TTL_MS) {
-          setCachedCustomers(parsed.customers);
-          return () => {
-            cancelled = true;
-          };
-        }
-      }
-    } catch {
-      // Private/disabled storage simply uses the server fallback below.
+    const cached = readNewOrderCustomers(currentUserId);
+    if (cached) {
+      setCachedCustomers(cached);
+      return () => {
+        cancelled = true;
+      };
     }
 
     getCustomersAction()
       .then((customers) => {
         if (cancelled) return;
         setCachedCustomers(customers);
-        try {
-          window.sessionStorage.setItem(
-            cacheKey,
-            JSON.stringify({ savedAt: Date.now(), customers } satisfies CustomerBrowserCache)
-          );
-        } catch {
-          // A full session store must never block order entry.
-        }
+        writeNewOrderCustomers(currentUserId, customers);
       })
       .catch(() => !cancelled && setCachedCustomers(null));
 
@@ -693,14 +668,7 @@ function NewOrderPageContent() {
             setCachedCustomers((current) => {
               const resultIds = new Set(results.map((customer) => customer.id));
               const next = [...results, ...(current ?? []).filter((customer) => !resultIds.has(customer.id))];
-              try {
-                window.sessionStorage.setItem(
-                  customerBrowserCacheKey(currentUserId),
-                  JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
-                );
-              } catch {
-                // Storage is only a speed optimization.
-              }
+              writeNewOrderCustomers(currentUserId, next);
               return next;
             });
           }
@@ -737,12 +705,31 @@ function NewOrderPageContent() {
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     const query = newCustomer.address.trim();
     if (customerMode !== "new" || query.length < 2) {
       setAddressSuggestions([]);
+      setActiveAddressSuggestionIndex(-1);
+      return;
+    }
+    const normalizedQuery = query.toLocaleLowerCase();
+    const cachedSuggestions = cachedCustomers
+      ? Array.from(
+          new Map<string, { address: string; area: string }>(
+            cachedCustomers
+              .filter((customer) => customer.address?.toLocaleLowerCase().includes(normalizedQuery))
+              .map((customer): [string, { address: string; area: string }] => [
+                `${customer.address ?? ""}|${customer.area ?? ""}`,
+                { address: customer.address ?? "", area: customer.area ?? "" },
+              ])
+              .filter(([, suggestion]) => suggestion.address.trim())
+          ).values()
+        ).slice(0, 8)
+      : [];
+    if (cachedSuggestions.length > 0) {
+      setAddressSuggestions(cachedSuggestions);
       setActiveAddressSuggestionIndex(-1);
       return;
     }
@@ -756,7 +743,7 @@ function NewOrderPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [customerMode, newCustomer.address]);
+  }, [cachedCustomers, customerMode, newCustomer.address]);
 
   useEffect(() => {
     if (isCurrentUserLoading) return;
@@ -1149,14 +1136,7 @@ function NewOrderPageContent() {
   function refreshCustomerBrowserCache(customer: Customer) {
     setCachedCustomers((current) => {
       const next = [customer, ...(current ?? []).filter((item) => item.id !== customer.id)];
-      try {
-        window.sessionStorage.setItem(
-          customerBrowserCacheKey(currentUserId),
-          JSON.stringify({ savedAt: Date.now(), customers: next } satisfies CustomerBrowserCache)
-        );
-      } catch {
-        // Cache persistence is optional; the in-memory list remains current.
-      }
+      upsertNewOrderCustomer(currentUserId, customer);
       return next;
     });
   }

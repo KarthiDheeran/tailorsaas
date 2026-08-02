@@ -8,10 +8,13 @@ import type { Staff } from "@/lib/types";
 import { StaffForm, type StaffFormValues } from "@/components/staff/staff-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { clearNewOrderOperatorStaff } from "@/lib/new-order-reference-browser-cache";
 
 function EditStaffPageContent({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { t } = useLanguage();
+  const { currentUser } = useCurrentUser();
   const [member, setMember] = useState<Staff | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,7 @@ function EditStaffPageContent({ params }: { params: { id: string } }) {
       setError(result.error);
       return;
     }
+    clearNewOrderOperatorStaff(currentUser?.id);
     router.push("/staff");
   }
 
@@ -55,6 +59,7 @@ function EditStaffPageContent({ params }: { params: { id: string } }) {
       return;
     }
     setOperatorPin("");
+    clearNewOrderOperatorStaff(currentUser?.id);
     setOperatorPinMessage("Operator PIN saved. The staff member can now select themselves from the header.");
   }
 

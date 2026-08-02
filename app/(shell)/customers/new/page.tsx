@@ -11,10 +11,13 @@ import {
 } from "@/components/orders/new-customer-form";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { upsertNewOrderCustomer } from "@/lib/new-order-reference-browser-cache";
 
 function AddCustomerPageContent() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { currentUser } = useCurrentUser();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSaveCustomer(values: NewCustomerFormValues) {
@@ -24,6 +27,7 @@ function AddCustomerPageContent() {
       setError(result.error);
       return { keepPending: false };
     }
+    upsertNewOrderCustomer(currentUser?.id, result.data);
     router.push(`/customers/${result.data.id}`);
     return { keepPending: true };
   }
@@ -35,6 +39,7 @@ function AddCustomerPageContent() {
       setError(result.error);
       return { keepPending: false };
     }
+    upsertNewOrderCustomer(currentUser?.id, result.data);
     router.push(`/orders/new?customerId=${result.data.id}`);
     return { keepPending: true };
   }

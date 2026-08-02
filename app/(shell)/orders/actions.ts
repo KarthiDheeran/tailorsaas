@@ -183,6 +183,8 @@ export interface OrdersPageData {
   customers: Customer[];
 }
 
+export type TodayItemSummaryRow = { garment: string; qty: number };
+
 async function trySyncJobCardsForOrder(
   supabase: ReturnType<typeof createServerClient>,
   orderId: string
@@ -203,6 +205,28 @@ export async function getOrdersAction(): Promise<Order[]> {
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
   return withPerformanceContext("getOrdersAction", () => profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)));
+}
+
+export async function getTodayItemSummaryAction(todayIso: string): Promise<TodayItemSummaryRow[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select("order_items!order_items_order_id_fkey(particular, qty)")
+    .eq("order_date", todayIso)
+    .neq("status", "Cancelled");
+  if (error) throw error;
+  const byGarment = new Map<string, number>();
+  for (const order of (data ?? []) as { order_items?: { particular: string; qty: number }[] }[]) {
+    for (const item of order.order_items ?? []) {
+      const garment = item.particular.trim() || "Item";
+      byGarment.set(garment, (byGarment.get(garment) ?? 0) + Number(item.qty || 0));
+    }
+  }
+  return Array.from(byGarment.entries())
+    .map(([garment, qty]) => ({ garment, qty }))
+    .sort((a, b) => b.qty - a.qty || a.garment.localeCompare(b.garment));
 }
 
 export async function getOrdersPageDataAction(): Promise<OrdersPageData> {

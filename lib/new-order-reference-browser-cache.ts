@@ -1,6 +1,7 @@
 import type { CatalogAddOn, CatalogGarmentType, GarmentTypeConfiguration } from "@/lib/catalog";
 import type { ShopBillingSettings } from "@/lib/data/shop-billing-settings-db";
 import type { ShopOrderPreferences } from "@/lib/data/shop-order-preferences-db";
+import type { Customer } from "@/lib/types";
 
 type CacheEntry<T> = {
   savedAt: number;
@@ -13,9 +14,18 @@ export type NewOrderCatalogReference = {
   configurations: GarmentTypeConfiguration[];
 };
 
+export type NewOrderOperatorStaff = {
+  id: string;
+  name: string;
+  staff_number: string;
+  staff_code?: number;
+}[];
+
 const CACHE_PREFIX = "newlook:new-order";
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 const SETTINGS_TTL_MS = 5 * 60 * 1000;
+const CUSTOMER_TTL_MS = 10 * 60 * 1000;
+const STAFF_TTL_MS = 10 * 60 * 1000;
 
 function key(scopeId: string, name: string) {
   return `${CACHE_PREFIX}:${scopeId}:${name}:v1`;
@@ -100,4 +110,39 @@ export function writeNewOrderPreferences(
 
 export function clearNewOrderPreferences(scopeId?: string) {
   clear(scopeId, "order-preferences");
+}
+
+export function readNewOrderCustomers(scopeId: string | undefined) {
+  return read<Customer[]>(scopeId, "customers", CUSTOMER_TTL_MS);
+}
+
+export function writeNewOrderCustomers(scopeId: string | undefined, customers: Customer[]) {
+  write(scopeId, "customers", customers);
+}
+
+export function upsertNewOrderCustomer(scopeId: string | undefined, customer: Customer) {
+  const current = readNewOrderCustomers(scopeId) ?? [];
+  writeNewOrderCustomers(scopeId, [
+    customer,
+    ...current.filter((candidate) => candidate.id !== customer.id),
+  ]);
+}
+
+export function clearNewOrderCustomers(scopeId?: string) {
+  clear(scopeId, "customers");
+}
+
+export function readNewOrderOperatorStaff(scopeId: string | undefined) {
+  return read<NewOrderOperatorStaff>(scopeId, "operator-staff", STAFF_TTL_MS);
+}
+
+export function writeNewOrderOperatorStaff(
+  scopeId: string | undefined,
+  staff: NewOrderOperatorStaff
+) {
+  write(scopeId, "operator-staff", staff);
+}
+
+export function clearNewOrderOperatorStaff(scopeId?: string) {
+  clear(scopeId, "operator-staff");
 }
