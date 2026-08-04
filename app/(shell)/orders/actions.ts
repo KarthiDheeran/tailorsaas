@@ -12,9 +12,9 @@ import {
   createOrder,
   findOrderByOrderNumber,
   findOrderByScanToken,
-  getAllOrders,
   getOrderById,
-  getOrdersForCustomer,
+  getOrderListPageRows,
+  getOrderListRowsForCustomer,
   peekNextOrderNumber,
   updateOrder,
   updateOrderStatus,
@@ -26,8 +26,28 @@ import {
   recordPaymentOperatorAttribution,
 } from "@/lib/data/operator-attribution-db";
 import { requireActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
-import type { ActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
+import {
+  getSharedDesktopOperatorMode,
+  type ActiveSharedDesktopOperator,
+} from "@/lib/shared-desktop-operator";
+import {
+  getActiveGarmentTypes,
+  getAllAddOns,
+  getAllGarmentTypes,
+} from "@/lib/data/catalog-db";
 import { getGarmentTypeConfigurations } from "@/lib/data/catalog-fields-db";
+import {
+  DEFAULT_SHOP_BILLING_SETTINGS,
+  getShopBillingSettings,
+  isMissingShopBillingSettingsSchemaError,
+  type ShopBillingSettings,
+} from "@/lib/data/shop-billing-settings-db";
+import {
+  DEFAULT_SHOP_ORDER_PREFERENCES,
+  getShopOrderPreferences,
+  isMissingShopOrderPreferencesSchemaError,
+  type ShopOrderPreferences,
+} from "@/lib/data/shop-order-preferences-db";
 import {
   buildFieldSchemaSnapshot,
   resolveRuntimeGarmentFields,
@@ -37,8 +57,8 @@ import {
 import {
   createCustomer,
   deleteCustomer,
+  getCustomerById,
   getCustomerByNameAndPhone,
-  getCustomers,
   getGarmentMeasurementDraftSeed,
 } from "@/lib/data/customers-db";
 import {
@@ -66,7 +86,13 @@ import {
 } from "@/lib/data/order-attachments-db";
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
-import { isGarmentSection, type GarmentSection } from "@/lib/catalog";
+import {
+  isGarmentSection,
+  type CatalogAddOn,
+  type CatalogGarmentType,
+  type GarmentSection,
+  type GarmentTypeConfiguration,
+} from "@/lib/catalog";
 import type {
   Customer,
   Gender,
@@ -178,12 +204,50 @@ async function withOrderAttachmentSignedUrls(
   );
 }
 
-export interface OrdersPageData {
+export interface OrdersListPageData {
   orders: Order[];
-  customers: Customer[];
+  totalCount: number;
 }
 
 export type TodayItemSummaryRow = { garment: string; qty: number };
+
+type MeasurementStaffOption = {
+  id: string;
+  name: string;
+  staff_number: string;
+  staff_code?: number;
+};
+
+export interface NewOrderBootstrapData {
+  billingSettings: ShopBillingSettings;
+  orderPreferences: ShopOrderPreferences;
+  garmentTypes: CatalogGarmentType[];
+  addOns: CatalogAddOn[];
+  garmentConfigurations: GarmentTypeConfiguration[];
+  measurementStaff: MeasurementStaffOption[];
+  operatorMode: Awaited<ReturnType<typeof getSharedDesktopOperatorMode>>;
+  todayItemSummary: TodayItemSummaryRow[];
+}
+
+export interface EditOrderBootstrapData {
+  order: Order | undefined;
+  customer: Customer | undefined;
+  attachments: OrderAttachment[];
+  garmentTypes: CatalogGarmentType[];
+  addOns: CatalogAddOn[];
+  garmentConfigurations: GarmentTypeConfiguration[];
+  billingSettings: ShopBillingSettings;
+}
+
+export interface OrderDetailsBootstrapData {
+  order: Order | undefined;
+  customer: Customer | undefined;
+  payments: Payment[];
+  adjustments: OrderFinancialAdjustment[];
+  attachments: OrderAttachment[];
+  billingSettings: ShopBillingSettings;
+  garmentTypes: CatalogGarmentType[];
+}
 
 async function trySyncJobCardsForOrder(
   supabase: ReturnType<typeof createServerClient>,
@@ -198,13 +262,6 @@ async function trySyncJobCardsForOrder(
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (error as { code?: string }).code === "23505";
-}
-
-export async function getOrdersAction(): Promise<Order[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
-  if (!guard.ok) return [];
-  return withPerformanceContext("getOrdersAction", () => profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)));
 }
 
 export async function getTodayItemSummaryAction(todayIso: string): Promise<TodayItemSummaryRow[]> {
@@ -229,22 +286,198 @@ export async function getTodayItemSummaryAction(todayIso: string): Promise<Today
     .sort((a, b) => b.qty - a.qty || a.garment.localeCompare(b.garment));
 }
 
-export async function getOrdersPageDataAction(): Promise<OrdersPageData> {
-  return withPerformanceContext("getOrdersPageDataAction", async () => {
-  const supabase = createServerClient();
-  const permissions = await getServerCallerPermissions(supabase);
-  if (!permissions || !hasPermission(permissions, "orders.view")) {
-    return { orders: [], customers: [] };
+async function getOrderPricingBillingSettingsForNewOrder(
+  supabase: ReturnType<typeof createServerClient>,
+  permissions: Permission[]
+): Promise<ShopBillingSettings> {
+  if (
+    !hasAnyOrderPricingPermission(permissions)
+  ) {
+    return DEFAULT_SHOP_BILLING_SETTINGS;
   }
+  try {
+    return await getShopBillingSettings(supabase);
+  } catch (error) {
+    if (isMissingShopBillingSettingsSchemaError(error)) return DEFAULT_SHOP_BILLING_SETTINGS;
+    throw error;
+  }
+}
 
-  const [orders, customers] = await Promise.all([
-    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)),
-    hasPermission(permissions, "customers.view")
-      ? profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(supabase))
-      : Promise.resolve([]),
-  ]);
-  return { orders, customers };
+function hasAnyOrderPricingPermission(permissions: Permission[]) {
+  return (
+    hasPermission(permissions, "orders.create") ||
+    hasPermission(permissions, "orders.edit") ||
+    hasPermission(permissions, "orders.viewPayments") ||
+    hasPermission(permissions, "orders.recordPayment")
+  );
+}
+
+async function getOrderPreferencesForNewOrder(
+  supabase: ReturnType<typeof createServerClient>,
+  permissions: Permission[]
+): Promise<ShopOrderPreferences> {
+  if (!hasPermission(permissions, "orders.create")) {
+    return DEFAULT_SHOP_ORDER_PREFERENCES;
+  }
+  try {
+    return await getShopOrderPreferences(supabase);
+  } catch (error) {
+    if (isMissingShopOrderPreferencesSchemaError(error)) return DEFAULT_SHOP_ORDER_PREFERENCES;
+    throw error;
+  }
+}
+
+async function getActiveOperatorStaffForNewOrder(): Promise<MeasurementStaffOption[]> {
+  const { data, error } = await createAdminClient()
+    .from("staff")
+    .select("id,name,staff_number,staff_code")
+    .eq("status", "Active")
+    .order("name");
+  if (error) return [];
+  return data ?? [];
+}
+
+async function getTodayItemSummaryForNewOrder(
+  supabase: ReturnType<typeof createServerClient>,
+  permissions: Permission[],
+  todayIso: string
+): Promise<TodayItemSummaryRow[]> {
+  if (!hasPermission(permissions, "orders.view")) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select("order_items!order_items_order_id_fkey(particular, qty)")
+    .eq("order_date", todayIso)
+    .neq("status", "Cancelled");
+  if (error) return [];
+  const byGarment = new Map<string, number>();
+  for (const order of (data ?? []) as { order_items?: { particular: string; qty: number }[] }[]) {
+    for (const item of order.order_items ?? []) {
+      const garment = item.particular.trim() || "Item";
+      byGarment.set(garment, (byGarment.get(garment) ?? 0) + Number(item.qty || 0));
+    }
+  }
+  return Array.from(byGarment.entries())
+    .map(([garment, qty]) => ({ garment, qty }))
+    .sort((a, b) => b.qty - a.qty || a.garment.localeCompare(b.garment));
+}
+
+export async function getNewOrderBootstrapAction(todayIso: string): Promise<NewOrderBootstrapData> {
+  return withPerformanceContext("getNewOrderBootstrapAction", async () => {
+    const supabase = createServerClient();
+    const [permissions, caller] = await Promise.all([
+      getServerCallerPermissions(supabase),
+      getServerCallerContext(supabase),
+    ]);
+    if (!permissions || !caller || !hasPermission(permissions, "orders.create")) {
+      return {
+        billingSettings: DEFAULT_SHOP_BILLING_SETTINGS,
+        orderPreferences: DEFAULT_SHOP_ORDER_PREFERENCES,
+        garmentTypes: [],
+        addOns: [],
+        garmentConfigurations: [],
+        measurementStaff: [],
+        operatorMode: { enabled: false, idleMinutes: 30 },
+        todayItemSummary: [],
+      };
+    }
+
+    const [
+      billingSettings,
+      orderPreferences,
+      allGarments,
+      addOns,
+      measurementStaff,
+      operatorMode,
+      todayItemSummary,
+    ] = await Promise.all([
+      getOrderPricingBillingSettingsForNewOrder(supabase, permissions),
+      getOrderPreferencesForNewOrder(supabase, permissions),
+      getActiveGarmentTypes(supabase),
+      getAllAddOns(supabase),
+      getActiveOperatorStaffForNewOrder(),
+      getSharedDesktopOperatorMode(),
+      getTodayItemSummaryForNewOrder(supabase, permissions, todayIso),
+    ]);
+    const garmentTypes = permissions.includes("catalog.manage")
+      ? allGarments
+      : allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
+    const configurations = await getGarmentTypeConfigurations(
+      supabase,
+      garmentTypes.map((garment) => garment.id)
+    );
+    const garmentConfigurations = permissions.includes("catalog.manage")
+      ? configurations
+      : configurations.filter((configuration) =>
+          caller.allowedOrderSections.includes(configuration.garment.section)
+        );
+
+    return {
+      billingSettings,
+      orderPreferences,
+      garmentTypes,
+      addOns,
+      garmentConfigurations,
+      measurementStaff,
+      operatorMode,
+      todayItemSummary,
+    };
   });
+}
+
+export async function getOrdersListPageAction(input: {
+  page: number;
+  pageSize: number;
+  sortKey: "orderDate" | "deliveryDate";
+  sortDir: "asc" | "desc";
+  searchQuery?: string;
+  orderDateFrom?: string;
+  orderDateTo?: string;
+  balanceFilter?: "all" | "paid" | "due" | "overdue";
+  statusFilter?: Order["status"] | "all";
+  deliveryFilter?: "all" | "dueToday" | "dueTomorrow" | "dueWeek" | "overdue" | "custom";
+  deliveryFrom?: string;
+  deliveryTo?: string;
+  todayIso: string;
+}): Promise<OrdersListPageData> {
+  return withPerformanceContext("getOrdersListPageAction", async () => {
+    const supabase = createServerClient();
+    const permissions = await getServerCallerPermissions(supabase);
+    if (!permissions || !hasPermission(permissions, "orders.view")) {
+      return { orders: [], totalCount: 0 };
+    }
+    const pageSize = Math.max(1, Math.min(input.pageSize, 100));
+    const page = Math.max(1, input.page);
+    return profileDataFunction(
+      { functionName: "getOrderListPageRows", tableOrRpc: "orders,order_items" },
+      () =>
+        getOrderListPageRows(supabase, {
+          page,
+          pageSize,
+          sortKey: input.sortKey,
+          sortDir: input.sortDir,
+          filters: {
+            searchQuery: input.searchQuery,
+            orderDateFrom: input.orderDateFrom,
+            orderDateTo: input.orderDateTo,
+            balanceFilter: input.balanceFilter,
+            statusFilter: input.statusFilter,
+            deliveryFilter: input.deliveryFilter,
+            deliveryFrom: input.deliveryFrom,
+            deliveryTo: input.deliveryTo,
+            todayIso: input.todayIso,
+          },
+        })
+    );
+  });
+}
+
+export async function getOrdersForCustomerListAction(
+  customerId: string
+): Promise<Order[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+  return getOrderListRowsForCustomer(supabase, customerId);
 }
 
 export async function getOrderByIdAction(id: string): Promise<Order | undefined> {
@@ -252,6 +485,141 @@ export async function getOrderByIdAction(id: string): Promise<Order | undefined>
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return undefined;
   return getOrderById(supabase, id);
+}
+
+export async function getEditOrderBootstrapAction(
+  id: string
+): Promise<EditOrderBootstrapData> {
+  return withPerformanceContext("getEditOrderBootstrapAction", async () => {
+    const supabase = createServerClient();
+    const permissions = await getServerCallerPermissions(supabase);
+    if (!permissions || !hasPermission(permissions, "orders.edit")) {
+      return {
+        order: undefined,
+        customer: undefined,
+        attachments: [],
+        garmentTypes: [],
+        addOns: [],
+        garmentConfigurations: [],
+        billingSettings: DEFAULT_SHOP_BILLING_SETTINGS,
+      };
+    }
+
+    const [order, caller] = await Promise.all([
+      getOrderById(supabase, id),
+      getServerCallerContext(supabase),
+    ]);
+    if (!order) {
+      return {
+        order: undefined,
+        customer: undefined,
+        attachments: [],
+        garmentTypes: [],
+        addOns: [],
+        garmentConfigurations: [],
+        billingSettings: DEFAULT_SHOP_BILLING_SETTINGS,
+      };
+    }
+
+    const canManageCatalog = permissions.includes("catalog.manage");
+    const canViewCatalog = hasPermission(permissions, "catalog.view");
+    const [customer, attachments, allGarments, addOns, billingSettings] = await Promise.all([
+      getCustomerById(supabase, order.customerId),
+      hasPermission(permissions, "orders.view")
+        ? getOrderAttachments(createAdminClient(), order.id).then(withOrderAttachmentSignedUrls).catch(() => [])
+        : Promise.resolve([]),
+      canViewCatalog ? getAllGarmentTypes(supabase) : Promise.resolve([]),
+      canViewCatalog ? getAllAddOns(supabase) : Promise.resolve([]),
+      getOrderPricingBillingSettingsForNewOrder(supabase, permissions),
+    ]);
+    const garmentTypes =
+      canManageCatalog || !caller
+        ? allGarments
+        : allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
+    const configurations = canViewCatalog
+      ? await getGarmentTypeConfigurations(
+          supabase,
+          garmentTypes.map((garment) => garment.id)
+        )
+      : [];
+    const garmentConfigurations =
+      canManageCatalog || !caller
+        ? configurations
+        : configurations.filter((configuration) =>
+            caller.allowedOrderSections.includes(configuration.garment.section)
+          );
+
+    return {
+      order,
+      customer,
+      attachments,
+      garmentTypes,
+      addOns,
+      garmentConfigurations,
+      billingSettings,
+    };
+  });
+}
+
+export async function getOrderDetailsBootstrapAction(
+  id: string
+): Promise<OrderDetailsBootstrapData> {
+  return withPerformanceContext("getOrderDetailsBootstrapAction", async () => {
+    const supabase = createServerClient();
+    const permissions = await getServerCallerPermissions(supabase);
+    if (!permissions || !hasPermission(permissions, "orders.view")) {
+      return {
+        order: undefined,
+        customer: undefined,
+        payments: [],
+        adjustments: [],
+        attachments: [],
+        billingSettings: DEFAULT_SHOP_BILLING_SETTINGS,
+        garmentTypes: [],
+      };
+    }
+
+    const order = await getOrderById(supabase, id);
+    if (!order) {
+      return {
+        order: undefined,
+        customer: undefined,
+        payments: [],
+        adjustments: [],
+        attachments: [],
+        billingSettings: DEFAULT_SHOP_BILLING_SETTINGS,
+        garmentTypes: [],
+      };
+    }
+
+    const canViewPayments = hasPermission(permissions, "orders.viewPayments");
+    const canViewCatalog = hasPermission(permissions, "catalog.view");
+    const [customer, payments, adjustments, attachments, billingSettings, garmentTypes] = await Promise.all([
+      getCustomerById(supabase, order.customerId),
+      canViewPayments ? getPaymentsForOrder(supabase, order.id) : Promise.resolve([]),
+      canViewPayments
+        ? getOrderFinancialAdjustmentsForOrder(supabase, order.id).catch((error) => {
+            if (isMissingOrderFinancialAdjustmentsSchemaError(error)) return [];
+            throw error;
+          })
+        : Promise.resolve([]),
+      getOrderAttachments(createAdminClient(), order.id).then(withOrderAttachmentSignedUrls).catch(() => []),
+      canViewPayments
+        ? getOrderPricingBillingSettingsForNewOrder(supabase, permissions)
+        : Promise.resolve(DEFAULT_SHOP_BILLING_SETTINGS),
+      canViewCatalog ? getAllGarmentTypes(supabase).catch(() => []) : Promise.resolve([]),
+    ]);
+
+    return {
+      order,
+      customer,
+      payments,
+      adjustments,
+      attachments,
+      billingSettings,
+      garmentTypes,
+    };
+  });
 }
 
 function parseOrderScanCode(rawCode: string):
@@ -290,13 +658,6 @@ export async function resolveOrderScanAction(
   return { success: true, data: { orderId: order.id, orderNumber: order.orderNumber } };
 }
 
-export async function getOrdersForCustomerAction(customerId: string): Promise<Order[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
-  if (!guard.ok) return [];
-  return withPerformanceContext("getOrdersForCustomerAction", () => profileDataFunction({ functionName: "getOrdersForCustomer", tableOrRpc: "orders,order_items" }, () => getOrdersForCustomer(supabase, customerId)));
-}
-
 export interface HistoricalMeasurementSnapshot {
   orderId: string;
   orderNumber: string;
@@ -311,6 +672,74 @@ export interface HistoricalMeasurementSnapshot {
 export interface MeasurementPickerData {
   seed: { values: Record<string, unknown>; fitNotes: string; notes: string };
   history: HistoricalMeasurementSnapshot[];
+}
+
+type MeasurementPickerOrderRow = {
+  id: string;
+  order_number: string;
+  order_date: string;
+  order_items?: {
+    id: string;
+    serial_no: number;
+    particular: string;
+    garment_type_id: string | null;
+    measurements: Record<string, unknown> | null;
+    add_ons: { key: string }[] | null;
+  }[];
+};
+
+async function getRecentMeasurementSnapshotsForPicker(
+  supabase: ReturnType<typeof createServerClient>,
+  customerId: string,
+  garmentTypeId: string,
+  excludeOrderId?: string
+): Promise<HistoricalMeasurementSnapshot[]> {
+  let query = supabase
+    .from("orders")
+    .select(`
+      id,
+      order_number,
+      order_date,
+      order_items!order_items_order_id_fkey (
+        id,
+        serial_no,
+        particular,
+        garment_type_id,
+        measurements,
+        add_ons
+      )
+    `)
+    .eq("customer_id", customerId)
+    .neq("status", "Cancelled")
+    .order("order_date", { ascending: false })
+    .limit(20);
+  if (excludeOrderId) query = query.neq("id", excludeOrderId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return ((data as unknown as MeasurementPickerOrderRow[]) ?? [])
+    .flatMap((order) =>
+      (order.order_items ?? [])
+        .filter(
+          (item) =>
+            item.garment_type_id === garmentTypeId &&
+            item.measurements &&
+            Object.values(item.measurements).some((value) =>
+              typeof value === "string" ? value.trim() !== "" : value !== null
+            )
+        )
+        .map((item) => ({
+          orderId: order.id,
+          orderNumber: order.order_number,
+          orderDate: order.order_date,
+          itemId: item.id,
+          serialNo: item.serial_no,
+          garmentName: item.particular,
+          measurements: item.measurements ?? {},
+          addOnIds: (item.add_ons ?? []).map((addOn) => addOn.key),
+        }))
+    )
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
+    .slice(0, 5);
 }
 
 // Combines the two New Order measurement-picker requests into one server
@@ -333,74 +762,16 @@ export async function getMeasurementPickerDataAction(
     measurementsGuard.ok
       ? getGarmentMeasurementDraftSeed(supabase, customerId, garmentTypeName)
       : Promise.resolve({ values: {}, fitNotes: "", notes: "" }),
-    ordersGuard.ok ? profileDataFunction({ functionName: "getOrdersForCustomer", tableOrRpc: "orders,order_items" }, () => getOrdersForCustomer(supabase, customerId)) : Promise.resolve([]),
+    ordersGuard.ok
+      ? profileDataFunction(
+          { functionName: "getRecentMeasurementSnapshotsForPicker", tableOrRpc: "orders,order_items" },
+          () => getRecentMeasurementSnapshotsForPicker(supabase, customerId, garmentTypeId, excludeOrderId)
+        )
+      : Promise.resolve([]),
   ]);
 
-  const history = orders
-    .filter((order) => order.id !== excludeOrderId && order.status !== "Cancelled")
-    .flatMap((order) =>
-      order.items
-        .filter(
-          (item) =>
-            item.garmentTypeId === garmentTypeId &&
-            item.measurements &&
-            Object.values(item.measurements).some((value) =>
-              typeof value === "string" ? value.trim() !== "" : value !== null
-            )
-        )
-        .map((item) => ({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          orderDate: order.orderDate,
-          itemId: item.id,
-          serialNo: item.serialNo,
-          garmentName: item.particular,
-          measurements: item.measurements ?? {},
-          addOnIds: (item.addOns ?? []).map((addOn) => addOn.key),
-        }))
-    )
-    .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
-    .slice(0, 5);
-
-  return { seed, history };
+  return { seed, history: orders };
   });
-}
-
-export async function getRecentMeasurementSnapshotsForCustomerGarmentAction(
-  customerId: string,
-  garmentTypeId: string,
-  excludeOrderId?: string
-): Promise<HistoricalMeasurementSnapshot[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
-  if (!guard.ok) return [];
-
-  const orders = await getOrdersForCustomer(supabase, customerId);
-  return orders
-    .filter((order) => order.id !== excludeOrderId && order.status !== "Cancelled")
-    .flatMap((order) =>
-      order.items
-        .filter(
-          (item) =>
-            item.garmentTypeId === garmentTypeId &&
-            item.measurements &&
-          Object.values(item.measurements).some((value) =>
-            typeof value === "string" ? value.trim() !== "" : value !== null
-          )
-        )
-        .map((item) => ({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          orderDate: order.orderDate,
-          itemId: item.id,
-          serialNo: item.serialNo,
-          garmentName: item.particular,
-          measurements: item.measurements ?? {},
-          addOnIds: (item.addOns ?? []).map((addOn) => addOn.key),
-        }))
-    )
-    .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
-    .slice(0, 5);
 }
 
 // Non-mutating preview of the next order number for New Order's header — the
@@ -765,6 +1136,31 @@ export async function getOrderAttachmentsAction(
   if (!guard.ok) return [];
   const attachments = await getOrderAttachments(createAdminClient(), orderId);
   return withOrderAttachmentSignedUrls(attachments);
+}
+
+export async function getOrderDrawerDetailsAction(orderId: string): Promise<{
+  payments: Payment[];
+  adjustments: OrderFinancialAdjustment[];
+  attachments: OrderAttachment[];
+}> {
+  const supabase = createServerClient();
+  const [ordersGuard, paymentsGuard] = await Promise.all([
+    requireServerPermission(supabase, "orders.view"),
+    requireServerPermission(supabase, "orders.viewPayments"),
+  ]);
+  const [payments, adjustments, attachments] = await Promise.all([
+    paymentsGuard.ok ? getPaymentsForOrder(supabase, orderId) : Promise.resolve([]),
+    paymentsGuard.ok
+      ? getOrderFinancialAdjustmentsForOrder(supabase, orderId).catch((error) => {
+          if (isMissingOrderFinancialAdjustmentsSchemaError(error)) return [];
+          throw error;
+        })
+      : Promise.resolve([]),
+    ordersGuard.ok
+      ? getOrderAttachments(createAdminClient(), orderId).then(withOrderAttachmentSignedUrls)
+      : Promise.resolve([]),
+  ]);
+  return { payments, adjustments, attachments };
 }
 
 export async function uploadOrderAttachmentAction(

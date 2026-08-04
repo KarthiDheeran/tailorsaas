@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  getOrderFinancialAdjustmentsForOrder,
+  getOrderFinancialAdjustmentsForOrders,
   isMissingOrderFinancialAdjustmentsSchemaError,
 } from "@/lib/data/order-financial-adjustments-db";
 import { getOrdersForCustomer } from "@/lib/data/orders-db";
-import { getPaymentsForOrder } from "@/lib/data/payments-db";
+import { getPaymentsForOrders } from "@/lib/data/payments-db";
 import { isActiveOrder } from "@/lib/order-finance";
 import type { Customer, Order, OrderFinancialAdjustment, Payment } from "@/lib/types";
 
@@ -52,12 +52,12 @@ function itemCharges(order: Pick<Order, "items">): number {
   return order.items.reduce((sum, item) => sum + item.amount, 0);
 }
 
-async function getAdjustmentsForOrderSafe(
+async function getAdjustmentsForOrdersSafe(
   supabase: SupabaseClient,
-  orderId: string
+  orderIds: string[]
 ): Promise<OrderFinancialAdjustment[]> {
   try {
-    return await getOrderFinancialAdjustmentsForOrder(supabase, orderId);
+    return await getOrderFinancialAdjustmentsForOrders(supabase, orderIds);
   } catch (error) {
     if (isMissingOrderFinancialAdjustmentsSchemaError(error)) return [];
     throw error;
@@ -88,19 +88,28 @@ export async function getCustomerStatement(
   customer: Customer
 ): Promise<CustomerStatement> {
   const orders = (await getOrdersForCustomer(supabase, customer.id)).filter(isActiveOrder);
-  const orderLedgers = await Promise.all(
-    orders.map(async (order) => {
-      const [payments, adjustments] = await Promise.all([
-        getPaymentsForOrder(supabase, order.id),
-        getAdjustmentsForOrderSafe(supabase, order.id),
-      ]);
-      return {
-        order,
-        payments: payments.filter((payment) => !payment.voided),
-        adjustments: adjustments.filter((adjustment) => !adjustment.voided),
-      };
-    })
-  );
+  const orderIds = orders.map((order) => order.id);
+  const [paymentRows, adjustmentRows] = await Promise.all([
+    getPaymentsForOrders(supabase, orderIds),
+    getAdjustmentsForOrdersSafe(supabase, orderIds),
+  ]);
+  const paymentsByOrderId = new Map<string, Payment[]>();
+  for (const payment of paymentRows) {
+    const current = paymentsByOrderId.get(payment.orderId) ?? [];
+    current.push(payment);
+    paymentsByOrderId.set(payment.orderId, current);
+  }
+  const adjustmentsByOrderId = new Map<string, OrderFinancialAdjustment[]>();
+  for (const adjustment of adjustmentRows) {
+    const current = adjustmentsByOrderId.get(adjustment.orderId) ?? [];
+    current.push(adjustment);
+    adjustmentsByOrderId.set(adjustment.orderId, current);
+  }
+  const orderLedgers = orders.map((order) => ({
+    order,
+    payments: paymentsByOrderId.get(order.id) ?? [],
+    adjustments: adjustmentsByOrderId.get(order.id) ?? [],
+  }));
 
   const rows: Omit<CustomerStatementRow, "runningBalance">[] = [];
 

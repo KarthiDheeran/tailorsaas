@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  getActiveGarmentTypesAction,
-  getActiveWorkStagesAction,
-} from "@/app/(shell)/catalog/actions";
+import { getStaffFormReferenceDataAction } from "@/app/(shell)/staff/actions";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import type { CatalogGarmentType, CatalogWorkStage } from "@/lib/catalog";
-import { createClient } from "@/lib/supabase/client";
-import { getShops, type Shop } from "@/lib/shops";
+import type { Shop } from "@/lib/shops";
 import type {
   StaffPaymentType,
   StaffRole,
@@ -99,16 +95,12 @@ export function StaffForm({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getActiveWorkStagesAction(),
-      getActiveGarmentTypesAction(),
-      getShops(createClient()).catch(() => []),
-    ]).then(
-      ([stages, garments, shopRows]) => {
+    getStaffFormReferenceDataAction().then(
+      ({ workStages: stages, garmentTypes: garments, shops: shopRows }) => {
         if (cancelled) return;
         setWorkStages(stages);
         setGarmentTypes(garments);
-        setShops(shopRows.filter((shop) => shop.active));
+        setShops(shopRows);
       }
     );
     return () => {

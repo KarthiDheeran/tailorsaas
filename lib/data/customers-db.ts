@@ -44,6 +44,12 @@ interface CustomerRow {
   notes: string | null;
 }
 
+export interface CustomerContactRow {
+  id: string;
+  name: string;
+  phone: string;
+}
+
 function mapCustomer(row: CustomerRow): Customer {
   return {
     id: row.id,
@@ -78,6 +84,70 @@ export async function getCustomers(supabase: SupabaseClient): Promise<Customer[]
     .order("name");
   if (error) throw error;
   return ((data as CustomerRow[]) ?? []).map(mapCustomer);
+}
+
+export async function getCustomerAreaNames(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("area")
+    .order("area");
+  if (error) throw error;
+  const areas = ((data as { area: string | null }[] | null) ?? [])
+    .map((row) => row.area?.trim() ?? "")
+    .filter(Boolean);
+  return Array.from(new Set(areas)).sort();
+}
+
+export async function getCustomerContactRows(
+  supabase: SupabaseClient
+): Promise<CustomerContactRow[]> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id, name, phone")
+    .order("name");
+  if (error) throw error;
+  return ((data as CustomerContactRow[] | null) ?? []);
+}
+
+export interface CustomerPageOptions {
+  page: number;
+  pageSize: number;
+  query?: string;
+  area?: string;
+}
+
+export interface CustomerPageResult {
+  customers: Customer[];
+  totalCount: number;
+}
+
+export async function getCustomerPageRows(
+  supabase: SupabaseClient,
+  options: CustomerPageOptions
+): Promise<CustomerPageResult> {
+  const from = Math.max(0, (options.page - 1) * options.pageSize);
+  const to = from + options.pageSize - 1;
+  let query = supabase
+    .from("customers")
+    .select(CUSTOMER_COLUMNS, { count: "exact" })
+    .order("name")
+    .range(from, to);
+
+  const searchText = options.query?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(
+      `name.ilike.${pattern},phone.ilike.${pattern},customer_number.ilike.${pattern}`
+    );
+  }
+  if (options.area) query = query.eq("area", options.area);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return {
+    customers: ((data as CustomerRow[] | null) ?? []).map(mapCustomer),
+    totalCount: count ?? 0,
+  };
 }
 
 export async function getCustomerById(

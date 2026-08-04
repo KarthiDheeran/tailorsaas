@@ -13,9 +13,8 @@ import { paymentModes } from "@/lib/constants";
 import {
   getCustomerByIdAction,
   getCustomerByNameAndPhoneAction,
-  getCustomerDetailAction,
+  getCustomerOrderEntryDetailAction,
   getCustomersByPhoneAction,
-  getCustomersAction,
   createCustomerAction,
   saveGarmentMeasurementAction,
   searchCustomerAddressesAction,
@@ -25,15 +24,8 @@ import {
   createOrderAction,
   createOrderForNewCustomerAction,
   generateNextOrderNumberAction,
-  getTodayItemSummaryAction,
+  getNewOrderBootstrapAction,
 } from "@/app/(shell)/orders/actions";
-import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
-import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
-import {
-  getActiveGarmentTypesAction,
-  getAddOnsAction,
-  getGarmentTypeConfigurationsAction,
-} from "@/app/(shell)/catalog/actions";
 import type { CustomerDetail } from "@/lib/customers-db";
 import {
   GARMENT_SECTIONS,
@@ -76,7 +68,6 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { logWhatsAppMessageAction } from "@/app/(shell)/communications/actions";
-import { getActiveOperatorStaffAction, getOperatorModeAction } from "@/app/(shell)/settings/operator-actions";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -87,15 +78,19 @@ import { getOrderTaxBreakdown } from "@/lib/order-tax";
 import {
   readNewOrderBillingSettings,
   readNewOrderCatalogReference,
+  readNewOrderCustomerDetail,
   readNewOrderCustomers,
   readNewOrderOperatorStaff,
   readNewOrderPreferences,
+  readNewOrderTodayItemSummary,
   upsertNewOrderCustomer,
   writeNewOrderBillingSettings,
   writeNewOrderCatalogReference,
+  writeNewOrderCustomerDetail,
   writeNewOrderCustomers,
   writeNewOrderOperatorStaff,
   writeNewOrderPreferences,
+  writeNewOrderTodayItemSummary,
 } from "@/lib/new-order-reference-browser-cache";
 
 function todayIso() {
@@ -357,25 +352,6 @@ function NewOrderPageContent() {
     AttachmentUploadFailure[]
   >([]);
 
-  useEffect(() => {
-    if (isCurrentUserLoading) return;
-    let cancelled = false;
-    const cached = readNewOrderBillingSettings(currentUserId);
-    if (cached) {
-      setBillingSettings(cached);
-      return () => {
-        cancelled = true;
-      };
-    }
-    getOrderPricingBillingSettingsAction().then((settings) => {
-      if (cancelled) return;
-      setBillingSettings(settings);
-      writeNewOrderBillingSettings(currentUserId, settings);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUserId, isCurrentUserLoading]);
   const [attachmentUploadCount, setAttachmentUploadCount] = useState(0);
   const [repeatCopyMessage, setRepeatCopyMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -408,26 +384,6 @@ function NewOrderPageContent() {
   }
 
   useEffect(() => {
-    if (orderEntryView !== "classic") return;
-    let cancelled = false;
-    setTodayItemSummaryLoading(true);
-    getTodayItemSummaryAction(todayIso())
-      .then((summary) => {
-        if (cancelled) return;
-        setTodayItemSummary(summary);
-      })
-      .catch(() => {
-        if (!cancelled) setTodayItemSummary([]);
-      })
-      .finally(() => {
-        if (!cancelled) setTodayItemSummaryLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orderEntryView, savedOrder]);
-
-  useEffect(() => {
     if (!finalizeOpen) return;
     const timer = window.setTimeout(() => {
       deliveryDateInputRef.current?.focus();
@@ -444,26 +400,6 @@ function NewOrderPageContent() {
       setOrderSection(currentUser.allowed_order_sections[0]);
     }
   }, [currentUser?.allowed_order_sections, orderSection]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const cachedStaff = readNewOrderOperatorStaff(currentUserId);
-    if (cachedStaff) setMeasurementStaff(cachedStaff);
-    Promise.all([getActiveOperatorStaffAction(), getOperatorModeAction()]).then(([staffResult, mode]) => {
-      if (cancelled) return;
-      if (staffResult.success) {
-        setMeasurementStaff(staffResult.data);
-        writeNewOrderOperatorStaff(currentUserId, staffResult.data);
-      }
-      if (mode.operator) {
-        setMeasurementTakenByOperatorId((current) => current || mode.operator!.id);
-        setCreatedByOperatorId((current) => current || mode.operator!.id);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Phase 6B: Catalog data (active garment types, all add-ons) is fetched
   // once here and threaded down to NewOrderItemsCard as props - every
@@ -486,45 +422,77 @@ function NewOrderPageContent() {
   useEffect(() => {
     if (isCurrentUserLoading) return;
     let cancelled = false;
-    const cached = readNewOrderCatalogReference(currentUserId);
+    const today = todayIso();
+    const cachedBilling = readNewOrderBillingSettings(currentUserId);
+    const cachedPreferences = readNewOrderPreferences(currentUserId);
+    const cachedCatalog = readNewOrderCatalogReference(currentUserId);
+    const cachedStaff = readNewOrderOperatorStaff(currentUserId);
+    const cachedTodaySummary = readNewOrderTodayItemSummary(currentUserId, today);
+
+    if (cachedBilling) setBillingSettings(cachedBilling);
+    if (cachedPreferences) setDefaultDeliveryLeadDays(cachedPreferences.defaultDeliveryLeadDays);
     if (
-      cached &&
-      Array.isArray(cached.garmentTypes) &&
-      Array.isArray(cached.addOns) &&
-      Array.isArray(cached.configurations)
+      cachedCatalog &&
+      Array.isArray(cachedCatalog.garmentTypes) &&
+      Array.isArray(cachedCatalog.addOns) &&
+      Array.isArray(cachedCatalog.configurations)
     ) {
-      setGarmentTypes(cached.garmentTypes);
-      setAddOns(cached.addOns);
-      setGarmentConfigurations(cached.configurations);
+      setGarmentTypes(cachedCatalog.garmentTypes);
+      setAddOns(cachedCatalog.addOns);
+      setGarmentConfigurations(cachedCatalog.configurations);
       setGarmentConfigurationsLoaded(true);
-      return () => {
-        cancelled = true;
-      };
+    }
+    if (cachedStaff) setMeasurementStaff(cachedStaff);
+    if (cachedTodaySummary) setTodayItemSummary(cachedTodaySummary);
+
+    const cacheComplete = Boolean(
+      cachedBilling &&
+      cachedPreferences &&
+      cachedCatalog &&
+      cachedStaff &&
+      (orderEntryView !== "classic" || cachedTodaySummary)
+    );
+    if (!cacheComplete) {
+      setTodayItemSummaryLoading(orderEntryView === "classic");
+      getNewOrderBootstrapAction(today)
+        .then((data) => {
+          if (cancelled) return;
+          setBillingSettings(data.billingSettings);
+          setDefaultDeliveryLeadDays(data.orderPreferences.defaultDeliveryLeadDays);
+          setGarmentTypes(data.garmentTypes);
+          setAddOns(data.addOns);
+          setGarmentConfigurations(data.garmentConfigurations);
+          setGarmentConfigurationsLoaded(true);
+          setMeasurementStaff(data.measurementStaff);
+          setTodayItemSummary(data.todayItemSummary);
+          if (data.operatorMode.operator) {
+            setMeasurementTakenByOperatorId((current) => current || data.operatorMode.operator!.id);
+            setCreatedByOperatorId((current) => current || data.operatorMode.operator!.id);
+          }
+          writeNewOrderBillingSettings(currentUserId, data.billingSettings);
+          writeNewOrderPreferences(currentUserId, data.orderPreferences);
+          writeNewOrderCatalogReference(currentUserId, {
+            garmentTypes: data.garmentTypes,
+            addOns: data.addOns,
+            configurations: data.garmentConfigurations,
+          });
+          writeNewOrderOperatorStaff(currentUserId, data.measurementStaff);
+          writeNewOrderTodayItemSummary(currentUserId, today, data.todayItemSummary);
+        })
+        .catch(() => {
+          if (!cancelled) setGarmentConfigurationsLoaded(true);
+        })
+        .finally(() => {
+          if (!cancelled) setTodayItemSummaryLoading(false);
+        });
+    } else {
+      setTodayItemSummaryLoading(false);
     }
 
-    Promise.all([getActiveGarmentTypesAction(), getAddOnsAction()])
-      .then(async ([garments, allAddOns]) => {
-        const configurations = await getGarmentTypeConfigurationsAction(
-          garments.map((garment) => garment.id)
-        );
-        if (cancelled) return;
-        setGarmentTypes(garments);
-        setAddOns(allAddOns);
-        setGarmentConfigurations(configurations);
-        setGarmentConfigurationsLoaded(true);
-        writeNewOrderCatalogReference(currentUserId, {
-          garmentTypes: garments,
-          addOns: allAddOns,
-          configurations,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setGarmentConfigurationsLoaded(true);
-      });
     return () => {
       cancelled = true;
     };
-  }, [currentUserId, isCurrentUserLoading]);
+  }, [currentUserId, isCurrentUserLoading, orderEntryView]);
 
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
   const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
@@ -551,27 +519,7 @@ function NewOrderPageContent() {
 
   useEffect(() => {
     if (isCurrentUserLoading) return;
-    let cancelled = false;
-    setCachedCustomers(null);
-    const cached = readNewOrderCustomers(currentUserId);
-    if (cached) {
-      setCachedCustomers(cached);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    getCustomersAction()
-      .then((customers) => {
-        if (cancelled) return;
-        setCachedCustomers(customers);
-        writeNewOrderCustomers(currentUserId, customers);
-      })
-      .catch(() => !cancelled && setCachedCustomers(null));
-
-    return () => {
-      cancelled = true;
-    };
+    setCachedCustomers(readNewOrderCustomers(currentUserId));
   }, [currentUserId, isCurrentUserLoading]);
 
   useEffect(() => {
@@ -685,7 +633,7 @@ function NewOrderPageContent() {
       window.clearTimeout(timeout);
       setCustomerSearchLoading(false);
     };
-  }, [cachedCustomers, customerMode, customerSearchQuery]);
+  }, [cachedCustomers, currentUserId, customerMode, customerSearchQuery]);
 
   useEffect(() => {
     if (!customerResultsOpen) return;
@@ -744,26 +692,6 @@ function NewOrderPageContent() {
       cancelled = true;
     };
   }, [cachedCustomers, customerMode, newCustomer.address]);
-
-  useEffect(() => {
-    if (isCurrentUserLoading) return;
-    let cancelled = false;
-    const cached = readNewOrderPreferences(currentUserId);
-    if (cached) {
-      setDefaultDeliveryLeadDays(cached.defaultDeliveryLeadDays);
-      return () => {
-        cancelled = true;
-      };
-    }
-    getNewOrderPreferencesAction().then((preferences) => {
-      if (cancelled) return;
-      setDefaultDeliveryLeadDays(preferences.defaultDeliveryLeadDays);
-      writeNewOrderPreferences(currentUserId, preferences);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUserId, isCurrentUserLoading]);
 
   useEffect(() => {
     if (defaultDeliveryLeadDays === null || deliveryDateWasEditedRef.current) return;
@@ -855,14 +783,18 @@ function NewOrderPageContent() {
       return;
     }
     let cancelled = false;
-    getCustomerDetailAction(matchedCustomer.id).then((detail) => {
+    const cached = readNewOrderCustomerDetail(currentUserId, matchedCustomer.id);
+    if (cached) setCustomerDetail(cached);
+    else setCustomerDetail(undefined);
+    getCustomerOrderEntryDetailAction(matchedCustomer.id).then((detail) => {
       if (cancelled) return;
       setCustomerDetail(detail);
+      if (detail) writeNewOrderCustomerDetail(currentUserId, matchedCustomer.id, detail);
     });
     return () => {
       cancelled = true;
     };
-  }, [matchedCustomer]);
+  }, [currentUserId, matchedCustomer]);
 
   const { computedItems, totalAmount: taxableSubtotal } = computeOrderItems(
     items,

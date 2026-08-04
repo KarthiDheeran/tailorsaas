@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Printer, Search } from "lucide-react";
-import { getOrdersAction } from "@/app/(shell)/orders/actions";
-import { createProductionPrintBundleAction } from "@/app/(shell)/job-cards/actions";
+import {
+  createProductionPrintBundleAction,
+  getProductionPrintOrdersAction,
+} from "@/app/(shell)/job-cards/actions";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { GARMENT_SECTIONS, type GarmentSection } from "@/lib/catalog";
@@ -28,7 +30,7 @@ export function ProductionPrintPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getOrdersAction()
+    getProductionPrintOrdersAction()
       .then((result) => !cancelled && setOrders(result))
       .catch(() => !cancelled && setOrders([]));
     return () => {

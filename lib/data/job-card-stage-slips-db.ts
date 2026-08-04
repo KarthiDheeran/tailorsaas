@@ -3,7 +3,7 @@ import { jobSlipCodeCandidatesFromBarcodeValue } from "@/lib/barcode-code128";
 import { getOrderById } from "@/lib/data/orders-db";
 import { getStaffById } from "@/lib/data/staff-db";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
-import type { CustomerSnapshot, OrderItemAddOn, TaskType } from "@/lib/types";
+import type { CustomerSnapshot, Order, OrderItemAddOn, Staff, TaskType } from "@/lib/types";
 
 export interface JobCardStageSlip {
   id: string;
@@ -143,6 +143,25 @@ export async function createJobCardStageSlip(
   if (!order) throw new Error("Order not found.");
   if (input.staffId && !staff) throw new Error("Worker not found.");
 
+  return insertJobCardStageSlip(supabase, order, staff, input);
+}
+
+export async function createJobCardStageSlipForOrder(
+  supabase: SupabaseClient,
+  order: Order,
+  input: CreateJobCardStageSlipInput
+): Promise<JobCardStageSlip> {
+  const staff = input.staffId ? await getStaffById(supabase, input.staffId) : undefined;
+  if (input.staffId && !staff) throw new Error("Worker not found.");
+  return insertJobCardStageSlip(supabase, order, staff, input);
+}
+
+async function insertJobCardStageSlip(
+  supabase: SupabaseClient,
+  order: Order,
+  staff: Staff | undefined,
+  input: CreateJobCardStageSlipInput
+): Promise<JobCardStageSlip> {
   const item = order.items.find((candidate) => candidate.serialNo === input.orderItemSerialNo);
   if (!item) throw new Error("Order item not found.");
   const unitNo = Math.max(1, Math.min(input.unitNo, Math.max(1, item.qty)));
@@ -251,13 +270,17 @@ export async function markJobCardStageSlipTallied(
 }
 
 export async function getTalliedJobCardStageSlips(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  options: { fromIso?: string; toIso?: string } = {}
 ): Promise<JobCardStageSlip[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("job_card_stage_slips")
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
     .not("tallied_at", "is", null)
     .order("tallied_at", { ascending: false });
+  if (options.fromIso) query = query.gte("tallied_at", `${options.fromIso}T00:00:00`);
+  if (options.toIso) query = query.lt("tallied_at", `${options.toIso}T23:59:59.999`);
+  const { data, error } = await query;
   if (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) return [];
     throw error;
@@ -371,4 +394,22 @@ export async function getJobCardStageSlipsByIds(
     const slip = byId.get(id);
     return slip ? [slip] : [];
   });
+}
+
+export async function getJobCardStageSlipsForOrders(
+  supabase: SupabaseClient,
+  orderIds: string[]
+): Promise<JobCardStageSlip[]> {
+  const uniqueOrderIds = Array.from(new Set(orderIds.filter(Boolean)));
+  if (uniqueOrderIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .in("order_id", uniqueOrderIds)
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (isMissingJobCardStageSlipsSchemaError(error)) return [];
+    throw error;
+  }
+  return ((data as unknown as JobCardStageSlipRow[]) ?? []).map(mapSlip);
 }

@@ -44,6 +44,21 @@ export async function getAppUsers(supabase: SupabaseClient): Promise<AppUser[]> 
   return (data ?? []) as AppUser[];
 }
 
+export async function getAppUsersByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<AppUser[]> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(PROFILE_COLUMNS)
+    .in("id", uniqueIds)
+    .order("full_name");
+  if (error) throw error;
+  return (data ?? []) as AppUser[];
+}
+
 export async function getAppUserById(
   supabase: SupabaseClient,
   id: string

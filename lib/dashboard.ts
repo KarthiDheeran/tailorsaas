@@ -5,10 +5,14 @@ import {
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
 import {
-  getJobCards,
+  getJobCardReportRows,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
-import { getAllOrders } from "@/lib/data/orders-db";
+import {
+  getOrderDatesByIds,
+  getOrderListRowsInDateRange,
+  getReceivableOrderListRows,
+} from "@/lib/data/orders-db";
 import { formatCurrency } from "@/lib/currency";
 import { isActiveOrder, isReceivableOrder } from "@/lib/order-finance";
 import type { ProductionQueueStage } from "@/components/dashboard/production-queue";
@@ -59,30 +63,37 @@ export async function getDashboardData(
   todayIso: string,
   filters?: { from?: string; to?: string; stage?: string }
 ): Promise<DashboardData> {
-  const allOrders = await getAllOrders(supabase);
-  const activeOrders = allOrders.filter(isActiveOrder);
   const yesterdayIso = addDays(todayIso, -1);
+  const [
+    ordersTodaySource,
+    ordersYesterdaySource,
+    deliveriesTodaySource,
+    receivableOrders,
+    dashboardCards,
+    expenseStats,
+  ] = await Promise.all([
+    getOrderListRowsInDateRange(supabase, "order_date", todayIso, todayIso),
+    getOrderListRowsInDateRange(supabase, "order_date", yesterdayIso, yesterdayIso),
+    getOrderListRowsInDateRange(supabase, "delivery_date", todayIso, todayIso),
+    getReceivableOrderListRows(supabase),
+    getDashboardJobCards(supabase, todayIso),
+    getDashboardExpenseStats(supabase, todayIso),
+  ]);
 
-  const ordersToday = activeOrders.filter((o) => o.orderDate === todayIso);
-  const ordersYesterday = activeOrders.filter(
-    (o) => o.orderDate === yesterdayIso
-  );
+  const ordersToday = ordersTodaySource.filter(isActiveOrder);
+  const ordersYesterday = ordersYesterdaySource.filter(isActiveOrder);
 
-  const todaysDeliveries = activeOrders.filter(
-    (o) => o.deliveryDate === todayIso
-  );
+  const todaysDeliveries = deliveriesTodaySource.filter(isActiveOrder);
   const deliveriesPendingToday = todaysDeliveries.filter(
     isReceivableOrder
   );
 
-  const overdueOrders = activeOrders
-    .filter((o) => isReceivableOrder(o) && o.deliveryDate < todayIso)
+  const overdueOrders = receivableOrders
+    .filter((o) => o.deliveryDate < todayIso)
     .map((o) => ({ ...o, daysLate: daysBetween(o.deliveryDate, todayIso) }))
     .sort((a, b) => b.daysLate - a.daysLate);
 
-  const paymentPending = activeOrders
-    .filter(isReceivableOrder)
-    .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
+  const paymentPending = receivableOrders;
   const outstandingBalanceTotal = paymentPending.reduce(
     (sum, o) => sum + o.balance,
     0
@@ -97,17 +108,19 @@ export async function getDashboardData(
     ordersToday.reduce((sum, o) => sum + o.advancePaid, 0) +
     todaysDeliveries.reduce((sum, o) => sum + o.balance, 0);
 
-  const [jobCardStats, expenseStats] = await Promise.all([
-    getDashboardJobCardStats(supabase, todayIso),
-    getDashboardExpenseStats(supabase, todayIso),
-  ]);
+  const jobCardStats = dashboardCards
+    ? getDashboardJobCardStats(dashboardCards)
+    : null;
   const summaryFrom = filters?.from || todayIso;
   const summaryTo = filters?.to || todayIso;
-  const orderDates = new Map(allOrders.map((order) => [order.id, order.orderDate]));
   let garmentSummary: DashboardData["garmentSummary"] = [];
   let garmentStages: string[] = [];
-  try {
-    const cards = await getJobCards(supabase, todayIso);
+  if (dashboardCards) {
+    const cards = dashboardCards;
+    const orderDates = await getOrderDatesByIds(
+      supabase,
+      cards.map((card) => card.orderId)
+    );
     garmentStages = Array.from(new Set(cards.map((card) => card.stage))).sort();
     const grouped = new Map<string, DashboardData["garmentSummary"][number]>();
     for (const card of cards) {
@@ -120,8 +133,6 @@ export async function getDashboardData(
       grouped.set(key, row);
     }
     garmentSummary = Array.from(grouped.values()).sort((a, b) => a.garment.localeCompare(b.garment) || a.stage.localeCompare(b.stage));
-  } catch (error) {
-    if (!isMissingJobCardsSchemaError(error)) throw error;
   }
 
   const orderDelta = ordersToday.length - ordersYesterday.length;
@@ -205,38 +216,43 @@ export async function getDashboardData(
   };
 }
 
-async function getDashboardJobCardStats(
+async function getDashboardJobCards(
   supabase: SupabaseClient,
   todayIso: string
-): Promise<{ unassigned: number; delayed: number; productionQueue: ProductionQueueStage[] } | null> {
+): Promise<Awaited<ReturnType<typeof getJobCardReportRows>> | null> {
   try {
-    const cards = await getJobCards(supabase, todayIso);
-    const active = cards.filter(
-      (card) => card.stage !== "Cancelled" && card.stage !== "Delivered"
-    );
-    const pendingByStage = new Map<string, ProductionQueueStage>();
-    for (const card of active) {
-      if (card.stage === "Ready") continue;
-      const current = pendingByStage.get(card.stage) ?? {
-        stage: card.stage,
-        count: 0,
-        delayedCount: 0,
-      };
-      current.count += 1;
-      if (card.isDelayed) current.delayedCount += 1;
-      pendingByStage.set(card.stage, current);
-    }
-    return {
-      unassigned: active.filter((card) => card.stage === "Unassigned").length,
-      delayed: active.filter((card) => card.isDelayed).length,
-      productionQueue: Array.from(pendingByStage.values()).sort(
-        (a, b) => b.count - a.count || a.stage.localeCompare(b.stage)
-      ),
-    };
+    return await getJobCardReportRows(supabase, todayIso);
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return null;
     throw error;
   }
+}
+
+function getDashboardJobCardStats(
+  cards: Awaited<ReturnType<typeof getJobCardReportRows>>
+): { unassigned: number; delayed: number; productionQueue: ProductionQueueStage[] } {
+  const active = cards.filter(
+    (card) => card.stage !== "Cancelled" && card.stage !== "Delivered"
+  );
+  const pendingByStage = new Map<string, ProductionQueueStage>();
+  for (const card of active) {
+    if (card.stage === "Ready") continue;
+    const current = pendingByStage.get(card.stage) ?? {
+      stage: card.stage,
+      count: 0,
+      delayedCount: 0,
+    };
+    current.count += 1;
+    if (card.isDelayed) current.delayedCount += 1;
+    pendingByStage.set(card.stage, current);
+  }
+  return {
+    unassigned: active.filter((card) => card.stage === "Unassigned").length,
+    delayed: active.filter((card) => card.isDelayed).length,
+    productionQueue: Array.from(pendingByStage.values()).sort(
+      (a, b) => b.count - a.count || a.stage.localeCompare(b.stage)
+    ),
+  };
 }
 
 async function getDashboardExpenseStats(

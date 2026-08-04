@@ -7,6 +7,7 @@ import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
 import {
   getOrdersReportAction,
@@ -46,6 +47,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
   const [deliveryStatus, setDeliveryStatus] = useState<OrderDeliveryFilter>("all");
   const [garmentType, setGarmentType] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
+  const debouncedCustomerQuery = useDebouncedValue(customerQuery);
 
   // Phase 6E: both fetched via Server Actions now — see sales-report-view.tsx's
   // comment for why this is an effect + state instead of useMemo. Garment
@@ -73,7 +75,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
         balanceStatus,
         deliveryStatus,
         garmentType: garmentType || undefined,
-        customerQuery,
+        customerQuery: debouncedCustomerQuery,
       },
       todayIso
     ).then((result) => {
@@ -83,7 +85,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, balanceStatus, deliveryStatus, garmentType, customerQuery, todayIso]);
+  }, [range.from, range.to, balanceStatus, deliveryStatus, garmentType, debouncedCustomerQuery, todayIso]);
 
   function handleExport() {
     downloadCsv(

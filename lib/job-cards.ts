@@ -70,7 +70,7 @@ export function buildJobCards(
   orders: Order[],
   todayIso: string,
   assignments: WorkAssignment[] = [],
-  staffList: Staff[] = []
+  staffList: Pick<Staff, "id" | "name">[] = []
 ): JobCard[] {
   const staffById = new Map(staffList.map((staff) => [staff.id, staff]));
   const assignmentByLine = new Map<string, WorkAssignment>();

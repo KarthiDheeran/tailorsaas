@@ -11,6 +11,7 @@ import {
   createWorkAssignment,
   getStaff,
   getStaffById,
+  getStaffOptions,
   getStaffPayments,
   getStaffPaymentsForStaff,
   getStaffWorkEarnings,
@@ -30,21 +31,24 @@ import {
   type JobCardStageSlip,
 } from "@/lib/data/job-card-stage-slips-db";
 import { getActiveWorkStages, getAllGarmentTypes } from "@/lib/data/catalog-db";
+import { getShops, type Shop } from "@/lib/shops";
 import {
   createExpense,
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
-import { getAllOrders, getOrderById } from "@/lib/data/orders-db";
+import { getOrderById, getOrderListRowsByIds } from "@/lib/data/orders-db";
 import { paymentModes } from "@/lib/constants";
 import {
   computeTaskStatus,
-  getStaffListRows,
-  getWorkQueueRows,
   type StaffListRow,
   type WorkQueueRow,
 } from "@/lib/staff";
 import { hasPermission } from "@/lib/permissions";
 import type { JobCard } from "@/lib/job-cards";
+import type {
+  CatalogGarmentType,
+  CatalogWorkStage,
+} from "@/lib/catalog";
 import type {
   Order,
   PaymentMode,
@@ -127,6 +131,17 @@ export interface StaffPageData {
   staffWorkEarnings: StaffWorkEarning[];
 }
 
+export interface StaffPayablesData {
+  staffPayments: StaffPayment[];
+  staffWorkEarnings: StaffWorkEarning[];
+}
+
+export interface StaffFormReferenceData {
+  workStages: CatalogWorkStage[];
+  garmentTypes: CatalogGarmentType[];
+  shops: Shop[];
+}
+
 function validStageKeys(stages: { stageKey: string }[]) {
   return new Set(stages.map((stage) => stage.stageKey));
 }
@@ -174,22 +189,17 @@ function validateStaffInput(
   return null;
 }
 
-export async function getStaffListRowsAction(todayIso: string): Promise<StaffListRow[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.view");
-  if (!guard.ok) return [];
-  return getStaffListRows(supabase, todayIso);
-}
-
-export async function getWorkQueueRowsAction(todayIso: string): Promise<WorkQueueRow[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.view");
-  if (!guard.ok) return [];
-  return getWorkQueueRows(supabase, todayIso);
-}
-
-export async function getStaffPageDataAction(todayIso: string): Promise<StaffPageData> {
+export async function getStaffPageDataAction(
+  todayIso: string,
+  payablesRange: { fromIso?: string; toIso?: string } = {}
+): Promise<StaffPageData> {
   if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
+  if (payablesRange.fromIso && !ISO_DATE.test(payablesRange.fromIso)) {
+    throw new Error("A valid payables start date is required.");
+  }
+  if (payablesRange.toIso && !ISO_DATE.test(payablesRange.toIso)) {
+    throw new Error("A valid payables end date is required.");
+  }
 
   const supabase = createServerClient();
   const context = await getServerCallerContext(supabase);
@@ -204,29 +214,22 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
   }
 
   const canManage = hasPermission(context.permissions, "staff.manage");
+  const assignedStaffId = canManage ? undefined : context.staffId ?? undefined;
   const dataClient = createAdminClient();
-  const [
-    staffList,
-    assignments,
-    orders,
-    staffPayments,
-    staffWorkEarnings,
-    talliedStageSlips,
-  ] = await Promise.all([
+  const [staffList, assignments, staffPayments, staffWorkEarnings, talliedStageSlips] = await Promise.all([
     getStaff(dataClient),
-    getWorkAssignments(dataClient),
-    getAllOrders(supabase),
-    getStaffPayments(dataClient),
-    getStaffWorkEarnings(dataClient),
-    getTalliedJobCardStageSlips(supabase),
+    assignedStaffId ? getWorkAssignmentsForStaff(dataClient, assignedStaffId) : getWorkAssignments(dataClient),
+    canManage ? getStaffPayments(dataClient, payablesRange) : Promise.resolve([]),
+    canManage ? getStaffWorkEarnings(dataClient, payablesRange) : Promise.resolve([]),
+    canManage ? getTalliedJobCardStageSlips(supabase, payablesRange) : Promise.resolve([]),
   ]);
-
-  let jobCardQueueRows: JobCard[] | null = null;
-  try {
-    jobCardQueueRows = await getJobCards(supabase, todayIso, staffList);
-  } catch (error) {
-    if (!isMissingJobCardsSchemaError(error)) throw error;
-  }
+  const [orders, jobCardQueueRows] = await Promise.all([
+    getOrderListRowsByIds(supabase, assignments.map((assignment) => assignment.orderId)),
+    getJobCards(supabase, todayIso, staffList, { assignedStaffId }).catch((error) => {
+      if (isMissingJobCardsSchemaError(error)) return null;
+      throw error;
+    }),
+  ]);
 
   const annotatedStaffWorkEarnings =
     jobCardQueueRows
@@ -246,6 +249,49 @@ export async function getStaffPageDataAction(todayIso: string): Promise<StaffPag
   };
 }
 
+export async function getStaffPayablesDataAction(
+  todayIso: string,
+  payablesRange: { fromIso?: string; toIso?: string } = {}
+): Promise<StaffPayablesData> {
+  if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
+  if (payablesRange.fromIso && !ISO_DATE.test(payablesRange.fromIso)) {
+    throw new Error("A valid payables start date is required.");
+  }
+  if (payablesRange.toIso && !ISO_DATE.test(payablesRange.toIso)) {
+    throw new Error("A valid payables end date is required.");
+  }
+
+  const supabase = createServerClient();
+  const context = await getServerCallerContext(supabase);
+  if (!context || !hasPermission(context.permissions, "staff.manage")) {
+    return { staffPayments: [], staffWorkEarnings: [] };
+  }
+
+  const dataClient = createAdminClient();
+  const [staffList, staffPayments, staffWorkEarnings, talliedStageSlips] = await Promise.all([
+    getStaffOptions(dataClient),
+    getStaffPayments(dataClient, payablesRange),
+    getStaffWorkEarnings(dataClient, payablesRange),
+    getTalliedJobCardStageSlips(supabase, payablesRange),
+  ]);
+
+  let jobCardQueueRows: JobCard[] | null = null;
+  if (staffWorkEarnings.length > 0 && talliedStageSlips.length > 0) {
+    try {
+      jobCardQueueRows = await getJobCards(supabase, todayIso, staffList);
+    } catch (error) {
+      if (!isMissingJobCardsSchemaError(error)) throw error;
+    }
+  }
+
+  return {
+    staffPayments,
+    staffWorkEarnings: jobCardQueueRows
+      ? attachStageSlipCodesToEarnings(staffWorkEarnings, talliedStageSlips, jobCardQueueRows)
+      : staffWorkEarnings,
+  };
+}
+
 export async function getStaffAction(): Promise<Staff[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.view");
@@ -258,6 +304,22 @@ export async function getStaffByIdAction(id: string): Promise<Staff | undefined>
   const guard = await requireServerPermission(supabase, "staff.view");
   if (!guard.ok) return undefined;
   return getStaffById(supabase, id);
+}
+
+export async function getStaffFormReferenceDataAction(): Promise<StaffFormReferenceData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { workStages: [], garmentTypes: [], shops: [] };
+  const [workStages, garmentTypes, shops] = await Promise.all([
+    getActiveWorkStages(supabase),
+    getAllGarmentTypes(supabase),
+    getShops(supabase).catch(() => []),
+  ]);
+  return {
+    workStages,
+    garmentTypes: garmentTypes.filter((garment) => garment.isActive),
+    shops: shops.filter((shop) => shop.active),
+  };
 }
 
 export async function createStaffAction(

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getServerCallerContext } from "@/lib/auth/require-server-permission";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getStaffOptions } from "@/lib/data/staff-db";
 import { getSharedDesktopOperatorMode, type ActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
 
 const COOKIE = "newlook_active_operator";
@@ -29,15 +30,20 @@ export async function getActiveOperatorStaffAction() {
   if (!(await getServerCallerContext(supabase))) {
     return { success: false as const, error: "Sign in before selecting an operator." };
   }
-  const { data, error } = await createAdminClient()
-    .from("staff")
-    .select("id,name,staff_number,staff_code")
-    .eq("status", "Active")
-    .order("name");
-  if (error) {
+  try {
+    const staff = await getStaffOptions(createAdminClient(), { activeOnly: true });
+    return {
+      success: true as const,
+      data: staff.map((member) => ({
+        id: member.id,
+        name: member.name,
+        staff_number: member.staffNumber,
+        staff_code: member.staffCode,
+      })),
+    };
+  } catch {
     return { success: false as const, error: "Could not load active staff. Please check the Staff list and try again." };
   }
-  return { success: true as const, data: data ?? [] };
 }
 
 export async function setOperatorPinAction(staffId: string, pin: string) {

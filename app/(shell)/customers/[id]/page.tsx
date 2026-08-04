@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
 import { ChevronLeft, FileText, Plus, Pencil } from "lucide-react";
-import {
-  getCustomerByIdAction,
-  getCustomerDetailAction,
-  getGarmentMeasurementsForCustomerAction,
-} from "@/app/(shell)/customers/actions";
-import { getActiveGarmentTypesAction } from "@/app/(shell)/catalog/actions";
+import { getCustomerProfileBootstrapAction } from "@/app/(shell)/customers/actions";
 import type { CatalogGarmentType } from "@/lib/catalog";
 import type { CustomerDetail } from "@/lib/customers-db";
 import type { Customer, GarmentMeasurement } from "@/lib/types";
@@ -42,17 +37,12 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getCustomerByIdAction(params.id),
-      getCustomerDetailAction(params.id),
-      getGarmentMeasurementsForCustomerAction(params.id),
-      getActiveGarmentTypesAction(),
-    ]).then(([c, d, m, garments]) => {
+    getCustomerProfileBootstrapAction(params.id).then((data) => {
       if (cancelled) return;
-      setCustomer(c ?? null);
-      setDetail(d);
-      setMeasurements(m);
-      setGarmentTypes(garments);
+      setCustomer(data.customer ?? null);
+      setDetail(data.detail);
+      setMeasurements(data.measurements);
+      setGarmentTypes(data.garmentTypes);
       setLoaded(true);
     });
     return () => {

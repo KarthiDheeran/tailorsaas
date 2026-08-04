@@ -2,7 +2,10 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { requireServerPermission } from "@/lib/auth/require-server-permission";
+import {
+  getServerCallerContext,
+  requireServerPermission,
+} from "@/lib/auth/require-server-permission";
 import {
   createMeasurementAttachment,
   deleteMeasurementAttachment,
@@ -18,7 +21,6 @@ import {
   getCustomersByPhone,
   getMeasurementHistoryForCustomer,
   getCustomerMeasurements,
-  getCustomers,
   getGarmentMeasurement,
   getGarmentMeasurementDraftSeed,
   getGarmentMeasurementsForCustomer,
@@ -32,10 +34,15 @@ import {
 import {
   getCustomerAreas,
   getCustomerDetail,
-  getCustomerListRows,
+  getCustomerOrderEntryDetail,
+  getCustomerListPageRows,
   type CustomerDetail,
-  type CustomerListRow,
+  type CustomerListPageFilters,
+  type CustomerListPageResult,
 } from "@/lib/customers-db";
+import { getActiveGarmentTypes } from "@/lib/data/catalog-db";
+import { getGarmentTypeConfigurations } from "@/lib/data/catalog-fields-db";
+import type { CatalogGarmentType, GarmentTypeConfiguration } from "@/lib/catalog";
 import {
   getCustomerStatement,
   type CustomerStatement,
@@ -79,6 +86,20 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+export interface CustomerProfileBootstrapData {
+  customer: Customer | undefined;
+  detail: CustomerDetail | undefined;
+  measurements: GarmentMeasurement[];
+  garmentTypes: CatalogGarmentType[];
+}
+
+export interface CustomerMeasurementsBootstrapData {
+  customer: Customer | undefined;
+  measurements: GarmentMeasurement[];
+  garmentTypes: CatalogGarmentType[];
+  garmentConfigurations: GarmentTypeConfiguration[];
+}
+
 const MEASUREMENT_ATTACHMENT_TYPES: MeasurementAttachmentType[] = [
   "Fit Photo",
   "Sketch",
@@ -96,6 +117,17 @@ const ALLOWED_MEASUREMENT_ATTACHMENT_MIME_TYPES = new Set([
 ]);
 
 const MAX_MEASUREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+async function getVisibleActiveGarmentTypes(
+  supabase: ReturnType<typeof createServerClient>
+) {
+  const garments = await getActiveGarmentTypes(supabase);
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || caller.permissions.includes("catalog.manage")) return garments;
+  return garments.filter((garment) =>
+    caller.allowedOrderSections.includes(garment.section)
+  );
+}
 
 function sanitizeStorageSegment(value: string) {
   return value
@@ -123,13 +155,6 @@ async function withSignedUrls(
     })
   );
   return signed;
-}
-
-export async function getCustomersAction(): Promise<Customer[]> {
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "customers.view");
-  if (!guard.ok) return [];
-  return getCustomers(supabase);
 }
 
 export async function getCustomerByIdAction(id: string): Promise<Customer | undefined> {
@@ -192,11 +217,20 @@ export async function searchCustomerAddressesAction(
   return searchCustomerAddresses(supabase, query);
 }
 
-export async function getCustomerListRowsAction(todayIso: string): Promise<CustomerListRow[]> {
+export async function getCustomerListPageRowsAction(input: {
+  todayIso: string;
+  page: number;
+  pageSize: number;
+  filters: CustomerListPageFilters;
+}): Promise<CustomerListPageResult> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "customers.view");
-  if (!guard.ok) return [];
-  return getCustomerListRows(createAdminClient(), todayIso);
+  if (!guard.ok) return { rows: [], totalCount: 0, allCount: 0 };
+  return getCustomerListPageRows(createAdminClient(), input.todayIso, {
+    page: Math.max(1, input.page),
+    pageSize: Math.max(1, Math.min(input.pageSize, 100)),
+    filters: input.filters,
+  });
 }
 
 export async function getCustomerAreasAction(): Promise<string[]> {
@@ -215,6 +249,74 @@ export async function getCustomerDetailAction(
   const customer = await getCustomerById(supabase, customerId);
   if (!customer) return undefined;
   return getCustomerDetail(supabase, customer);
+}
+
+export async function getCustomerProfileBootstrapAction(
+  customerId: string
+): Promise<CustomerProfileBootstrapData> {
+  const supabase = createServerClient();
+  const customerGuard = await requireServerPermission(supabase, "customers.view");
+  if (!customerGuard.ok) {
+    return { customer: undefined, detail: undefined, measurements: [], garmentTypes: [] };
+  }
+  const customer = await getCustomerById(supabase, customerId);
+  if (!customer) {
+    return { customer: undefined, detail: undefined, measurements: [], garmentTypes: [] };
+  }
+  const [detail, measurements, garmentTypes] = await Promise.all([
+    getCustomerDetail(supabase, customer),
+    requireServerPermission(supabase, "customers.viewMeasurements").then((guard) =>
+      guard.ok ? getGarmentMeasurementsForCustomer(supabase, customerId) : []
+    ),
+    requireServerPermission(supabase, "catalog.view").then((guard) =>
+      guard.ok ? getVisibleActiveGarmentTypes(supabase) : []
+    ),
+  ]);
+  return { customer, detail, measurements, garmentTypes };
+}
+
+export async function getCustomerMeasurementsBootstrapAction(
+  customerId: string
+): Promise<CustomerMeasurementsBootstrapData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.editMeasurements");
+  if (!guard.ok) {
+    return {
+      customer: undefined,
+      measurements: [],
+      garmentTypes: [],
+      garmentConfigurations: [],
+    };
+  }
+  const customer = await getCustomerById(supabase, customerId);
+  if (!customer) {
+    return {
+      customer: undefined,
+      measurements: [],
+      garmentTypes: [],
+      garmentConfigurations: [],
+    };
+  }
+  const [measurements, garmentTypes] = await Promise.all([
+    getGarmentMeasurementsForCustomer(supabase, customerId),
+    getVisibleActiveGarmentTypes(supabase),
+  ]);
+  const garmentConfigurations = await getGarmentTypeConfigurations(
+    supabase,
+    garmentTypes.map((garment) => garment.id)
+  ).catch(() => []);
+  return { customer, measurements, garmentTypes, garmentConfigurations };
+}
+
+export async function getCustomerOrderEntryDetailAction(
+  customerId: string
+): Promise<CustomerDetail | undefined> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "customers.view");
+  if (!guard.ok) return undefined;
+  const customer = await getCustomerById(supabase, customerId);
+  if (!customer) return undefined;
+  return getCustomerOrderEntryDetail(supabase, customer);
 }
 
 export async function getCustomerStatementAction(

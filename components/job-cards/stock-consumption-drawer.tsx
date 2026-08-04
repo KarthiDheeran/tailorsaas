@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { recordJobCardStockUsageAction } from "@/app/(shell)/job-cards/actions";
 import type { JobCard } from "@/lib/job-cards";
@@ -39,6 +39,12 @@ export function StockConsumptionDrawer({
   const [saving, setSaving] = useState(false);
 
   const selectedItem = stockOptions.find((item) => item.id === itemId);
+
+  useEffect(() => {
+    if (!itemId && stockOptions[0]) {
+      setItemId(stockOptions[0].id);
+    }
+  }, [itemId, stockOptions]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

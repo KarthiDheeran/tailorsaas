@@ -101,6 +101,22 @@ export async function getExpenses(
 
   if (filters.category) query = query.eq("category", filters.category);
   if (filters.paymentMode) query = query.eq("payment_mode", filters.paymentMode);
+  if (filters.source) query = query.eq("source", filters.source);
+  const searchText = filters.query?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(
+      [
+        `source.ilike.${pattern}`,
+        `reference.ilike.${pattern}`,
+        `vendor.ilike.${pattern}`,
+        `description.ilike.${pattern}`,
+        `category.ilike.${pattern}`,
+        `payment_mode.ilike.${pattern}`,
+        `notes.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
   if (!filters.includeVoided) query = query.eq("voided", false);
 
   let { data, error } = await query;
@@ -114,6 +130,18 @@ export async function getExpenses(
       .order("created_at", { ascending: false });
     if (filters.category) fallback = fallback.eq("category", filters.category);
     if (filters.paymentMode) fallback = fallback.eq("payment_mode", filters.paymentMode);
+    if (searchText) {
+      const pattern = `%${searchText}%`;
+      fallback = fallback.or(
+        [
+          `vendor.ilike.${pattern}`,
+          `description.ilike.${pattern}`,
+          `category.ilike.${pattern}`,
+          `payment_mode.ilike.${pattern}`,
+          `notes.ilike.${pattern}`,
+        ].join(",")
+      );
+    }
     if (!filters.includeVoided) fallback = fallback.eq("voided", false);
     const result = await fallback;
     data = result.data as unknown as typeof data;
@@ -122,24 +150,9 @@ export async function getExpenses(
   if (error) throw error;
 
   const expenses = ((data as unknown as ExpenseRow[]) ?? []).map(mapExpense);
-  const sourceFiltered = filters.source
+  return filters.source
     ? expenses.filter((expense) => expense.source === filters.source)
     : expenses;
-  const q = filters.query?.trim().toLowerCase();
-  if (!q) return sourceFiltered;
-  return sourceFiltered.filter((expense) =>
-    [
-      expense.source,
-      expense.reference,
-      expense.vendor,
-      expense.description,
-      expense.category,
-      expense.paymentMode,
-      expense.notes,
-    ]
-      .filter(Boolean)
-      .some((value) => value!.toLowerCase().includes(q))
-  );
 }
 
 export async function createExpense(

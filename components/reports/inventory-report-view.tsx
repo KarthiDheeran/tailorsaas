@@ -5,6 +5,7 @@ import { AlertTriangle, IndianRupee, Package } from "lucide-react";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
 import { getInventoryReportAction } from "@/app/(shell)/reports/actions";
 import type { InventoryReport } from "@/lib/reports";
@@ -38,6 +39,7 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
   const [itemType, setItemType] = useState<InventoryItemType | "">("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [report, setReport] = useState<InventoryReport | null>({
     summary: { totalActiveItems: 0, lowStockCount: 0, totalStockValue: 0 },
     rows: [],
@@ -48,14 +50,14 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
     getInventoryReportAction({
       itemType: itemType || undefined,
       lowStockOnly,
-      query,
+      query: debouncedQuery,
     }).then((result) => {
       if (!cancelled) setReport(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [itemType, lowStockOnly, query]);
+  }, [itemType, lowStockOnly, debouncedQuery]);
 
   function handleExport() {
     if (!report) return;

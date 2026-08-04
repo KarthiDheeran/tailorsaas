@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { UserPlus } from "lucide-react";
-import { getCustomerListRowsAction } from "@/app/(shell)/customers/actions";
+import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
+import {
+  getCustomerAreasAction,
+  getCustomerListPageRowsAction,
+} from "@/app/(shell)/customers/actions";
 import type { CustomerListRow } from "@/lib/customers-db";
 import { CustomersTable } from "@/components/customers/customers-table";
 import {
@@ -15,7 +18,10 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
+
+const PAGE_SIZE = 25;
 
 const EMPTY_FILTERS: CustomerFilterState = {
   query: "",
@@ -28,8 +34,12 @@ function CustomersPageContent() {
   const { hasPermission } = useCurrentUser();
   const { t } = useLanguage();
   const [filters, setFilters] = useState<CustomerFilterState>(EMPTY_FILTERS);
-  const [allRows, setAllRows] = useState<CustomerListRow[]>([]);
+  const debouncedQuery = useDebouncedValue(filters.query);
+  const [rows, setRows] = useState<CustomerListRow[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [allCount, setAllCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   // ISO (UTC) date string — consistent between server and client renders,
@@ -38,15 +48,32 @@ function CustomersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getCustomerListRowsAction(todayIso)
-      .then((rows) => {
+    getCustomerAreasAction().then((result) => {
+      if (!cancelled) setAreas(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCustomerListPageRowsAction({
+      todayIso,
+      page,
+      pageSize: PAGE_SIZE,
+      filters: {
+        query: debouncedQuery,
+        area: filters.area || undefined,
+        balance: filters.balance,
+        activity: filters.activity,
+      },
+    })
+      .then((result) => {
         if (cancelled) return;
-        setAllRows(rows);
-        setAreas(
-          Array.from(
-            new Set(rows.map((row) => row.customer.area).filter(Boolean))
-          ).sort()
-        );
+        setRows(result.rows);
+        setTotalCount(result.totalCount);
+        setAllCount(result.allCount);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -55,41 +82,45 @@ function CustomersPageContent() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [todayIso, page, debouncedQuery, filters.area, filters.balance, filters.activity]);
 
-  const rows = allRows.filter((row) => {
-    const query = filters.query.trim();
-    if (query) {
-      const lowerQuery = query.toLowerCase();
-      const matchesName = row.customer.name.toLowerCase().includes(lowerQuery);
-      const matchesPhone = row.customer.phone.includes(query);
-      const matchesNumber = row.customer.customerNumber
-        .toLowerCase()
-        .includes(lowerQuery);
-      if (!matchesName && !matchesPhone && !matchesNumber) return false;
-    }
-    if (filters.area && row.customer.area !== filters.area) return false;
-    if (filters.balance === "has" && row.outstandingBalance <= 0) return false;
-    if (filters.balance === "none" && row.outstandingBalance > 0) return false;
-    if (filters.activity === "recent" && row.status !== "Active") return false;
-    if (filters.activity === "inactive" && row.status !== "Inactive") {
-      return false;
-    }
-    return true;
-  });
+  function handleFiltersChange(next: CustomerFilterState) {
+    setFilters(next);
+    setPage(1);
+  }
+
   const hasActiveFilters =
     filters.query.trim() !== "" ||
     filters.area !== "" ||
     filters.balance !== "all" ||
     filters.activity !== "all";
   const countLabel = hasActiveFilters
-    ? `${rows.length} ${t("customers.of")} ${allRows.length} ${t(
+    ? `${totalCount} ${t("customers.of")} ${allCount} ${t(
         "customers.shown"
       )}`
-    : `${allRows.length} ${t("customers.onRecord")}`;
+    : `${allCount} ${t("customers.onRecord")}`;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+    (n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2
+  );
 
-  function handleExportCustomers() {
+  async function handleExportCustomers() {
     const canViewPayments = hasPermission("orders.viewPayments");
+    const exportRows = (
+      await getCustomerListPageRowsAction({
+        todayIso,
+        page: 1,
+        pageSize: 10000,
+        filters: {
+          query: filters.query,
+          area: filters.area || undefined,
+          balance: filters.balance,
+          activity: filters.activity,
+        },
+      })
+    ).rows;
     const headers = [
       "Customer No",
       "Name",
@@ -101,7 +132,7 @@ function CustomersPageContent() {
       "Status",
       ...(canViewPayments ? ["Outstanding Balance"] : []),
     ];
-    const csvRows = rows.map((row) => {
+    const csvRows = exportRows.map((row) => {
       const base = [
         row.customer.customerNumber,
         row.customer.name,
@@ -132,7 +163,7 @@ function CustomersPageContent() {
         <div className="flex items-center gap-2">
           <ExportCsvButton
             onClick={handleExportCustomers}
-            disabled={isLoading || rows.length === 0}
+            disabled={isLoading || totalCount === 0}
             label={t("reports.exportCsv")}
           />
           {hasPermission("customers.create") && (
@@ -147,9 +178,52 @@ function CustomersPageContent() {
         </div>
       </div>
 
-      <CustomerFilters filters={filters} areas={areas} onChange={setFilters} />
+      <CustomerFilters filters={filters} areas={areas} onChange={handleFiltersChange} />
 
       {isLoading ? <LoadingState label="Loading customers..." /> : <CustomersTable rows={rows} />}
+      {!isLoading && totalCount > 0 && (
+        <div className="mt-5 flex items-center justify-between text-sm">
+          <span className="text-ink-muted">
+            {t("common.showing")} {rangeStart} {t("common.to")} {rangeEnd}{" "}
+            {t("common.of")} {totalCount}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {pageNumbers.map((n, index) => (
+              <span key={`${n}-${index}`} className="contents">
+                {index > 0 && n - pageNumbers[index - 1] > 1 && (
+                  <span className="px-1 text-ink-faint">...</span>
+                )}
+                <button
+                  onClick={() => setPage(n)}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
+                    n === page
+                      ? "border-primary bg-primary text-white"
+                      : "border-border bg-white text-ink hover:bg-surface-muted"
+                  }`}
+                >
+                  {n}
+                </button>
+              </span>
+            ))}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:enabled:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+﻿import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Customer,
   CustomerSnapshot,
@@ -11,30 +11,34 @@ import type {
   PaymentType,
   Staff,
 } from "@/lib/types";
-import { getAllOrders } from "@/lib/data/orders-db";
-import { getAllPayments } from "@/lib/data/payments-db";
+import {
+  getOrderItemParticulars,
+  getOrderListRowsByIds,
+  getOrderListRowsInDateRange,
+} from "@/lib/data/orders-db";
+import { getPayments } from "@/lib/data/payments-db";
 import {
   getExpenses,
   isMissingExpensesSchemaError,
 } from "@/lib/data/expenses-db";
 import {
-  getAllOrderFinancialAdjustments,
+  getOrderFinancialAdjustments,
   isMissingOrderFinancialAdjustmentsSchemaError,
 } from "@/lib/data/order-financial-adjustments-db";
 import {
-  getJobCards,
+  getJobCardReportRows,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import {
-  getInventoryItems,
+  getInventoryItemStats,
+  getInventoryReportItems,
   isMissingInventorySchemaError,
 } from "@/lib/data/inventory-db";
 import { getStaff } from "@/lib/data/staff-db";
-import { getAppUsers } from "@/lib/profiles";
+import { getAppUsersByIds } from "@/lib/profiles";
 import { paymentModes } from "@/lib/constants";
 import {
   getCustomerListRows,
-  getCustomerDetail,
   type CustomerStatus,
 } from "@/lib/customers-db";
 import type { AppUser } from "@/lib/profiles";
@@ -163,12 +167,12 @@ export async function getSalesReport(
   range: DateRange,
   paymentMode?: PaymentMode
 ): Promise<SalesReport> {
-  const allOrders = await getAllOrders(supabase);
-  const activeOrders = allOrders.filter(isActiveOrder);
-  const ordersInRange = activeOrders.filter(
-    (o) =>
-      inRange(o.orderDate, range) &&
-      (!paymentMode || o.paymentMode === paymentMode)
+  const [placedRows, deliveredRows] = await Promise.all([
+    getOrderListRowsInDateRange(supabase, "order_date", range.from, range.to),
+    getOrderListRowsInDateRange(supabase, "delivery_date", range.from, range.to),
+  ]);
+  const ordersInRange = placedRows.filter(
+    (o) => isActiveOrder(o) && (!paymentMode || o.paymentMode === paymentMode)
   );
 
   const totalSales = ordersInRange.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -181,9 +185,9 @@ export async function getSalesReport(
   // revenueToday), so it's approximated as: advances collected on orders
   // placed in range, plus balances collected on orders delivered-and-settled
   // in range (balance <= 0 means the delivery-time balance was paid).
-  const deliveredSettledInRange = activeOrders.filter(
+  const deliveredSettledInRange = deliveredRows.filter(
     (o) =>
-      inRange(o.deliveryDate, range) &&
+      isActiveOrder(o) &&
       o.balance <= 0 &&
       (!paymentMode || o.paymentMode === paymentMode)
   );
@@ -330,18 +334,33 @@ export interface PaymentsReportSourceData {
 }
 
 export async function getPaymentsReportSourceData(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  filters: PaymentsFilters
 ): Promise<PaymentsReportSourceData> {
-  const [allOrders, allPayments, allUsers] = await Promise.all([
-    getAllOrders(supabase),
-    getAllPayments(supabase),
-    getAppUsers(supabase),
+  const allPayments = await getPayments(supabase, {
+    from: filters.range.from,
+    to: filters.range.to,
+    paymentMode: filters.paymentMode,
+    paymentType: filters.paymentType,
+  });
+  const [allOrders, allUsers] = await Promise.all([
+    getOrderListRowsByIds(supabase, allPayments.map((payment) => payment.orderId)),
+    getAppUsersByIds(
+      supabase,
+      allPayments.map((payment) => payment.recordedBy ?? "").filter(Boolean)
+    ),
   ]);
 
   let allAdjustments: OrderFinancialAdjustment[] = [];
   let financialAdjustmentsAvailable = true;
   try {
-    allAdjustments = await getAllOrderFinancialAdjustments(supabase);
+    allAdjustments = await getOrderFinancialAdjustments(supabase, {
+      from: filters.range.from,
+      to: filters.range.to,
+      adjustmentType: "Refund",
+      paymentMode: filters.paymentMode,
+      includeVoided: true,
+    });
   } catch (error) {
     if (!isMissingOrderFinancialAdjustmentsSchemaError(error)) throw error;
     financialAdjustmentsAvailable = false;
@@ -383,7 +402,7 @@ export async function getPaymentsReport(
   todayIso: string
 ): Promise<PaymentsReport> {
   return buildPaymentsReportFromSource(
-    await getPaymentsReportSourceData(supabase),
+    await getPaymentsReportSourceData(supabase, filters),
     filters,
     todayIso
   );
@@ -496,7 +515,7 @@ export function buildPaymentsReportFromSource(
         : undefined,
     };
   });
-  // Already newest-first from getAllPayments' own ordering — no re-sort
+  // Already newest-first from getPayments' own ordering, so no re-sort
   // needed (unlike the old order-level version, which had to sort by
   // orderDate itself).
 
@@ -534,10 +553,7 @@ export interface OrdersReport {
 }
 
 export async function getGarmentTypes(supabase: SupabaseClient): Promise<string[]> {
-  const allOrders = await getAllOrders(supabase);
-  const set = new Set<string>();
-  allOrders.forEach((o) => o.items.forEach((i) => set.add(i.particular)));
-  return Array.from(set).sort();
+  return getOrderItemParticulars(supabase);
 }
 
 export async function getOrdersReport(
@@ -546,12 +562,24 @@ export async function getOrdersReport(
   todayIso: string
 ): Promise<OrdersReport> {
   const weekAhead = addDays(todayIso, 7);
-  const allOrders = await getAllOrders(supabase);
-  const activeOrders = allOrders.filter(isActiveOrder);
-  const rangeOrders = allOrders.filter((o) => inRange(o.orderDate, filters.range));
-  const activeRangeOrders = activeOrders.filter((o) => inRange(o.orderDate, filters.range));
+  const rangeOrders = await getOrderListRowsInDateRange(
+    supabase,
+    "order_date",
+    filters.range.from,
+    filters.range.to
+  );
+  const searchableRangeOrders = filters.customerQuery?.trim()
+    ? await getOrderListRowsInDateRange(
+        supabase,
+        "order_date",
+        filters.range.from,
+        filters.range.to,
+        { customerQuery: filters.customerQuery }
+      )
+    : rangeOrders;
+  const activeRangeOrders = rangeOrders.filter(isActiveOrder);
 
-  let filtered = rangeOrders;
+  let filtered = searchableRangeOrders;
   if (filters.balanceStatus === "paid") {
     filtered = filtered.filter((o) => isActiveOrder(o) && o.balance <= 0);
   } else if (filters.balanceStatus === "balanceDue") {
@@ -576,13 +604,6 @@ export async function getOrdersReport(
     filtered = filtered.filter((o) =>
       o.items.some((i) => i.particular === filters.garmentType)
     );
-  }
-  if (filters.customerQuery?.trim()) {
-    const q = filters.customerQuery.trim().toLowerCase();
-    filtered = filtered.filter((o) => {
-      const c = o.customerSnapshot;
-      return !!c && (c.name.toLowerCase().includes(q) || c.phone.includes(q));
-    });
   }
 
   // Summary cards always reflect the date-range only, so they read as a
@@ -653,37 +674,18 @@ export async function getCustomersReport(
 ): Promise<CustomersReport> {
   const listRows = await getCustomerListRows(supabase, todayIso);
 
-  // Customer records have no createdAt timestamp, so "new" is approximated
-  // from order history: a customer's first-ever order date falling inside
-  // the selected range.
-  const allOrders = await getAllOrders(supabase);
-  const activeOrders = allOrders.filter(isActiveOrder);
-  const firstOrderDateByCustomer = new Map<string, string>();
-  for (const o of activeOrders) {
-    const current = firstOrderDateByCustomer.get(o.customerId);
-    if (!current || o.orderDate < current) {
-      firstOrderDateByCustomer.set(o.customerId, o.orderDate);
-    }
-  }
+  const allRows: CustomerReportRow[] = listRows.map((r) => ({
+    customer: r.customer,
+    totalOrders: r.totalOrders,
+    totalSpent: r.totalSpent,
+    outstandingBalance: r.outstandingBalance,
+    lastOrderDate: r.lastOrderDate,
+    status: r.status,
+  }));
 
-  const allRows: CustomerReportRow[] = await Promise.all(
-    listRows.map(async (r) => {
-      const detail = await getCustomerDetail(supabase, r.customer);
-      return {
-        customer: r.customer,
-        totalOrders: r.totalOrders,
-        totalSpent: detail.totalOrdersValue,
-        outstandingBalance: r.outstandingBalance,
-        lastOrderDate: r.lastOrderDate,
-        status: r.status,
-      };
-    })
-  );
-
-  const newCustomers = allRows.filter((r) => {
-    const first = firstOrderDateByCustomer.get(r.customer.id);
-    return !!first && inRange(first, filters.range);
-  }).length;
+  const newCustomers = listRows.filter(
+    (r) => !!r.firstOrderDate && inRange(r.firstOrderDate, filters.range)
+  ).length;
   const repeatCustomers = allRows.filter((r) => r.totalOrders > 1).length;
   const customersWithBalance = allRows.filter(
     (r) => r.outstandingBalance > 0
@@ -768,7 +770,7 @@ export async function getProductionReport(
 ): Promise<ProductionReport | null> {
   try {
     const staffList = await getStaff(supabase);
-    const allCards = await getJobCards(supabase, todayIso, staffList);
+    const allCards = await getJobCardReportRows(supabase, todayIso, staffList);
 
     const active = allCards.filter(
       (c) => c.stage !== "Delivered" && c.stage !== "Cancelled"
@@ -843,7 +845,7 @@ export async function getStaffReport(
 ): Promise<StaffReport | null> {
   try {
     const staffList = await getStaff(supabase);
-    const allCards = await getJobCards(supabase, todayIso, staffList);
+    const allCards = await getJobCardReportRows(supabase, todayIso, staffList);
 
     const rows: StaffReportRow[] = staffList.map((member) => {
       const cardsForStaff = allCards.filter((c) => c.assignedStaffId === member.id);
@@ -911,30 +913,23 @@ export async function getInventoryReport(
   filters: InventoryReportFilters
 ): Promise<InventoryReport | null> {
   try {
-    const allItems = await getInventoryItems(supabase);
-    const active = allItems.filter((i) => i.active);
+    const [stats, reportItems] = await Promise.all([
+      getInventoryItemStats(supabase),
+      getInventoryReportItems(supabase, {
+        itemType: filters.itemType,
+        query: filters.query,
+      }),
+    ]);
 
     const summary: InventoryReportSummary = {
-      totalActiveItems: active.length,
-      lowStockCount: active.filter((i) => i.quantityOnHand <= i.reorderLevel).length,
-      totalStockValue: active.reduce(
-        (sum, i) => sum + i.quantityOnHand * (i.costPerUnit ?? 0),
-        0
-      ),
+      totalActiveItems: stats.stockItemsCount,
+      lowStockCount: stats.lowStockCount,
+      totalStockValue: stats.stockValue,
     };
 
-    let filtered = active;
-    if (filters.itemType) filtered = filtered.filter((i) => i.itemType === filters.itemType);
+    let filtered = reportItems;
     if (filters.lowStockOnly) {
       filtered = filtered.filter((i) => i.quantityOnHand <= i.reorderLevel);
-    }
-    if (filters.query?.trim()) {
-      const q = filters.query.trim().toLowerCase();
-      filtered = filtered.filter(
-        (i) =>
-          i.name.toLowerCase().includes(q) ||
-          (i.sku ?? "").toLowerCase().includes(q)
-      );
     }
 
     const rows: InventoryReportRow[] = filtered.map((item) => ({

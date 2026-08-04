@@ -52,6 +52,13 @@ const LEGACY_JOB_CARD_COLUMNS = `
   started_date, completed_date, cancelled, notes, created_at, updated_at
 `;
 
+const JOB_CARD_REPORT_COLUMNS = `
+  id, job_card_number, order_id, order_number, customer_id, order_status,
+  order_item_serial_no, unit_no, garment_type, customer_snapshot,
+  current_stage, assigned_staff_id, priority, due_date,
+  started_date, completed_date, cancelled, created_at
+`;
+
 interface JobCardRow {
   id: string;
   job_card_number: string;
@@ -82,6 +89,28 @@ interface JobCardRow {
   created_at: string | null;
 }
 
+type JobCardReportRow = Pick<
+  JobCardRow,
+  | "id"
+  | "job_card_number"
+  | "order_id"
+  | "order_number"
+  | "customer_id"
+  | "order_status"
+  | "order_item_serial_no"
+  | "unit_no"
+  | "garment_type"
+  | "customer_snapshot"
+  | "current_stage"
+  | "assigned_staff_id"
+  | "priority"
+  | "due_date"
+  | "started_date"
+  | "completed_date"
+  | "cancelled"
+  | "created_at"
+>;
+
 export function isMissingJobCardsSchemaError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const code = candidate.code ?? "";
@@ -110,8 +139,8 @@ function isMissingJobCardPayrollColumnError(error: unknown): boolean {
 export async function getJobCards(
   supabase: SupabaseClient,
   todayIso: string,
-  staffList: Staff[] = [],
-  options: { assignedStaffId?: string } = {}
+  staffList: Pick<Staff, "id" | "name">[] = [],
+  options: { assignedStaffId?: string; orderId?: string } = {}
 ): Promise<JobCard[]> {
   let query = supabase
     .from("job_cards")
@@ -123,6 +152,9 @@ export async function getJobCards(
 
   if (options.assignedStaffId) {
     query = query.eq("assigned_staff_id", options.assignedStaffId);
+  }
+  if (options.orderId) {
+    query = query.eq("order_id", options.orderId);
   }
 
   let { data, error } = await query;
@@ -136,6 +168,9 @@ export async function getJobCards(
       .order("unit_no", { ascending: true });
     if (options.assignedStaffId) {
       fallback = fallback.eq("assigned_staff_id", options.assignedStaffId);
+    }
+    if (options.orderId) {
+      fallback = fallback.eq("order_id", options.orderId);
     }
     const result = await fallback;
     data = result.data as unknown as typeof data;
@@ -153,6 +188,37 @@ export async function getJobCards(
   const staffById = new Map(staffList.map((staff) => [staff.id, staff]));
   return rows.map((row) =>
     mapJobCardRow(row, todayIso, totalsByLine, staffById)
+  );
+}
+
+export async function getJobCardReportRows(
+  supabase: SupabaseClient,
+  todayIso: string,
+  staffList: Pick<Staff, "id" | "name">[] = [],
+  options: { dueFrom?: string; dueTo?: string } = {}
+): Promise<JobCard[]> {
+  let query = supabase
+    .from("job_cards")
+    .select(JOB_CARD_REPORT_COLUMNS)
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .order("order_number", { ascending: false })
+    .order("order_item_serial_no", { ascending: true })
+    .order("unit_no", { ascending: true });
+  if (options.dueFrom) query = query.gte("due_date", options.dueFrom);
+  if (options.dueTo) query = query.lte("due_date", options.dueTo);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = ((data as unknown as JobCardReportRow[]) ?? []);
+  const totalsByLine = new Map<string, number>();
+  for (const row of rows) {
+    const key = lineKey(row.order_id, row.order_item_serial_no);
+    totalsByLine.set(key, (totalsByLine.get(key) ?? 0) + 1);
+  }
+
+  const staffById = new Map(staffList.map((staff) => [staff.id, staff]));
+  return rows.map((row) =>
+    mapJobCardReportRow(row, todayIso, totalsByLine, staffById)
   );
 }
 
@@ -866,7 +932,7 @@ function mapJobCardRow(
   row: JobCardRow,
   todayIso: string,
   totalsByLine: Map<string, number>,
-  staffById: Map<string, Staff>
+  staffById: Map<string, Pick<Staff, "id" | "name">>
 ): JobCard {
   const stage =
     row.cancelled || row.order_status === "Cancelled"
@@ -928,6 +994,67 @@ function mapJobCardRow(
       stage !== "Ready" &&
       stage !== "Delivered" &&
       stage !== "Cancelled",
+    };
+}
+
+function mapJobCardReportRow(
+  row: JobCardReportRow,
+  todayIso: string,
+  totalsByLine: Map<string, number>,
+  staffById: Map<string, Pick<Staff, "id" | "name">>
+): JobCard {
+  const stage =
+    row.cancelled || row.order_status === "Cancelled"
+      ? "Cancelled"
+      : row.order_status === "Delivered"
+        ? "Delivered"
+        : row.current_stage;
+  const assignedStaff = row.assigned_staff_id
+    ? staffById.get(row.assigned_staff_id)
+    : undefined;
+  const item: OrderItem = {
+    serialNo: row.order_item_serial_no,
+    particular: row.garment_type,
+    qty: totalsByLine.get(lineKey(row.order_id, row.order_item_serial_no)) ?? 1,
+    rate: 0,
+    amount: 0,
+    fabricSource: "Not specified",
+  };
+
+  return {
+    id: row.id,
+    persisted: true,
+    jobCardNumber: row.job_card_number,
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    customerId: row.customer_id,
+    customer: row.customer_snapshot ?? undefined,
+    item,
+    unitNo: row.unit_no,
+    totalUnits: item.qty,
+    garment: row.garment_type,
+    deliveryDate: row.due_date,
+    orderStatus: row.order_status,
+    stage,
+    productionBucket: getPersistedProductionBucket(stage),
+    taskType: stageToTaskType(row.current_stage),
+    taskStatus: getPersistedTaskStatus(row, todayIso),
+    assignedStaffId: row.assigned_staff_id ?? undefined,
+    assignedTo: assignedStaff?.name ?? "Unassigned",
+    priority: row.priority,
+    fabricSource: "Not specified",
+    createdAt: row.created_at ?? undefined,
+    startedDate: row.started_date ?? undefined,
+    completedDate: row.completed_date ?? undefined,
+    wageRate: 0,
+    wageAmount: 0,
+    isDelayed:
+      row.due_date < todayIso &&
+      row.order_status !== "Delivered" &&
+      row.order_status !== "Cancelled" &&
+      stage !== "Ready" &&
+      stage !== "Delivered" &&
+      stage !== "Cancelled",
   };
 }
 
@@ -936,7 +1063,15 @@ function lineKey(orderId: string, serialNo: number) {
 }
 
 function getPersistedTaskStatus(
-  row: JobCardRow,
+  row: Pick<
+    JobCardRow,
+    | "cancelled"
+    | "current_stage"
+    | "completed_date"
+    | "due_date"
+    | "started_date"
+    | "assigned_staff_id"
+  >,
   todayIso: string
 ): JobCard["taskStatus"] {
   if (row.cancelled || row.current_stage === "Cancelled") return "Cancelled";

@@ -5,7 +5,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { getCustomerAreas } from "@/lib/customers-db";
-import { getStaff } from "@/lib/data/staff-db";
+import { getStaffOptions, type StaffOption } from "@/lib/data/staff-db";
 import {
   getCustomersReport,
   getExpensesTotal,
@@ -31,7 +31,7 @@ import {
   type StaffReport,
   type StaffReportFilters,
 } from "@/lib/reports";
-import type { PaymentMode, Staff } from "@/lib/types";
+import type { PaymentMode } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Phase 6E: Reports' first-ever Server Action layer (previously every report
@@ -162,8 +162,8 @@ export async function getInventoryReportAction(
 // pattern as getReportCustomerAreasAction above, not
 // app/(shell)/staff/actions.ts's own getStaffAction (gated on staff.view
 // separately).
-export async function getReportStaffListAction(): Promise<Staff[]> {
+export async function getReportStaffListAction(): Promise<StaffOption[]> {
   const guard = await requireReportsView();
   if (!guard.ok) return [];
-  return getStaff(guard.admin);
+  return getStaffOptions(guard.admin);
 }

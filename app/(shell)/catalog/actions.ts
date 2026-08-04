@@ -82,6 +82,17 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+export interface CatalogPageBootstrapData {
+  garmentTypes: CatalogGarmentType[];
+  addOns: CatalogAddOn[];
+  activeAddOns: CatalogAddOn[];
+  workStages: CatalogWorkStage[];
+  activeWorkStages: CatalogWorkStage[];
+  catalogFields: CatalogField[];
+  catalogSections: CatalogSection[];
+  metadataFieldCounts: Record<string, number>;
+}
+
 const VALID_MEASUREMENT_FIELD_IDS = new Set(measurementFields.map((f) => f.id));
 const CATALOG_FIELD_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
@@ -93,6 +104,70 @@ function isMissingMetadataSchema(error: unknown): boolean {
 
 function stageKeys(stages: CatalogWorkStage[]) {
   return new Set(stages.filter((stage) => stage.isActive).map((stage) => stage.stageKey));
+}
+
+export async function getCatalogPageBootstrapAction(): Promise<CatalogPageBootstrapData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "catalog.view");
+  if (!guard.ok) {
+    return {
+      garmentTypes: [],
+      addOns: [],
+      activeAddOns: [],
+      workStages: [],
+      activeWorkStages: [],
+      catalogFields: [],
+      catalogSections: [],
+      metadataFieldCounts: {},
+    };
+  }
+
+  const [
+    allGarments,
+    addOns,
+    workStages,
+    catalogFields,
+    catalogSections,
+    caller,
+  ] = await Promise.all([
+    getAllGarmentTypes(supabase),
+    getAllAddOns(supabase),
+    getAllWorkStages(supabase),
+    getCatalogFields(supabase).catch((error) => {
+      if (isMissingMetadataSchema(error)) return [];
+      throw error;
+    }),
+    getCatalogSections(supabase).catch((error) => {
+      if (isMissingMetadataSchema(error)) return [];
+      throw error;
+    }),
+    getServerCallerContext(supabase),
+  ]);
+
+  const garmentTypes =
+    !caller || caller.permissions.includes("catalog.manage")
+      ? allGarments
+      : allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
+  const configurations = await getGarmentTypeConfigurations(
+    supabase,
+    garmentTypes.map((garment) => garment.id)
+  );
+
+  return {
+    garmentTypes,
+    addOns,
+    activeAddOns: addOns.filter((addOn) => addOn.isActive),
+    workStages,
+    activeWorkStages: workStages.filter((stage) => stage.isActive),
+    catalogFields,
+    catalogSections,
+    metadataFieldCounts: Object.fromEntries(
+      configurations.map((configuration) => [
+        configuration.garment.id,
+        configuration.fields.filter((field) => field.field?.isActive).length,
+      ])
+    ),
+  };
 }
 
 export async function getGarmentTypesAction(): Promise<CatalogGarmentType[]> {

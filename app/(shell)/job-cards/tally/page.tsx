@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Barcode,
@@ -15,8 +15,8 @@ import {
   X,
 } from "lucide-react";
 import {
-  getQuickTallyStaffAction,
-  getTalliedJobCardStageSlipsAction,
+  getJobCardTallyPageDataAction,
+  getTalliedJobCardStageSlipsForRangeAction,
   quickTallyJobCardStageSlipAction,
 } from "@/app/(shell)/job-cards/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -24,7 +24,7 @@ import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
 import { formatCurrency } from "@/lib/currency";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
-import type { Staff } from "@/lib/types";
+import type { StaffOption } from "@/lib/data/staff-db";
 
 function todayIso() {
   const now = new Date();
@@ -71,6 +71,7 @@ function slipGarmentLabel(slip: JobCardStageSlip) {
 function TallyContent() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const automaticallyOpenedSlipRef = useRef<string | null>(null);
+  const staffLoadedRef = useRef(false);
   const searchParams = useSearchParams();
   const [code, setCode] = useState("");
   const [scanned, setScanned] = useState<JobCardStageSlip[]>([]);
@@ -78,7 +79,7 @@ function TallyContent() {
   const [tallyToDate, setTallyToDate] = useState(todayIso);
   const [message, setMessage] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
@@ -89,14 +90,20 @@ function TallyContent() {
   useEffect(() => {
     let cancelled = false;
     setLoadingTallies(true);
-    Promise.all([getTalliedJobCardStageSlipsAction(), getQuickTallyStaffAction()])
-      .then(([slips, staffMembers]) => {
+    const request: Promise<{ slips: JobCardStageSlip[]; staff?: StaffOption[] }> = staffLoadedRef.current
+      ? getTalliedJobCardStageSlipsForRangeAction(tallyDate, tallyToDate).then((slips) => ({ slips }))
+      : getJobCardTallyPageDataAction(tallyDate, tallyToDate);
+    request
+      .then((result) => {
         if (cancelled) return;
-        setScanned(slips);
-        setStaff(staffMembers);
+        setScanned(result.slips);
+        if (result.staff) {
+          setStaff(result.staff);
+          staffLoadedRef.current = true;
+        }
       })
       .catch(() => {
-        if (!cancelled) setMessage("Could not load previous tally scans.");
+        if (!cancelled) setMessage("Could not load tally scans for this date range.");
       })
       .finally(() => {
         if (!cancelled) setLoadingTallies(false);
@@ -104,7 +111,7 @@ function TallyContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tallyDate, tallyToDate]);
 
   const visibleSlips = useMemo(
     () => scanned.filter((slip) => { const date = localDateKey(slip.talliedAt); return date >= tallyDate && date <= tallyToDate; }),
@@ -135,11 +142,11 @@ function TallyContent() {
   const latestLiveSlip = visibleSlips[0];
   const hasLiveScanFailure = scanState === "error" || scanState === "duplicate";
 
-  function focusScanField() {
+  const focusScanField = useCallback(function focusScanField() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }
+  }, []);
 
-  async function scan(rawCode = code) {
+  const scan = useCallback(async function scan(rawCode = code) {
     const trimmed = rawCode.trim();
     if (!trimmed || isScanning) {
       focusScanField();
@@ -183,7 +190,7 @@ function TallyContent() {
       if (inputRef.current) inputRef.current.value = "";
       focusScanField();
     }
-  }
+  }, [code, focusScanField, isScanning, selectedStaffId, sessionActive]);
 
   useEffect(() => {
     const incomingCode = searchParams.get("scan")?.trim();
@@ -191,7 +198,7 @@ function TallyContent() {
     automaticallyOpenedSlipRef.current = incomingCode;
     void scan(incomingCode);
     window.history.replaceState({}, "", "/job-cards/tally");
-  }, [searchParams]);
+  }, [scan, searchParams]);
 
   function startSession() {
     if (!selectedStaffId) {

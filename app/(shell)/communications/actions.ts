@@ -2,8 +2,11 @@
 
 import { getServerCallerPermissions } from "@/lib/auth/require-server-permission";
 import { getCalendarData, type CalendarData } from "@/lib/calendar";
-import { getCustomers } from "@/lib/data/customers-db";
-import { getAllOrders } from "@/lib/data/orders-db";
+import {
+  getCustomerContactRows,
+  type CustomerContactRow,
+} from "@/lib/data/customers-db";
+import { getOrderListRows } from "@/lib/data/orders-db";
 import {
   getWhatsAppMessages,
   isMissingWhatsAppMessagesSchemaError,
@@ -13,7 +16,7 @@ import {
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import type { Customer, Order, WhatsAppMessage } from "@/lib/types";
+import type { Order, WhatsAppMessage } from "@/lib/types";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -53,7 +56,7 @@ export async function getReminderInboxAction(todayIso: string): Promise<Calendar
 }
 
 export async function getCommunicationTargetsAction(): Promise<{
-  customers: Customer[];
+  customers: CustomerContactRow[];
   orders: Order[];
 }> {
   const supabase = createServerClient();
@@ -63,8 +66,8 @@ export async function getCommunicationTargetsAction(): Promise<{
   }
 
   const [customers, orders] = await Promise.all([
-    hasPermission(permissions, "customers.view") ? getCustomers(supabase) : Promise.resolve([]),
-    hasPermission(permissions, "orders.view") ? getAllOrders(supabase) : Promise.resolve([]),
+    hasPermission(permissions, "customers.view") ? getCustomerContactRows(supabase) : Promise.resolve([]),
+    hasPermission(permissions, "orders.view") ? getOrderListRows(supabase) : Promise.resolve([]),
   ]);
   return { customers, orders };
 }

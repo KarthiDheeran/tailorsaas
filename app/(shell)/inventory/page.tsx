@@ -6,6 +6,7 @@ import {
   adjustInventoryStockAction,
   createCustomerFabricAction,
   createInventoryItemAction,
+  getCustomerFabricsAction,
   getInventoryPageDataAction,
   updateCustomerFabricStatusAction,
 } from "@/app/(shell)/inventory/actions";
@@ -37,6 +38,8 @@ import { downloadCsv } from "@/lib/csv";
 import { formatCurrency } from "@/lib/currency";
 
 type InventoryTab = "stock" | "customer-fabric";
+const STOCK_ITEM_LIMIT = 300;
+const CUSTOMER_FABRIC_LIMIT = 200;
 
 function money(n: number) {
   return formatCurrency(n);
@@ -52,16 +55,22 @@ function InventoryContent() {
   const todayIso = new Date().toISOString().slice(0, 10);
   const [tab, setTab] = useState<InventoryTab>("stock");
   const [items, setItems] = useState<InventoryItem[] | null>([]);
-  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[] | null>([]);
+  const [itemStats, setItemStats] = useState({ stockItemsCount: 0, lowStockCount: 0, stockValue: 0 });
+  const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[] | null | undefined>(undefined);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [fabricQuery, setFabricQuery] = useState("");
+  const [debouncedFabricQuery, setDebouncedFabricQuery] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [stockRefreshKey, setStockRefreshKey] = useState(0);
+  const [fabricRefreshKey, setFabricRefreshKey] = useState(0);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [showCustomerFabricDrawer, setShowCustomerFabricDrawer] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStockLoading, setIsStockLoading] = useState(false);
+  const [isFabricLoading, setIsFabricLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -81,11 +90,16 @@ function InventoryContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getInventoryPageDataAction()
+    setIsStockLoading(true);
+    getInventoryPageDataAction({
+      stockQuery: debouncedQuery,
+      stockLimit: STOCK_ITEM_LIMIT,
+    })
       .then((result) => {
         if (cancelled) return;
         setItems(result.items);
-        setCustomerFabrics(result.customerFabrics);
+        if (result.itemStats) setItemStats(result.itemStats);
+        if (result.customerFabrics !== undefined) setCustomerFabrics(result.customerFabrics);
         setLoadError(null);
       })
       .catch((error) => {
@@ -94,54 +108,71 @@ function InventoryContent() {
         }
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsStockLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [debouncedQuery, stockRefreshKey]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedFabricQuery(fabricQuery.trim());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [fabricQuery]);
+
+  useEffect(() => {
+    if (tab !== "customer-fabric") return;
+    let cancelled = false;
+    setIsFabricLoading(true);
+    getCustomerFabricsAction({
+      query: debouncedFabricQuery,
+      limit: CUSTOMER_FABRIC_LIMIT,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setCustomerFabrics(result);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load customer fabrics."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsFabricLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedFabricQuery, fabricRefreshKey, tab]);
 
   const filteredItems = useMemo(() => {
     const rows = items ?? [];
-    const q = query.trim().toLowerCase();
     return rows.filter((item) => {
       if (lowStockOnly && item.quantityOnHand > item.reorderLevel) return false;
-      if (!q) return true;
-      return [item.name, item.sku, item.color, item.itemType, item.notes]
-          .filter(Boolean)
-          .some((value) => value!.toLowerCase().includes(q));
+      return true;
     });
-  }, [items, lowStockOnly, query]);
+  }, [items, lowStockOnly]);
 
-  const filteredCustomerFabrics = useMemo(() => {
-    const rows = customerFabrics ?? [];
-    const q = fabricQuery.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((fabric) =>
-      [
-        fabric.customerName,
-        fabric.customerPhone,
-        fabric.fabricDescription,
-        fabric.color,
-        fabric.status,
-        fabric.notes,
-      ]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(q))
-    );
-  }, [customerFabrics, fabricQuery]);
+  const filteredCustomerFabrics = customerFabrics ?? [];
 
-  const stockRows = items ?? [];
   const customerFabricRows = customerFabrics ?? [];
   const inventoryMigrationMissing = items === null || customerFabrics === null;
   const canUseInventoryMutations = canManage && !inventoryMigrationMissing;
-  const lowStockCount = stockRows.filter(
-    (item) => item.active && item.quantityOnHand <= item.reorderLevel
-  ).length;
-  const stockValue = stockRows.reduce(
-    (sum, item) => sum + item.quantityOnHand * (item.costPerUnit ?? 0),
-    0
-  );
+  const lowStockCount = itemStats.lowStockCount;
+  const stockValue = itemStats.stockValue;
   const activeCustomerFabric = customerFabricRows.filter(
     (fabric) => fabric.status === "Received" || fabric.status === "In Use"
   ).length;
@@ -225,7 +256,16 @@ function InventoryContent() {
 
       {loadError && (
         <div className="mb-5">
-          <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+          <LoadError
+            message={loadError}
+            onRetry={() => {
+              if (tab === "customer-fabric") {
+                setFabricRefreshKey((key) => key + 1);
+                return;
+              }
+              setStockRefreshKey((key) => key + 1);
+            }}
+          />
         </div>
       )}
 
@@ -234,7 +274,7 @@ function InventoryContent() {
       ) : (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Stat label="Stock Items" value={stockRows.length.toString()} icon={Package} />
+            <Stat label="Stock Items" value={itemStats.stockItemsCount.toString()} icon={Package} />
             <Stat label="Low Stock" value={lowStockCount.toString()} icon={AlertTriangle} tone="warning" />
             <Stat label="Stock Value" value={money(stockValue)} icon={Shirt} />
           </div>
@@ -249,7 +289,11 @@ function InventoryContent() {
           <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
             <TabButton label="Shop Stock" active={tab === "stock"} onClick={() => setTab("stock")} />
             <TabButton
-              label={`Customer Fabric (${activeCustomerFabric})`}
+              label={
+                customerFabrics === undefined
+                  ? "Customer Fabric"
+                  : `Customer Fabric (${activeCustomerFabric})`
+              }
               active={tab === "customer-fabric"}
               onClick={() => setTab("customer-fabric")}
             />
@@ -292,6 +336,14 @@ function InventoryContent() {
                   </button>
                 )}
               </div>
+              {isStockLoading && !isLoading && (
+                <p className="mb-3 text-xs text-ink-muted">Refreshing stock...</p>
+              )}
+              {items && items.length >= STOCK_ITEM_LIMIT && (
+                <p className="mb-3 text-xs text-ink-muted">
+                  Showing first {STOCK_ITEM_LIMIT} matching stock items.
+                </p>
+              )}
 
               <StockTable items={filteredItems} canManage={canUseInventoryMutations} onAdjust={setAdjustingItem} />
             </>
@@ -322,13 +374,22 @@ function InventoryContent() {
                   </button>
                 )}
               </div>
+              {customerFabrics && customerFabrics.length >= CUSTOMER_FABRIC_LIMIT && (
+                <p className="mb-3 text-xs text-ink-muted">
+                  Showing latest {CUSTOMER_FABRIC_LIMIT} matching fabric records.
+                </p>
+              )}
 
-              <CustomerFabricTable
-                rows={filteredCustomerFabrics}
-                canManage={canUseInventoryMutations}
-                todayIso={todayIso}
-                onUpdated={() => setRefreshKey((key) => key + 1)}
-              />
+              {isFabricLoading && customerFabrics === undefined ? (
+                <LoadingState label="Loading customer fabrics..." />
+              ) : (
+                <CustomerFabricTable
+                  rows={filteredCustomerFabrics}
+                  canManage={canUseInventoryMutations}
+                  todayIso={todayIso}
+                  onUpdated={() => setFabricRefreshKey((key) => key + 1)}
+                />
+              )}
             </>
           )}
         </>
@@ -339,7 +400,7 @@ function InventoryContent() {
           onClose={() => setShowItemDrawer(false)}
           onSaved={() => {
             setShowItemDrawer(false);
-            setRefreshKey((key) => key + 1);
+            setStockRefreshKey((key) => key + 1);
           }}
         />
       )}
@@ -351,7 +412,7 @@ function InventoryContent() {
           onClose={() => setAdjustingItem(null)}
           onSaved={() => {
             setAdjustingItem(null);
-            setRefreshKey((key) => key + 1);
+            setStockRefreshKey((key) => key + 1);
           }}
         />
       )}
@@ -362,7 +423,7 @@ function InventoryContent() {
           onClose={() => setShowCustomerFabricDrawer(false)}
           onSaved={() => {
             setShowCustomerFabricDrawer(false);
-            setRefreshKey((key) => key + 1);
+            setFabricRefreshKey((key) => key + 1);
           }}
         />
       )}

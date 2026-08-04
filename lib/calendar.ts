@@ -8,10 +8,13 @@ import {
 import { renderCommunicationTemplate } from "@/lib/communication-templates";
 import { getCommunicationTemplatesWithFallback } from "@/lib/data/communication-templates-db";
 import {
-  getJobCards,
+  getJobCardReportRows,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
-import { getAllOrders } from "@/lib/data/orders-db";
+import {
+  getOrderListRowsInDateRange,
+  getOrderListRowsInTrialDateRange,
+} from "@/lib/data/orders-db";
 import { getStaff } from "@/lib/data/staff-db";
 import { formatCurrency } from "@/lib/currency";
 import { isReceivableOrder } from "@/lib/order-finance";
@@ -59,10 +62,14 @@ export async function getCalendarData(
     includePayments: boolean;
   }
 ): Promise<CalendarData> {
-  const [orders, jobCards] = await Promise.all([
-    getAllOrders(supabase),
-    getCalendarJobCards(supabase, input.todayIso),
+  const [deliveryOrders, trialOrders, jobCards] = await Promise.all([
+    getOrderListRowsInDateRange(supabase, "delivery_date", input.startDate, input.endDate),
+    getOrderListRowsInTrialDateRange(supabase, input.startDate, input.endDate),
+    getCalendarJobCards(supabase, input.todayIso, input.startDate, input.endDate),
   ]);
+  const orders = Array.from(
+    new Map([...deliveryOrders, ...trialOrders].map((order) => [order.id, order])).values()
+  );
   const { templates } = await getCommunicationTemplatesWithFallback(supabase);
   const templateByType = new Map(templates.map((template) => [template.templateType, template]));
 
@@ -282,11 +289,16 @@ function isTemplateChannelEnabled(
 
 async function getCalendarJobCards(
   supabase: SupabaseClient,
-  todayIso: string
+  todayIso: string,
+  startDate: string,
+  endDate: string
 ) {
   try {
     const staffList = await getStaff(supabase).catch(() => []);
-    return await getJobCards(supabase, todayIso, staffList);
+    return await getJobCardReportRows(supabase, todayIso, staffList, {
+      dueFrom: startDate,
+      dueTo: endDate,
+    });
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) return [];
     throw error;

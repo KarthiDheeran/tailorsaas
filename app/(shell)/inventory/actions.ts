@@ -6,13 +6,16 @@ import {
   adjustInventoryStock,
   createCustomerFabric,
   createInventoryItem,
+  getInventoryItemsByIds,
   getCustomerFabrics,
+  getInventoryItemStats,
   getInventoryMovements,
   getInventoryItems,
   isMissingInventorySchemaError,
   updateCustomerFabricStatus,
   type CustomerFabricInput,
   type InventoryItemInput,
+  type InventoryItemStats,
   type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
 import {
@@ -50,39 +53,61 @@ const VALID_UNITS = new Set<InventoryUnit>(inventoryUnits);
 const VALID_MOVEMENT_TYPES = new Set<InventoryMovementType>(inventoryMovementTypes);
 const VALID_FABRIC_STATUSES = new Set<CustomerFabricStatus>(customerFabricStatuses);
 const VALID_PAYMENT_MODES = new Set<PaymentMode>(paymentModes);
+const DEFAULT_STOCK_ITEM_LIMIT = 300;
+const DEFAULT_CUSTOMER_FABRIC_LIMIT = 200;
 
 export interface InventoryPageData {
   items: InventoryItem[] | null;
+  itemStats: InventoryItemStats | null;
+  customerFabrics?: CustomerFabric[] | null;
+}
+
+export interface OrderInventoryData {
+  inventoryItems: InventoryItem[] | null;
+  inventoryMovements: InventoryMovement[] | null;
   customerFabrics: CustomerFabric[] | null;
 }
 
-export async function getInventoryItemsAction(): Promise<InventoryItem[] | null> {
+export async function getInventoryItemsAction(
+  options: { query?: string; limit?: number } = {}
+): Promise<InventoryItem[] | null> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "inventory.view");
   if (!guard.ok) return [];
+  const limit = Math.max(
+    1,
+    Math.min(options.limit ?? DEFAULT_STOCK_ITEM_LIMIT, DEFAULT_STOCK_ITEM_LIMIT)
+  );
   try {
-    return await getInventoryItems(supabase);
+    return await getInventoryItems(supabase, { query: options.query, limit });
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
     throw error;
   }
 }
 
-export async function getInventoryPageDataAction(): Promise<InventoryPageData> {
+export async function getInventoryPageDataAction(
+  options: { includeCustomerFabrics?: boolean; stockQuery?: string; stockLimit?: number } = {}
+): Promise<InventoryPageData> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "inventory.view");
-  if (!guard.ok) return { items: [], customerFabrics: [] };
+  if (!guard.ok) return { items: [], itemStats: { stockItemsCount: 0, lowStockCount: 0, stockValue: 0 }, customerFabrics: [] };
+  const stockLimit = Math.max(
+    1,
+    Math.min(options.stockLimit ?? DEFAULT_STOCK_ITEM_LIMIT, DEFAULT_STOCK_ITEM_LIMIT)
+  );
 
   const dataClient = createAdminClient();
   try {
-    const [items, customerFabrics] = await Promise.all([
-      getInventoryItems(dataClient),
-      getCustomerFabrics(dataClient),
+    const [items, itemStats, customerFabrics] = await Promise.all([
+      getInventoryItems(dataClient, { query: options.stockQuery, limit: stockLimit }),
+      getInventoryItemStats(dataClient),
+      options.includeCustomerFabrics ? getCustomerFabrics(dataClient) : Promise.resolve(undefined),
     ]);
-    return { items, customerFabrics };
+    return { items, itemStats, customerFabrics };
   } catch (error) {
     if (isMissingInventorySchemaError(error)) {
-      return { items: null, customerFabrics: null };
+      return { items: null, itemStats: null, customerFabrics: null };
     }
     throw error;
   }
@@ -96,6 +121,30 @@ export async function getInventoryMovementsAction(): Promise<InventoryMovement[]
     return await withPerformanceContext("getInventoryMovementsAction", () => profileDataFunction({ functionName: "getInventoryMovements", tableOrRpc: "inventory_movements" }, () => getInventoryMovements(supabase)));
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getOrderInventoryDataAction(orderId: string): Promise<OrderInventoryData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.view");
+  if (!guard.ok) {
+    return { inventoryItems: [], inventoryMovements: [], customerFabrics: [] };
+  }
+  try {
+    const [inventoryMovements, customerFabrics] = await Promise.all([
+      getInventoryMovements(supabase, undefined, { orderId }),
+      getCustomerFabrics(supabase, { orderId }),
+    ]);
+    const inventoryItems = await getInventoryItemsByIds(
+      supabase,
+      inventoryMovements.map((movement) => movement.itemId)
+    );
+    return { inventoryItems, inventoryMovements, customerFabrics };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { inventoryItems: null, inventoryMovements: null, customerFabrics: null };
+    }
     throw error;
   }
 }
@@ -210,12 +259,21 @@ async function createInventoryPurchaseExpenseBestEffort(input: {
   }
 }
 
-export async function getCustomerFabricsAction(): Promise<CustomerFabric[] | null> {
+export async function getCustomerFabricsAction(
+  options: { query?: string; limit?: number } = {}
+): Promise<CustomerFabric[] | null> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "inventory.view");
   if (!guard.ok) return [];
+  const limit = Math.max(
+    1,
+    Math.min(options.limit ?? DEFAULT_CUSTOMER_FABRIC_LIMIT, DEFAULT_CUSTOMER_FABRIC_LIMIT)
+  );
   try {
-    return await getCustomerFabrics(supabase);
+    return await getCustomerFabrics(supabase, {
+      query: options.query,
+      limit,
+    });
   } catch (error) {
     if (isMissingInventorySchemaError(error)) return null;
     throw error;

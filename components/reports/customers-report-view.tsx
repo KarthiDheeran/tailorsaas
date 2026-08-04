@@ -8,6 +8,7 @@ import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
 import {
   getCustomersReportAction,
@@ -44,6 +45,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
   });
   const [area, setArea] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
+  const debouncedCustomerQuery = useDebouncedValue(customerQuery);
   const [hasBalanceOnly, setHasBalanceOnly] = useState(false);
   const [repeatOnly, setRepeatOnly] = useState(false);
   const [inactiveOnly, setInactiveOnly] = useState(false);
@@ -72,7 +74,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
       {
         range,
         area: area || undefined,
-        customerQuery,
+        customerQuery: debouncedCustomerQuery,
         hasBalanceOnly,
         repeatOnly,
         inactiveOnly,
@@ -85,7 +87,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, area, customerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]);
+  }, [range.from, range.to, area, debouncedCustomerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]);
 
   function handleExport() {
     downloadCsv(

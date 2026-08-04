@@ -41,6 +41,9 @@ const LEGACY_STAFF_COLUMNS = `
   emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 
+const STAFF_OPTION_COLUMNS = "id, tenant_id, shop_id, staff_number, staff_code, name, role, status";
+const LEGACY_STAFF_OPTION_COLUMNS = "id, staff_number, staff_code, name, role, status";
+
 interface StaffRow {
   id: string;
   tenant_id?: string | null;
@@ -59,6 +62,28 @@ interface StaffRow {
   base_salary: number | null;
   piece_rates: Partial<Record<string, number>> | null;
   garment_stage_rates: Record<string, Partial<Record<string, number>>> | null;
+}
+
+interface StaffOptionRow {
+  id: string;
+  tenant_id?: string | null;
+  shop_id?: string | null;
+  staff_number: string;
+  staff_code: number;
+  name: string;
+  role: StaffRole;
+  status: StaffStatus;
+}
+
+export interface StaffOption {
+  id: string;
+  tenantId?: string;
+  shopId?: string;
+  staffNumber: string;
+  staffCode?: number;
+  name: string;
+  role: StaffRole;
+  status: StaffStatus;
 }
 
 function mapStaff(row: StaffRow): Staff {
@@ -82,6 +107,19 @@ function mapStaff(row: StaffRow): Staff {
   };
 }
 
+function mapStaffOption(row: StaffOptionRow): StaffOption {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id ?? undefined,
+    shopId: row.shop_id ?? undefined,
+    staffNumber: String(row.staff_code ?? row.staff_number),
+    staffCode: row.staff_code ?? undefined,
+    name: row.name,
+    role: row.role,
+    status: row.status,
+  };
+}
+
 export async function getStaff(supabase: SupabaseClient): Promise<Staff[]> {
   let { data, error } = await supabase
     .from("staff")
@@ -94,6 +132,35 @@ export async function getStaff(supabase: SupabaseClient): Promise<Staff[]> {
   }
   if (error) throw error;
   return ((data as unknown as StaffRow[]) ?? []).map(mapStaff);
+}
+
+export async function getStaffOptions(
+  supabase: SupabaseClient,
+  options: { activeOnly?: boolean } = {}
+): Promise<StaffOption[]> {
+  let query = supabase
+    .from("staff")
+    .select(STAFF_OPTION_COLUMNS)
+    .order("name");
+  if (options.activeOnly) query = query.eq("status", "Active");
+  let { data, error } = await query;
+  if (isMissingStaffShopColumnError(error)) {
+    let fallback = supabase.from("staff").select(LEGACY_STAFF_OPTION_COLUMNS).order("name");
+    if (options.activeOnly) fallback = fallback.eq("status", "Active");
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as StaffOptionRow[]) ?? []).map(mapStaffOption);
+}
+
+export function filterStaffOptionsForShop(
+  staff: StaffOption[],
+  shopId: string | null | undefined
+): StaffOption[] {
+  if (!shopId) return staff;
+  return staff.filter((member) => !member.shopId || member.shopId === shopId);
 }
 
 export async function getStaffById(
@@ -462,8 +529,14 @@ export function isMissingStaffWorkEarningsSchemaError(error: unknown): boolean {
   return code === "42P01" || code === "PGRST205" || message.includes("staff_work_earnings");
 }
 
-export async function getStaffPayments(supabase: SupabaseClient): Promise<StaffPayment[]> {
-  const { data, error } = await supabase.from("staff_payments").select(STAFF_PAYMENT_COLUMNS);
+export async function getStaffPayments(
+  supabase: SupabaseClient,
+  options: { fromIso?: string; toIso?: string } = {}
+): Promise<StaffPayment[]> {
+  let query = supabase.from("staff_payments").select(STAFF_PAYMENT_COLUMNS);
+  if (options.fromIso) query = query.gte("date", options.fromIso);
+  if (options.toIso) query = query.lte("date", options.toIso);
+  const { data, error } = await query;
   if (error) throw error;
   return ((data as unknown as StaffPaymentRow[]) ?? []).map(mapStaffPayment);
 }
@@ -481,12 +554,16 @@ export async function getStaffPaymentsForStaff(
 }
 
 export async function getStaffWorkEarnings(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  options: { fromIso?: string; toIso?: string } = {}
 ): Promise<StaffWorkEarning[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("staff_work_earnings")
     .select(STAFF_WORK_EARNING_COLUMNS)
     .order("completed_date", { ascending: false });
+  if (options.fromIso) query = query.gte("completed_date", options.fromIso);
+  if (options.toIso) query = query.lte("completed_date", options.toIso);
+  const { data, error } = await query;
   if (error) {
     if (isMissingStaffWorkEarningsSchemaError(error)) return [];
     throw error;

@@ -27,9 +27,7 @@ import {
   PaymentStatusBadge,
 } from "@/components/orders/orders-table";
 import {
-  getFinancialAdjustmentsForOrderAction,
-  getOrderAttachmentsAction,
-  getPaymentsForOrderAction,
+  getOrderDrawerDetailsAction,
 } from "@/app/(shell)/orders/actions";
 import { RecordPaymentModal } from "@/components/orders/record-payment-modal";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -215,40 +213,23 @@ export function OrderDetailsDrawer({
   const orderId = order?.id;
 
   useEffect(() => {
-    if (!order || !canViewPayments) {
+    if (!orderId) {
       setPayments([]);
       setAdjustments([]);
-      return;
-    }
-    let cancelled = false;
-    Promise.all([
-      getPaymentsForOrderAction(order.id),
-      getFinancialAdjustmentsForOrderAction(order.id),
-    ]).then(([paymentResult, adjustmentResult]) => {
-      if (!cancelled) {
-        setPayments(paymentResult);
-        setAdjustments(adjustmentResult);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.id, canViewPayments]);
-
-  useEffect(() => {
-    if (!orderId) {
       setAttachments([]);
       return;
     }
     let cancelled = false;
-    getOrderAttachmentsAction(orderId).then((result) => {
-      if (!cancelled) setAttachments(result);
+    getOrderDrawerDetailsAction(orderId).then((result) => {
+      if (cancelled) return;
+      setPayments(canViewPayments ? result.payments : []);
+      setAdjustments(canViewPayments ? result.adjustments : []);
+      setAttachments(result.attachments);
     });
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [canViewPayments, orderId]);
 
   function handlePaymentChanged(result: { order: Order; payments: Payment[] }) {
     setPayments(result.payments);

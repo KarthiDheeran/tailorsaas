@@ -1,6 +1,7 @@
 import type { CatalogAddOn, CatalogGarmentType, GarmentTypeConfiguration } from "@/lib/catalog";
 import type { ShopBillingSettings } from "@/lib/data/shop-billing-settings-db";
 import type { ShopOrderPreferences } from "@/lib/data/shop-order-preferences-db";
+import type { CustomerDetail } from "@/lib/customers-db";
 import type { Customer } from "@/lib/types";
 
 type CacheEntry<T> = {
@@ -21,11 +22,18 @@ export type NewOrderOperatorStaff = {
   staff_code?: number;
 }[];
 
+export type NewOrderTodayItemSummary = {
+  garment: string;
+  qty: number;
+}[];
+
 const CACHE_PREFIX = "newlook:new-order";
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 const SETTINGS_TTL_MS = 5 * 60 * 1000;
 const CUSTOMER_TTL_MS = 10 * 60 * 1000;
 const STAFF_TTL_MS = 10 * 60 * 1000;
+const TODAY_SUMMARY_TTL_MS = 2 * 60 * 1000;
+const CUSTOMER_DETAIL_TTL_MS = 2 * 60 * 1000;
 
 function key(scopeId: string, name: string) {
   return `${CACHE_PREFIX}:${scopeId}:${name}:v1`;
@@ -145,4 +153,50 @@ export function writeNewOrderOperatorStaff(
 
 export function clearNewOrderOperatorStaff(scopeId?: string) {
   clear(scopeId, "operator-staff");
+}
+
+function todaySummaryCacheName(todayIso: string) {
+  return `today-summary:${todayIso}`;
+}
+
+export function readNewOrderTodayItemSummary(
+  scopeId: string | undefined,
+  todayIso: string
+) {
+  return read<NewOrderTodayItemSummary>(
+    scopeId,
+    todaySummaryCacheName(todayIso),
+    TODAY_SUMMARY_TTL_MS
+  );
+}
+
+export function writeNewOrderTodayItemSummary(
+  scopeId: string | undefined,
+  todayIso: string,
+  summary: NewOrderTodayItemSummary
+) {
+  write(scopeId, todaySummaryCacheName(todayIso), summary);
+}
+
+function customerDetailCacheName(customerId: string) {
+  return `customer-detail:${customerId}`;
+}
+
+export function readNewOrderCustomerDetail(
+  scopeId: string | undefined,
+  customerId: string
+) {
+  return read<CustomerDetail>(
+    scopeId,
+    customerDetailCacheName(customerId),
+    CUSTOMER_DETAIL_TTL_MS
+  );
+}
+
+export function writeNewOrderCustomerDetail(
+  scopeId: string | undefined,
+  customerId: string,
+  detail: CustomerDetail
+) {
+  write(scopeId, customerDetailCacheName(customerId), detail);
 }

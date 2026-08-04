@@ -30,8 +30,9 @@ import {
 } from "@/lib/data/job-card-activity-db";
 import {
   createJobCardStageSlip,
+  createJobCardStageSlipForOrder,
   assignJobCardStageSlipForTally,
-  getFirstJobCardStageSlip,
+  getJobCardStageSlipsForOrders,
   getJobCardStageSlipsByIds,
   getJobCardStageSlipById,
   getJobCardStageSlipByScanCode,
@@ -41,18 +42,27 @@ import {
   type CreateJobCardStageSlipInput,
   type JobCardStageSlip,
 } from "@/lib/data/job-card-stage-slips-db";
-import { getAllOrders, getOrderById } from "@/lib/data/orders-db";
 import {
-  getStaff,
+  getActiveOrderIds,
+  getOrderById,
+  getProductionPrintOrderRows,
+  getOrdersByIds,
+} from "@/lib/data/orders-db";
+import {
+  filterStaffOptionsForShop,
+  getStaffById,
+  getStaffOptions,
   recordStaffPayment,
   getWorkAssignments,
   getWorkAssignmentsForStaff,
+  type StaffOption,
 } from "@/lib/data/staff-db";
 import {
   adjustInventoryStock,
   createCustomerFabric,
   getCustomerFabrics,
   getInventoryItems,
+  getInventoryItemsByIds,
   getInventoryMovements,
   isMissingInventorySchemaError,
   type CustomerFabricInput,
@@ -68,7 +78,6 @@ import type {
   InventoryUnit,
   JobCardActivityLog,
   Order,
-  Staff,
   PaymentMode,
   TaskPriority,
   TaskType,
@@ -149,7 +158,7 @@ async function requireStaffSameShopForOrder(
   const admin = createAdminClient();
   const [order, staff] = await Promise.all([
     getOrderById(admin, orderId),
-    getStaff(admin).then((members) => members.find((member) => member.id === staffId)),
+    getStaffById(admin, staffId),
   ]);
   if (!order) return "Order not found.";
   if (!staff) return "Staff member not found.";
@@ -167,11 +176,32 @@ async function requireStaffSameShopForOrder(
 export interface JobCardsPageData {
   jobCards: JobCard[] | null;
   orders: Order[];
-  staff: Staff[];
+  staff: StaffOption[];
   assignments: WorkAssignment[];
   customerFabrics: CustomerFabric[] | null;
   inventoryItems: InventoryItem[] | null;
   inventoryMovements: InventoryMovement[] | null;
+}
+
+export interface JobCardInventoryContext {
+  customerFabrics: CustomerFabric[] | null;
+  inventoryItems: InventoryItem[] | null;
+  inventoryMovements: InventoryMovement[] | null;
+}
+
+export interface JobCardTallyPageData {
+  slips: JobCardStageSlip[];
+  staff: StaffOption[];
+}
+
+export async function getProductionPrintOrdersAction(): Promise<Order[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+  return profileDataFunction(
+    { functionName: "getProductionPrintOrders", tableOrRpc: "orders,order_items" },
+    () => getProductionPrintOrderRows(supabase)
+  );
 }
 
 function attachStageSlipCodesToJobCards(
@@ -180,18 +210,20 @@ function attachStageSlipCodesToJobCards(
 ): JobCard[] | null {
   if (!cards || cards.length === 0 || slips.length === 0) return cards;
   const slipRefsByCardId = new Map<string, { slipCode: string; stage: TaskType }[]>();
+  const cardsByOrderLine = new Map<string, JobCard[]>();
+  for (const card of cards) {
+    const key = `${card.orderId}:${card.item.serialNo}`;
+    const current = cardsByOrderLine.get(key) ?? [];
+    current.push(card);
+    cardsByOrderLine.set(key, current);
+  }
   for (const slip of slips) {
     const firstUnit = slip.unitNo;
     const lastUnit = slip.unitNo + Math.max(1, slip.quantity) - 1;
-    for (const card of cards) {
-      if (
-        card.orderId !== slip.orderId ||
-        card.item.serialNo !== slip.orderItemSerialNo ||
-        card.unitNo < firstUnit ||
-        card.unitNo > lastUnit
-      ) {
-        continue;
-      }
+    const matchingCards =
+      cardsByOrderLine.get(`${slip.orderId}:${slip.orderItemSerialNo}`) ?? [];
+    for (const card of matchingCards) {
+      if (card.unitNo < firstUnit || card.unitNo > lastUnit) continue;
       const current = slipRefsByCardId.get(card.id) ?? [];
       if (!current.some((entry) => entry.slipCode === slip.slipCode)) {
         current.push({ slipCode: slip.slipCode, stage: slip.stage });
@@ -231,7 +263,7 @@ export async function getJobCardsAction(todayIso: string): Promise<JobCard[] | n
       : undefined;
 
   try {
-    const staffList = await getStaff(supabase).catch(() => []);
+    const staffList = await getStaffOptions(supabase).catch(() => []);
     const [cards, slips] = await Promise.all([
       getJobCards(supabase, todayIso, staffList, { assignedStaffId }),
       getTalliedJobCardStageSlips(supabase),
@@ -273,7 +305,7 @@ export async function getJobCardsPageDataAction(
     !hasAnyPermission(permissions, ["orders.view", "orders.edit", "staff.manage"]);
   const assignedStaffId = ownWorkOnly ? context!.staffId! : undefined;
 
-  const staffRead = getStaff(supabase);
+  const staffRead = getStaffOptions(supabase);
   const staffForCards = canViewStaff ? await staffRead : await staffRead.catch(() => []);
   const visibleStaff = assignedStaffId
     ? staffForCards.filter((staff) => staff.id === assignedStaffId)
@@ -284,7 +316,12 @@ export async function getJobCardsPageDataAction(
       throw error;
     }),
     profileDataFunction({ functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" }, () => getTalliedJobCardStageSlips(supabase)),
-    canViewOrders && !assignedStaffId ? profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)) : Promise.resolve([]),
+    canViewOrders && !assignedStaffId
+      ? profileDataFunction(
+          { functionName: "getProductionPrintOrderRows", tableOrRpc: "orders,order_items" },
+          () => getProductionPrintOrderRows(supabase)
+        )
+      : Promise.resolve([]),
     canViewStaff ? Promise.resolve(visibleStaff) : Promise.resolve([]),
     canViewStaff
       ? assignedStaffId
@@ -468,7 +505,7 @@ export async function quickTallyJobCardStageSlipAction(
     const admin = createAdminClient();
     const [slip, staff] = await Promise.all([
       getJobCardStageSlipByScanCode(admin, normalizedCode),
-      getStaff(admin).then((members) => members.find((member) => member.id === normalizedStaffId)),
+      getStaffById(admin, normalizedStaffId),
     ]);
     if (!slip) return { success: false, error: "Job card not found." };
     if (slip.talliedAt) return { success: false, error: `Already tallied for ${slip.staffName}. No payroll was added.` };
@@ -536,16 +573,89 @@ export async function quickTallyJobCardStageSlipAction(
   }
 }
 
-export async function getQuickTallyStaffAction(): Promise<Staff[]> {
+export async function getQuickTallyStaffAction(): Promise<StaffOption[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return [];
   const context = await getServerCallerContext(supabase);
-  return (await getStaff(supabase)).filter(
-    (staff) =>
-      staff.status === "Active" &&
-      (!context?.shopId || !staff.shopId || staff.shopId === context.shopId)
+  return filterStaffOptionsForShop(
+    await getStaffOptions(supabase, { activeOnly: true }),
+    context?.shopId
   );
+}
+
+export async function getJobCardTallyPageDataAction(
+  fromIso: string,
+  toIso: string
+): Promise<JobCardTallyPageData> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { slips: [], staff: [] };
+  if (!ISO_DATE.test(fromIso) || !ISO_DATE.test(toIso)) {
+    throw new Error("A valid tally date range is required.");
+  }
+  const context = await getServerCallerContext(supabase);
+  const [slips, staff] = await Promise.all([
+    profileDataFunction(
+      { functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" },
+      () => getTalliedJobCardStageSlips(supabase, { fromIso, toIso })
+    ),
+    getStaffOptions(supabase, { activeOnly: true }),
+  ]);
+  return {
+    slips,
+    staff: filterStaffOptionsForShop(staff, context?.shopId),
+  };
+}
+
+export async function getTalliedJobCardStageSlipsForRangeAction(
+  fromIso: string,
+  toIso: string
+): Promise<JobCardStageSlip[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return [];
+  if (!ISO_DATE.test(fromIso) || !ISO_DATE.test(toIso)) {
+    throw new Error("A valid tally date range is required.");
+  }
+  return withPerformanceContext("getTalliedJobCardStageSlipsForRangeAction", async () =>
+    profileDataFunction(
+      { functionName: "getTalliedJobCardStageSlips", tableOrRpc: "job_card_stage_slips" },
+      () => getTalliedJobCardStageSlips(supabase, { fromIso, toIso })
+    )
+  );
+}
+
+export async function getJobCardsForOrderAction(
+  orderId: string,
+  todayIso: string
+): Promise<JobCard[] | null> {
+  const supabase = createServerClient();
+  const context = await getServerCallerContext(supabase);
+  const permissions = context?.permissions ?? null;
+  if (!hasAnyPermission(permissions, ["orders.view", "staff.view"])) return [];
+
+  const assignedStaffId =
+    context &&
+    context.staffId &&
+    !hasAnyPermission(context.permissions, ["orders.view", "orders.edit", "staff.manage"])
+      ? context.staffId
+      : undefined;
+
+  try {
+    const staffList = await getStaffOptions(supabase).catch(() => []);
+    const [cards, slips] = await Promise.all([
+      getJobCards(supabase, todayIso, staffList, { assignedStaffId, orderId }),
+      getTalliedJobCardStageSlips(supabase),
+    ]);
+    return attachStageSlipCodesToJobCards(
+      cards,
+      slips.filter((slip) => slip.orderId === orderId && !isCompatibilityStageSlip(slip))
+    );
+  } catch (error) {
+    if (isMissingJobCardsSchemaError(error)) return null;
+    throw error;
+  }
 }
 
 async function missingCompletedStitchingUnitsForOrder(order: Order): Promise<number> {
@@ -696,24 +806,55 @@ export async function createProductionPrintBundleAction(
   if (!guard.ok) return { success: false, error: guard.error };
 
   try {
-    const slips: JobCardStageSlip[] = [];
-    for (const orderId of uniqueOrderIds) {
-      const order = await getOrderById(supabase, orderId);
-      if (!order || order.status === "Cancelled" || order.status === "Delivered") continue;
-      for (const item of order.items) {
-        const quantity = Math.max(1, item.qty);
-        for (const stage of ["Cutting", "Stitching"] as const) {
-          const input = {
-            orderId,
+    const orders = await getOrdersByIds(supabase, uniqueOrderIds);
+    const ordersById = new Map(orders.map((order) => [order.id, order]));
+    const existingSlips = await getJobCardStageSlipsForOrders(
+      supabase,
+      orders.map((order) => order.id)
+    );
+    const existingByBundleKey = new Map(
+      existingSlips.map((slip) => [
+        `${slip.orderId}:${slip.orderItemSerialNo}:${slip.unitNo}:${slip.quantity}:${slip.stage}`,
+        slip,
+      ])
+    );
+    const bundleInputs = orders
+      .filter((order) => order.status !== "Cancelled" && order.status !== "Delivered")
+      .flatMap((order) =>
+        order.items.flatMap((item) => {
+          const quantity = Math.max(1, item.qty);
+          return (["Cutting", "Stitching"] as const).map((stage) => ({
+            orderId: order.id,
             orderItemSerialNo: item.serialNo,
             unitNo: 1,
             quantity,
             stage,
-          };
-          const existing = await getFirstJobCardStageSlip(supabase, input);
-          slips.push(existing ?? await createJobCardStageSlip(supabase, input));
-        }
-      }
+          }));
+        })
+      );
+    const createdByBundleKey = new Map<string, JobCardStageSlip>();
+    const missingInputs = bundleInputs.filter((input) => {
+      const key = `${input.orderId}:${input.orderItemSerialNo}:${input.unitNo}:${input.quantity}:${input.stage}`;
+      return !existingByBundleKey.has(key);
+    });
+    const createdSlips = await Promise.all(
+      missingInputs.map((input) => {
+        const order = ordersById.get(input.orderId);
+        if (!order) throw new Error("Order not found.");
+        return createJobCardStageSlipForOrder(supabase, order, input);
+      })
+    );
+    for (const slip of createdSlips) {
+      createdByBundleKey.set(
+        `${slip.orderId}:${slip.orderItemSerialNo}:${slip.unitNo}:${slip.quantity}:${slip.stage}`,
+        slip
+      );
+    }
+    const slips: JobCardStageSlip[] = [];
+    for (const input of bundleInputs) {
+      const key = `${input.orderId}:${input.orderItemSerialNo}:${input.unitNo}:${input.quantity}:${input.stage}`;
+      const slip = existingByBundleKey.get(key) ?? createdByBundleKey.get(key);
+      if (slip) slips.push(slip);
     }
     return { success: true, data: slips };
   } catch (error) {
@@ -727,8 +868,8 @@ export async function getProductionPrintBundleAction(ids: string[]): Promise<Job
   if (!guard.ok) return [];
   const slips = await getJobCardStageSlipsByIds(supabase, Array.from(new Set(ids.filter(Boolean))));
   const orderIds = Array.from(new Set(slips.map((slip) => slip.orderId)));
-  const orders = await Promise.all(orderIds.map((orderId) => getOrderById(supabase, orderId)));
-  const ordersById = new Map(orders.filter(Boolean).map((order) => [order!.id, order!]));
+  const orders = await getOrdersByIds(supabase, orderIds);
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
   return slips.map((slip) => {
     const item = ordersById
       .get(slip.orderId)
@@ -874,6 +1015,34 @@ export async function getTalliedJobCardStageSlipsAction(): Promise<JobCardStageS
   });
 }
 
+export async function getJobCardInventoryContextAction(
+  input: { orderId: string; jobCardId: string; includeStockItems?: boolean }
+): Promise<JobCardInventoryContext> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (!hasAnyPermission(permissions, ["inventory.view", "inventory.manage"])) {
+    return { customerFabrics: [], inventoryItems: [], inventoryMovements: [] };
+  }
+
+  try {
+    const [customerFabrics, inventoryMovements] = await Promise.all([
+      getCustomerFabrics(supabase, { orderId: input.orderId }),
+      getInventoryMovements(supabase, undefined, { jobCardId: input.jobCardId }),
+    ]);
+    const movementItemIds = inventoryMovements.map((movement) => movement.itemId);
+    const inventoryItems = input.includeStockItems
+      ? await getInventoryItems(supabase)
+      : await getInventoryItemsByIds(supabase, movementItemIds);
+
+    return { customerFabrics, inventoryItems, inventoryMovements };
+  } catch (error) {
+    if (isMissingInventorySchemaError(error)) {
+      return { customerFabrics: null, inventoryItems: null, inventoryMovements: null };
+    }
+    throw error;
+  }
+}
+
 export async function assignJobCardAction(
   id: string,
   data: JobCardAssignmentInput
@@ -949,7 +1118,7 @@ export async function transferJobCardAction(
     const shopError = await requireStaffSameShopForOrder(before.orderId, data.newStaffId);
     if (shopError) return { success: false, error: shopError };
     const transfer = await transferJobCard(admin, id, data.newStaffId);
-    const staff = await getStaff(admin);
+    const staff = await getStaffOptions(admin);
     const previousStaffName =
       staff.find((member) => member.id === transfer.previousStaffId)?.name ?? "previous tailor";
     const newStaffName =
@@ -1381,14 +1550,11 @@ export async function syncMissingJobCardsAction(): Promise<ActionResult<{ synced
   if (!guard.ok) return { success: false, error: guard.error };
 
   try {
-    const orders = await getAllOrders(supabase);
-    const activeOrders = orders.filter(
-      (order) => order.status !== "Delivered" && order.status !== "Cancelled"
-    );
-    for (const order of activeOrders) {
-      await syncJobCardsForOrder(supabase, order.id);
+    const activeOrderIds = await getActiveOrderIds(supabase);
+    for (const orderId of activeOrderIds) {
+      await syncJobCardsForOrder(supabase, orderId);
     }
-    return { success: true, data: { synced: activeOrders.length } };
+    return { success: true, data: { synced: activeOrderIds.length } };
   } catch (error) {
     if (isMissingJobCardsSchemaError(error)) {
       return { success: false, error: "Job cards are not enabled in this database yet." };

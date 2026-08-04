@@ -76,12 +76,20 @@ export function EditOrderForm({
   order,
   customer,
   initialAttachments = [],
+  initialGarmentTypes,
+  initialAddOns,
+  initialGarmentConfigurations,
+  initialBillingSettings,
   onCancel,
   onSaved,
 }: {
   order: Order;
   customer: Customer | undefined;
   initialAttachments?: OrderAttachment[];
+  initialGarmentTypes?: CatalogGarmentType[];
+  initialAddOns?: CatalogAddOn[];
+  initialGarmentConfigurations?: GarmentTypeConfiguration[];
+  initialBillingSettings?: ShopBillingSettings;
   onCancel: () => void;
   onSaved: (order: Order) => void;
 }) {
@@ -90,10 +98,10 @@ export function EditOrderForm({
   const canViewPayments = hasPermission("orders.viewPayments");
   const availableStatuses = getAvailableOrderStatuses(effectivePermissions);
 
-  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
-  const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
-  const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
-  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>(initialGarmentTypes ?? []);
+  const [addOns, setAddOns] = useState<CatalogAddOn[]>(initialAddOns ?? []);
+  const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>(initialGarmentConfigurations ?? []);
+  const [catalogLoaded, setCatalogLoaded] = useState(Boolean(initialGarmentTypes && initialAddOns && initialGarmentConfigurations));
   const [orderDate, setOrderDate] = useState(order.orderDate);
   const [deliveryDate, setDeliveryDate] = useState(order.deliveryDate);
   const [trialDate, setTrialDate] = useState(order.trialDate ?? "");
@@ -114,7 +122,7 @@ export function EditOrderForm({
   const attachmentsSectionRef = useRef<HTMLDivElement | null>(null);
   const [highlightAttachments, setHighlightAttachments] = useState(false);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
-    DEFAULT_SHOP_BILLING_SETTINGS
+    initialBillingSettings ?? DEFAULT_SHOP_BILLING_SETTINGS
   );
 
   const initialEditableAttachments = initialAttachments.map((attachment) => {
@@ -129,6 +137,14 @@ export function EditOrderForm({
   });
 
   useEffect(() => {
+    if (initialGarmentTypes && initialAddOns && initialGarmentConfigurations) {
+      setGarmentTypes(initialGarmentTypes);
+      setAddOns(initialAddOns);
+      setGarmentConfigurations(initialGarmentConfigurations);
+      setBillingSettings(initialBillingSettings ?? DEFAULT_SHOP_BILLING_SETTINGS);
+      setCatalogLoaded(true);
+      return;
+    }
     let cancelled = false;
     Promise.all([
       getGarmentTypesAction(),
@@ -163,7 +179,7 @@ export function EditOrderForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialAddOns, initialBillingSettings, initialGarmentConfigurations, initialGarmentTypes]);
 
   useEffect(() => {
     setOrderDate(order.orderDate);
@@ -427,24 +443,29 @@ export function EditOrderForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 pb-24">
+    <form onSubmit={handleSubmit} className="space-y-2 pb-24">
       {error && (
         <div className="rounded-lg bg-chip-red px-4 py-2.5 text-sm font-medium text-chip-red-fg">
           {error}
         </div>
       )}
 
-      <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-[17px] font-semibold text-ink">
-            {t("orders.customer")}
-          </h3>
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium text-ink-muted">Status</span>
+      <div className="rounded-lg border border-[#c9d7ea] bg-white p-3 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-border-soft pb-2">
+          <div>
+            <p className="text-sm font-semibold text-ink">Order Information</p>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              Editing {order.orderNumber} for {customerName(customer, order)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-primary/30 bg-primary-tint px-3 py-1.5 text-sm font-bold text-primary">
+              {order.orderNumber}
+            </span>
             <Select
               value={status}
               onChange={(e) => setStatus(e.target.value as OrderStatus)}
-              className="h-9 py-0 text-xs font-semibold"
+              className="h-8 rounded-md py-0 text-xs font-semibold"
             >
               {(availableStatuses.includes(status)
                 ? availableStatuses
@@ -457,69 +478,91 @@ export function EditOrderForm({
             </Select>
           </div>
         </div>
-        <div className="rounded-lg border border-primary/20 bg-primary-tint px-4 py-3">
-          <div className="font-semibold text-ink">
-            {customerName(customer, order)}
-          </div>
-          <div className="mt-1 text-sm text-ink-muted">
-            {customerPhone(customer, order)} - {customerArea(customer, order)}
-          </div>
-        </div>
-      </div>
 
-      <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-        <h3 className="mb-4 text-[17px] font-semibold text-ink">
-          {t("orders.orderDates")}
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-ink-muted">
-              {t("orders.orderDate")}
-            </span>
-            <input
-              type="date"
-              required
-              value={orderDate}
-              onChange={(e) => setOrderDate(e.target.value)}
-              className={cn(
-                inputClass,
-                submitAttempted && orderDateError && "border-chip-red-fg"
-              )}
-            />
-            {submitAttempted && orderDateError && (
-              <p className="text-xs text-chip-red-fg">{orderDateError}</p>
+        <div className="grid grid-cols-1 gap-2 xl:grid-cols-[340px_minmax(420px,1fr)_260px] xl:items-start 2xl:grid-cols-[360px_minmax(460px,1fr)_280px]">
+          <div className="min-h-0 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2">
+            <p className="text-[11px] font-medium text-ink-muted">
+              {t("orders.customer")}
+            </p>
+            <p className="truncate text-base font-bold leading-5 text-ink">
+              {customerName(customer, order)}
+            </p>
+            <p className="truncate text-xs leading-4 text-ink-muted">
+              {customerPhone(customer, order)} <span aria-hidden="true">-</span> {customerArea(customer, order)}
+            </p>
+          </div>
+
+          <div className="min-w-0 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-ink">
+                {t("orders.orderDates")}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[13px] font-medium text-ink-muted">
+                  {t("orders.orderDate")}
+                </span>
+                <input
+                  type="date"
+                  required
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  className={cn(
+                    inputClass,
+                    "h-8 rounded-md px-2 text-xs",
+                    submitAttempted && orderDateError && "border-chip-red-fg"
+                  )}
+                />
+                {submitAttempted && orderDateError && (
+                  <p className="text-xs text-chip-red-fg">{orderDateError}</p>
+                )}
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[13px] font-medium text-ink-muted">
+                  {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
+                </span>
+                <input
+                  type="date"
+                  required
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className={cn(
+                    inputClass,
+                    "h-8 rounded-md px-2 text-xs",
+                    submitAttempted && deliveryDateError && "border-chip-red-fg"
+                  )}
+                />
+                {submitAttempted && deliveryDateError && (
+                  <p className="text-xs text-chip-red-fg">{deliveryDateError}</p>
+                )}
+              </label>
+            </div>
+          </div>
+
+          <div
+            id="attachments"
+            ref={attachmentsSectionRef}
+            tabIndex={-1}
+            className={cn(
+              "min-w-0 scroll-mt-6 rounded-md border border-[#d5e0f0] bg-[#fbfdff] p-2 outline-none transition-shadow",
+              highlightAttachments && "ring-2 ring-primary ring-offset-2 ring-offset-background"
             )}
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-ink-muted">
-              {t("orders.deliveryDate")} <span className="text-chip-red-fg">*</span>
-            </span>
-            <input
-              type="date"
-              required
-              value={deliveryDate}
-              onChange={(e) => setDeliveryDate(e.target.value)}
-              className={cn(
-                inputClass,
-                submitAttempted && deliveryDateError && "border-chip-red-fg"
-              )}
+          >
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-ink">Photo / Attachments</span>
+            </div>
+            <OrderAttachmentDraftCard
+              existing={existingAttachments}
+              removedExistingIds={removedAttachmentIds}
+              onRemovedExistingIdsChange={setRemovedAttachmentIds}
+              inlineSummary
+              compactSummary
+              queued={queuedAttachments}
+              onQueuedChange={setQueuedAttachments}
+              error={(submitAttempted && attachmentValidationError) || attachmentError}
             />
-            {submitAttempted && deliveryDateError && (
-              <p className="text-xs text-chip-red-fg">{deliveryDateError}</p>
-            )}
-          </label>
-          <label className="flex flex-col gap-1.5 sm:col-span-3">
-            <span className="text-[13px] font-medium text-ink-muted">
-              Delivery Promise Note
-            </span>
-            <textarea
-              value={deliveryPromiseNote}
-              onChange={(e) => setDeliveryPromiseNote(e.target.value)}
-              rows={2}
-              placeholder="Verbal promise, pickup timing, urgency, customer expectation..."
-              className="min-h-[44px] rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-            />
-          </label>
+          </div>
         </div>
       </div>
 
@@ -535,44 +578,44 @@ export function EditOrderForm({
             garmentConfigurationsLoaded={catalogLoaded}
             paymentStrip={
               canViewPayments ? (
-                <div className="grid gap-3 text-sm md:grid-cols-3 xl:grid-cols-[0.8fr_1.1fr_0.8fr_1.2fr_1.1fr]">
+                <div className="grid gap-2 rounded-md bg-[#eef4ff] p-2 text-sm sm:grid-cols-5 xl:grid-cols-5">
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="block text-[12px] font-medium text-ink-muted">
+                    <span className="block text-[11px] font-medium text-ink-muted">
                       {taxBreakdown && !taxBreakdown.pricesIncludeTax ? t("common.total") : "Subtotal"}
                     </span>
-                    <span className="flex h-9 items-center font-semibold text-ink">
+                    <span className="flex h-8 items-center text-sm font-bold text-ink">
                       {formatCurrency(totalAmount)}
                     </span>
                   </div>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="block text-[12px] font-medium text-ink-muted">
+                    <span className="block text-[11px] font-medium text-ink-muted">
                       {t("common.paid")}
                     </span>
-                    <span className="flex h-9 items-center font-semibold text-ink">
+                    <span className="flex h-8 items-center text-sm font-bold text-ink">
                       {formatCurrency(order.advancePaid)}
                     </span>
                   </div>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="block text-[12px] font-medium text-ink-muted">
+                    <span className="block text-[11px] font-medium text-ink-muted">
                       {t("common.balance")}
                     </span>
-                    <span className="flex h-9 items-center font-semibold text-ink">
+                    <span className={cn("flex h-8 items-center text-sm font-bold", balance > 0 ? "text-warning" : "text-success")}>
                       {formatCurrency(balance)}
                     </span>
                   </div>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="block text-[12px] font-medium text-ink-muted">
+                    <span className="block text-[11px] font-medium text-ink-muted">
                       {t("orders.paymentMode")}
                     </span>
-                    <span className="flex h-9 items-center font-semibold text-ink">
+                    <span className="flex h-8 items-center text-sm font-bold text-ink">
                       {order.paymentMode}
                     </span>
                   </div>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="block text-[12px] font-medium text-ink-muted">
+                    <span className="block text-[11px] font-medium text-ink-muted">
                       {t("orders.paymentStatus")}
                     </span>
-                    <div className="flex h-9 items-center">
+                    <div className="flex h-8 items-center">
                       <BalanceBadge order={draftOrder} todayIso={todayIso()} />
                     </div>
                   </div>
@@ -581,6 +624,7 @@ export function EditOrderForm({
             }
             autoSnapshotDefaultMeasurements
             excludeOrderId={order.id}
+            compact
           />
           {submitAttempted && itemsError && (
             <p className="-mt-3 text-sm font-medium text-chip-red-fg">{itemsError}</p>
@@ -590,41 +634,52 @@ export function EditOrderForm({
         <LoadingState label="Loading order items..." />
       )}
 
-      <div
-        id="attachments"
-        ref={attachmentsSectionRef}
-        tabIndex={-1}
-        className={cn(
-          "scroll-mt-6 rounded-xl outline-none transition-shadow",
-          highlightAttachments && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-        )}
-      >
-        <OrderAttachmentDraftCard
-          existing={existingAttachments}
-          removedExistingIds={removedAttachmentIds}
-          onRemovedExistingIdsChange={setRemovedAttachmentIds}
-          queued={queuedAttachments}
-          onQueuedChange={setQueuedAttachments}
-          error={(submitAttempted && attachmentValidationError) || attachmentError}
-        />
-      </div>
-
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border-soft bg-white/95 px-4 py-3 shadow-soft backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-2">
-          <button
-            type="submit"
-            disabled={submitting || !catalogLoaded}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
-          >
-            {submitting ? "Saving..." : t("common.saveChanges")}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="flex-1 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface-muted"
-          >
-            {t("common.cancel")}
-          </button>
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border-soft bg-white shadow-soft">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-7 2xl:max-w-[1760px]">
+          <div className="flex min-w-0 items-center gap-3 overflow-x-auto text-sm text-ink-muted">
+            {attachmentError ? (
+              <span className="whitespace-nowrap font-medium text-chip-red-fg">{attachmentError}</span>
+            ) : canViewPayments ? (
+              <>
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-ink-muted">{t("common.total")}</span>
+                  <span className="text-base font-bold text-ink">{formatCurrency(totalAmount)}</span>
+                </span>
+                <span aria-hidden="true" className="h-5 w-px bg-border" />
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-ink-muted">{t("common.paid")}</span>
+                  <span className="text-base font-bold text-ink">{formatCurrency(order.advancePaid)}</span>
+                </span>
+                <span aria-hidden="true" className="h-5 w-px bg-border" />
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-sm font-medium text-ink-muted">{t("common.balance")}</span>
+                  <span className={cn("text-base font-bold", balance > 0 ? "text-warning" : "text-success")}>
+                    {formatCurrency(balance)}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <span>
+                {validItems.length} item{validItems.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="rounded-lg px-3 py-2 text-[15px] font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !catalogLoaded}
+              className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
+            >
+              {submitting ? "Saving..." : t("common.saveChanges")}
+            </button>
+          </div>
         </div>
       </div>
     </form>

@@ -7,6 +7,7 @@ import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
 import { ReportStatCard } from "@/components/reports/report-stat-card";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
 import {
   getPaymentsReportAction,
@@ -57,6 +58,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
   const [paymentType, setPaymentType] = useState<PaymentType | "">("");
   const [customerQuery, setCustomerQuery] = useState("");
+  const debouncedCustomerQuery = useDebouncedValue(customerQuery);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [overdueOnly, setOverdueOnly] = useState(false);
 
@@ -77,7 +79,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
         range,
         paymentMode: paymentMode || undefined,
         paymentType: paymentType || undefined,
-        customerQuery,
+        customerQuery: debouncedCustomerQuery,
         pendingOnly,
         overdueOnly,
       },
@@ -94,7 +96,7 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
     range.to,
     paymentMode,
     paymentType,
-    customerQuery,
+    debouncedCustomerQuery,
     pendingOnly,
     overdueOnly,
     todayIso,

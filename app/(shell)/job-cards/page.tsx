@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   getJobCardActivityLogsAction,
+  getJobCardInventoryContextAction,
   getJobCardsPageDataAction,
   syncMissingJobCardsAction,
   transferJobCardAction,
@@ -33,9 +34,9 @@ import type {
   JobCardActivityLog,
   Order,
   PaymentMode,
-  Staff,
   WorkAssignment,
 } from "@/lib/types";
+import type { StaffOption } from "@/lib/data/staff-db";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -287,7 +288,7 @@ function JobCardsContent() {
   const canManageInventory = hasPermission("inventory.manage");
   const todayIso = new Date().toISOString().slice(0, 10);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [persistedCards, setPersistedCards] = useState<JobCard[] | null>(null);
   const [customerFabrics, setCustomerFabrics] = useState<CustomerFabric[]>([]);
@@ -459,6 +460,45 @@ function JobCardsContent() {
     canManageStaff && persistedCards !== null && activeCount === 0 && activeOrderCount > 0;
   const canSyncStatusMismatch =
     canManageStaff && persistedCards !== null && statusMismatchCount > 0;
+
+  async function loadInventoryContext(card: JobCard, includeStockItems = false) {
+    if (!canViewInventory && !canManageInventory) return;
+    const result = await getJobCardInventoryContextAction({
+      orderId: card.orderId,
+      jobCardId: card.id,
+      includeStockItems,
+    });
+    const mergeById = <T extends { id: string }>(current: T[], incoming: T[] | null) => {
+      if (!incoming) return current;
+      const byId = new Map(current.map((item) => [item.id, item]));
+      for (const item of incoming) byId.set(item.id, item);
+      return Array.from(byId.values());
+    };
+    setCustomerFabrics((current) => mergeById(current, result.customerFabrics));
+    setInventoryMovements((current) => mergeById(current, result.inventoryMovements));
+    setInventoryItems((current) => mergeById(current, result.inventoryItems));
+  }
+
+  function openDetails(card: JobCard) {
+    setDetailsCard(card);
+    void loadInventoryContext(card).catch((error) => {
+      setLoadError(getErrorMessage(error, "Failed to load job card inventory details."));
+    });
+  }
+
+  function openFabric(card: JobCard) {
+    setFabricCard(card);
+    void loadInventoryContext(card).catch((error) => {
+      setLoadError(getErrorMessage(error, "Failed to load customer fabrics."));
+    });
+  }
+
+  function openStock(card: JobCard) {
+    setStockCard(card);
+    void loadInventoryContext(card, true).catch((error) => {
+      setLoadError(getErrorMessage(error, "Failed to load stock items."));
+    });
+  }
 
   async function createMissingJobCards() {
     setSyncingCards(true);
@@ -728,7 +768,7 @@ function JobCardsContent() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setDetailsCard(card);
+                                  openDetails(card);
                                   setOpenMenuCardId(null);
                                 }}
                                 className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
@@ -801,11 +841,11 @@ function JobCardsContent() {
             setDetailsCard(null);
           }}
           onRecordFabric={() => {
-            setFabricCard(detailsCard);
+            openFabric(detailsCard);
             setDetailsCard(null);
           }}
           onUseStock={() => {
-            setStockCard(detailsCard);
+            openStock(detailsCard);
             setDetailsCard(null);
           }}
           onClose={() => setDetailsCard(null)}
@@ -940,7 +980,7 @@ function JobCardTransferModal({
   onTransferred,
 }: {
   card: JobCard;
-  staff: Staff[];
+  staff: StaffOption[];
   onClose: () => void;
   onTransferred: () => void;
 }) {
@@ -1033,7 +1073,7 @@ function JobCardHistoryDrawer({
   onClose,
 }: {
   card: JobCard;
-  staff: Staff[];
+  staff: StaffOption[];
   onClose: () => void;
 }) {
   const [logs, setLogs] = useState<JobCardActivityLog[] | null | undefined>(undefined);

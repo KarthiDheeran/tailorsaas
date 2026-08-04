@@ -193,7 +193,9 @@ export function NewOrderSummaryPanel({
               <ShoppingBag className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               <span>{t("orders.totalOrders")}</span>
             </div>
-            <p className="mt-1 text-[22px] font-bold leading-none text-ink">{detail.orders.length}</p>
+            <p className="mt-1 text-[22px] font-bold leading-none text-ink">
+              {detail.totalOrdersCount ?? detail.orders.length}
+            </p>
           </div>
           <div className="rounded-xl border border-border-soft bg-white p-2.5">
             <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-muted">

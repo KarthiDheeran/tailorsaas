@@ -4,11 +4,11 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { requireServerPermission } from "@/lib/auth/require-server-permission";
-import { getCustomerById, getCustomers } from "@/lib/data/customers-db";
+import { getCustomerById } from "@/lib/data/customers-db";
 import {
   findOrderByOrderNumber,
   findOrderByScanToken,
-  getAllOrders,
+  getDeliveryDeskOrderRows,
   getOrderById,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
@@ -34,12 +34,6 @@ export interface DeliveryDeskOrder {
   customer?: Customer;
 }
 
-function isDeliveryDeskOrder(order: Order, todayIso: string): boolean {
-  if (order.status === "Cancelled" || order.status === "Delivered") return false;
-  if (order.status === "Ready") return true;
-  return order.deliveryDate <= todayIso;
-}
-
 function sortDeliveryDeskOrders(a: Order, b: Order): number {
   if (a.status === "Ready" && b.status !== "Ready") return -1;
   if (a.status !== "Ready" && b.status === "Ready") return 1;
@@ -57,18 +51,15 @@ export async function getDeliveryDeskOrdersAction(
   const guard = await requireServerPermission(supabase, "orders.view");
   if (!guard.ok) return [];
 
-  const [orders, customers] = await Promise.all([
-    profileDataFunction({ functionName: "getAllOrders", tableOrRpc: "orders,order_items" }, () => getAllOrders(supabase)),
-    profileDataFunction({ functionName: "getCustomers", tableOrRpc: "customers" }, () => getCustomers(supabase)),
-  ]);
-  const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+  const orders = await profileDataFunction(
+    { functionName: "getDeliveryDeskOrderRows", tableOrRpc: "orders,order_items" },
+    () => getDeliveryDeskOrderRows(supabase, todayIso)
+  );
 
   return orders
-    .filter((order) => isDeliveryDeskOrder(order, todayIso))
     .sort(sortDeliveryDeskOrders)
     .map((order) => ({
       order,
-      customer: customerById.get(order.customerId),
     }));
   });
 }

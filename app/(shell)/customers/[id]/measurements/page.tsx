@@ -5,15 +5,10 @@ import Link from "next/link";
 import { useRouter, notFound } from "next/navigation";
 import { CheckCircle2, ChevronDown, ChevronLeft, Printer } from "lucide-react";
 import {
-  getCustomerByIdAction,
-  getGarmentMeasurementsForCustomerAction,
+  getCustomerMeasurementsBootstrapAction,
   saveGarmentMeasurementAction,
 } from "@/app/(shell)/customers/actions";
-import {
-  getActiveGarmentTypesAction,
-  getGarmentTypeConfigurationAction,
-} from "@/app/(shell)/catalog/actions";
-import type { CatalogGarmentType } from "@/lib/catalog";
+import type { CatalogGarmentType, GarmentTypeConfiguration } from "@/lib/catalog";
 import type { Customer, GarmentMeasurement } from "@/lib/types";
 import { CustomerMeasurementsForm } from "@/components/customers/customer-measurements-form";
 import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
@@ -115,6 +110,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const { t } = useLanguage();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
+  const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
   const [measurements, setMeasurements] = useState<GarmentMeasurement[]>([]);
   const [selectedGarmentId, setSelectedGarmentId] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -133,15 +129,12 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getCustomerByIdAction(params.id),
-      getActiveGarmentTypesAction(),
-      getGarmentMeasurementsForCustomerAction(params.id),
-    ]).then(([c, garments, existingMeasurements]) => {
+    getCustomerMeasurementsBootstrapAction(params.id).then((data) => {
       if (cancelled) return;
-      setCustomer(c ?? null);
-      setGarmentTypes(garments);
-      setMeasurements(existingMeasurements);
+      setCustomer(data.customer ?? null);
+      setGarmentTypes(data.garmentTypes);
+      setGarmentConfigurations(data.garmentConfigurations);
+      setMeasurements(data.measurements);
       setSelectedGarmentId("");
       setFieldDraft({ typedValues: {}, passthroughValues: {} });
       setRuntimeFields([]);
@@ -156,6 +149,16 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
   const selectedGarment = useMemo(
     () => garmentTypes.find((garment) => garment.id === selectedGarmentId),
     [garmentTypes, selectedGarmentId]
+  );
+  const configurationsByGarmentId = useMemo(
+    () =>
+      new Map(
+        garmentConfigurations.map((configuration) => [
+          configuration.garment.id,
+          configuration,
+        ])
+      ),
+    [garmentConfigurations]
   );
   const selectedMeasurement = useMemo(
     () =>
@@ -211,17 +214,11 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
       required: false, unit: "inch", placeholder: null, options: [], min: null, max: null,
       decimalPlaces: 2, defaultValue: null,
     }));
-    void getGarmentTypeConfigurationAction(garmentId)
-      .then((configuration) => {
-        const resolved = resolveRuntimeGarmentFields(configuration?.fields ?? null, []);
-        const fields = resolved && resolved.length > 0 ? resolved : legacyFields;
-        setRuntimeFields(fields);
-        setFieldDraft(createGarmentFieldDraft(measurement?.values ?? {}, fields));
-      })
-      .catch(() => {
-        setRuntimeFields(legacyFields);
-        setFieldDraft(createGarmentFieldDraft(measurement?.values ?? {}, legacyFields));
-      });
+    const configuration = configurationsByGarmentId.get(garmentId);
+    const resolved = resolveRuntimeGarmentFields(configuration?.fields ?? null, []);
+    const fields = resolved && resolved.length > 0 ? resolved : legacyFields;
+    setRuntimeFields(fields);
+    setFieldDraft(createGarmentFieldDraft(measurement?.values ?? {}, fields));
     setNotes(combineNotes(measurement));
   }
 

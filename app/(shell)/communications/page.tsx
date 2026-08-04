@@ -15,11 +15,11 @@ import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import type { CalendarData, CalendarEvent } from "@/lib/calendar";
+import type { CustomerContactRow } from "@/lib/data/customers-db";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import type {
   CommunicationTemplateType,
-  Customer,
   Order,
   WhatsAppMessage,
   WhatsAppMessageContextType,
@@ -209,7 +209,7 @@ function ReminderInbox({
 
 function CommunicationsContent() {
   const [messages, setMessages] = useState<WhatsAppMessage[] | null>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerContactRow[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [reminderData, setReminderData] = useState<CalendarData | null>(null);
   const [query, setQuery] = useState("");
@@ -473,7 +473,7 @@ function QuickWhatsAppComposer({
   orders,
   onSent,
 }: {
-  customers: Customer[];
+  customers: CustomerContactRow[];
   orders: Order[];
   onSent: () => void;
 }) {

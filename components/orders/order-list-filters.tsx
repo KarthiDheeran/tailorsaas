@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/filter-dropdown";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { ORDER_STATUS_LABEL_KEYS } from "@/components/orders/orders-table";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
 export type BalanceFilter = "all" | "paid" | "due" | "overdue";
@@ -105,21 +106,22 @@ export function OrderListFilters({
     label: t(DELIVERY_FILTER_LABEL_KEYS[v]),
   }));
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
+  const debouncedQuery = useDebouncedValue(query);
 
   useEffect(() => {
-    const trimmed = query.trim();
+    const trimmed = debouncedQuery.trim();
     if (!trimmed) {
       setCustomerSuggestions([]);
       return;
     }
     let cancelled = false;
-    searchCustomersAction(query).then((results) => {
+    searchCustomersAction(debouncedQuery).then((results) => {
       if (!cancelled) setCustomerSuggestions(results);
     });
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [debouncedQuery]);
 
   const hasActiveFilters =
     query.trim() !== "" ||

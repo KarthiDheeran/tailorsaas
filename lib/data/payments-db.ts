@@ -76,12 +76,39 @@ export async function getPaymentsForOrder(
 // same way getAllOrders already is there — see app/(shell)/reports/
 // actions.ts's requireReportsView). Same newest-first ordering as
 // getPaymentsForOrder.
-export async function getAllPayments(supabase: SupabaseClient): Promise<Payment[]> {
-  const { data, error } = await supabase
+export async function getPaymentsForOrders(
+  supabase: SupabaseClient,
+  orderIds: string[],
+  options: { includeVoided?: boolean } = {}
+): Promise<Payment[]> {
+  const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+  let query = supabase
+    .from("payments")
+    .select(PAYMENT_COLUMNS)
+    .in("order_id", uniqueIds)
+    .order("payment_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (!options.includeVoided) query = query.eq("voided", false);
+  const { data, error } = await query;
+  if (error) throw error;
+  return ((data as unknown as PaymentRow[]) ?? []).map(mapPayment);
+}
+
+export async function getPayments(
+  supabase: SupabaseClient,
+  filters: { from?: string; to?: string; paymentMode?: PaymentMode; paymentType?: PaymentType } = {}
+): Promise<Payment[]> {
+  let query = supabase
     .from("payments")
     .select(PAYMENT_COLUMNS)
     .order("payment_date", { ascending: false })
     .order("created_at", { ascending: false });
+  if (filters.from) query = query.gte("payment_date", filters.from);
+  if (filters.to) query = query.lte("payment_date", filters.to);
+  if (filters.paymentMode) query = query.eq("payment_mode", filters.paymentMode);
+  if (filters.paymentType) query = query.eq("payment_type", filters.paymentType);
+  const { data, error } = await query;
   if (error) throw error;
   return ((data as unknown as PaymentRow[]) ?? []).map(mapPayment);
 }

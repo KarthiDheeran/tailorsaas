@@ -23,15 +23,8 @@ import {
   createCatalogFieldAction,
   createCatalogSectionAction,
   createWorkStageAction,
-  getActiveAddOnsAction,
-  getActiveWorkStagesAction,
-  getAddOnsAction,
-  getCatalogFieldsAction,
-  getCatalogSectionsAction,
+  getCatalogPageBootstrapAction,
   getGarmentTypeConfigurationAction,
-  getGarmentTypeConfigurationsAction,
-  getGarmentTypesAction,
-  getWorkStagesAction,
   setAddOnActiveAction,
   setCatalogFieldActiveAction,
   saveGarmentTypeConfigurationAction,
@@ -110,36 +103,16 @@ function CatalogPageContent() {
   useEffect(() => {
     let cancelled = false;
     setIsLoadingCatalog(true);
-    Promise.all([
-      getGarmentTypesAction(),
-      getAddOnsAction(),
-      getActiveAddOnsAction(),
-      getWorkStagesAction(),
-      getActiveWorkStagesAction(),
-      getCatalogFieldsAction(),
-      getCatalogSectionsAction(),
-    ]).then(async ([garments, allAddOns, active, stages, activeStages, fields, sections]) => {
+    getCatalogPageBootstrapAction().then((data) => {
       if (cancelled) return;
-      setGarmentTypes(garments);
-      setAddOns(allAddOns);
-      setActiveAddOns(active);
-      setWorkStages(stages);
-      setActiveWorkStages(activeStages);
-      setCatalogFields(fields);
-      setCatalogSections(sections);
-      const configurations = await getGarmentTypeConfigurationsAction(
-        garments.map((garment) => garment.id)
-      );
-      if (!cancelled) {
-        setMetadataFieldCounts(
-          Object.fromEntries(
-            configurations.map((configuration) => [
-              configuration.garment.id,
-              configuration.fields.filter((field) => field.field?.isActive).length,
-            ])
-          )
-        );
-      }
+      setGarmentTypes(data.garmentTypes);
+      setAddOns(data.addOns);
+      setActiveAddOns(data.activeAddOns);
+      setWorkStages(data.workStages);
+      setActiveWorkStages(data.activeWorkStages);
+      setCatalogFields(data.catalogFields);
+      setCatalogSections(data.catalogSections);
+      setMetadataFieldCounts(data.metadataFieldCounts);
     }).finally(() => {
       if (!cancelled) setIsLoadingCatalog(false);
     });

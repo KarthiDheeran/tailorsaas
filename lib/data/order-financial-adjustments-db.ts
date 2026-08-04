@@ -54,14 +54,46 @@ export async function getOrderFinancialAdjustmentsForOrder(
   return ((data as unknown as OrderFinancialAdjustmentRow[]) ?? []).map(mapAdjustment);
 }
 
-export async function getAllOrderFinancialAdjustments(
-  supabase: SupabaseClient
+export async function getOrderFinancialAdjustmentsForOrders(
+  supabase: SupabaseClient,
+  orderIds: string[],
+  options: { includeVoided?: boolean } = {}
 ): Promise<OrderFinancialAdjustment[]> {
-  const { data, error } = await supabase
+  const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+  let query = supabase
+    .from("order_financial_adjustments")
+    .select(ADJUSTMENT_COLUMNS)
+    .in("order_id", uniqueIds)
+    .order("adjustment_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (!options.includeVoided) query = query.eq("voided", false);
+  const { data, error } = await query;
+  if (error) throw error;
+  return ((data as unknown as OrderFinancialAdjustmentRow[]) ?? []).map(mapAdjustment);
+}
+
+export async function getOrderFinancialAdjustments(
+  supabase: SupabaseClient,
+  filters: {
+    from?: string;
+    to?: string;
+    adjustmentType?: OrderFinancialAdjustmentType;
+    paymentMode?: PaymentMode;
+    includeVoided?: boolean;
+  } = {}
+): Promise<OrderFinancialAdjustment[]> {
+  let query = supabase
     .from("order_financial_adjustments")
     .select(ADJUSTMENT_COLUMNS)
     .order("adjustment_date", { ascending: false })
     .order("created_at", { ascending: false });
+  if (filters.from) query = query.gte("adjustment_date", filters.from);
+  if (filters.to) query = query.lte("adjustment_date", filters.to);
+  if (filters.adjustmentType) query = query.eq("adjustment_type", filters.adjustmentType);
+  if (filters.paymentMode) query = query.eq("payment_mode", filters.paymentMode);
+  if (!filters.includeVoided) query = query.eq("voided", false);
+  const { data, error } = await query;
   if (error) throw error;
   return ((data as unknown as OrderFinancialAdjustmentRow[]) ?? []).map(mapAdjustment);
 }

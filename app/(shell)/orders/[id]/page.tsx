@@ -13,24 +13,13 @@ import {
   Wallet,
 } from "lucide-react";
 import {
-  getFinancialAdjustmentsForOrderAction,
-  getOrderAttachmentsAction,
   getOrderByIdAction,
-  getPaymentsForOrderAction,
+  getOrderDetailsBootstrapAction,
   deleteUntouchedOrderAction,
 } from "@/app/(shell)/orders/actions";
-import { getJobCardsAction } from "@/app/(shell)/job-cards/actions";
-import { getGarmentTypesAction } from "@/app/(shell)/catalog/actions";
-import {
-  getCustomerByIdAction,
-  getGarmentMeasurementDraftSeedAction,
-} from "@/app/(shell)/customers/actions";
-import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
-import {
-  getCustomerFabricsAction,
-  getInventoryItemsAction,
-  getInventoryMovementsAction,
-} from "@/app/(shell)/inventory/actions";
+import { getJobCardsForOrderAction } from "@/app/(shell)/job-cards/actions";
+import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
+import { getOrderInventoryDataAction } from "@/app/(shell)/inventory/actions";
 import { FinancialAdjustmentModal } from "@/components/orders/financial-adjustment-modal";
 import { FinancialAdjustmentsList } from "@/components/orders/financial-adjustments-list";
 import { OrderAttachmentsCard } from "@/components/orders/order-attachments-card";
@@ -393,8 +382,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const foundOrder = await getOrderByIdAction(params.id);
+      const bootstrap = await getOrderDetailsBootstrapAction(params.id);
       if (cancelled) return;
+      const foundOrder = bootstrap.order;
       if (!foundOrder) {
         setOrder(null);
         setLoaded(true);
@@ -402,31 +392,11 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
       }
       setOrder(foundOrder);
       const [
-        foundCustomer,
-        foundAttachments,
-        foundPayments,
-        foundAdjustments,
-        foundBillingSettings,
-        foundGarmentTypes,
         foundMeasurementSeeds,
         foundJobCards,
-        foundInventoryItems,
-        foundInventoryMovements,
-        foundCustomerFabrics,
+        foundInventoryData,
       ] =
         await Promise.all([
-          getCustomerByIdAction(foundOrder.customerId),
-          getOrderAttachmentsAction(foundOrder.id).catch(() => []),
-          canViewPayments ? getPaymentsForOrderAction(foundOrder.id) : Promise.resolve([]),
-          canViewPayments
-            ? getFinancialAdjustmentsForOrderAction(foundOrder.id)
-            : Promise.resolve([]),
-          canViewPayments
-            ? getOrderPricingBillingSettingsAction().catch(
-                () => DEFAULT_SHOP_BILLING_SETTINGS
-              )
-            : Promise.resolve(DEFAULT_SHOP_BILLING_SETTINGS),
-          getGarmentTypesAction().catch(() => []),
           Promise.all(
             Array.from(new Set(foundOrder.items.map((item) => item.particular))).map(
               async (garmentType) =>
@@ -441,42 +411,33 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
           )
             .then((entries) => Object.fromEntries(entries))
             .catch(() => ({} as Record<string, MeasurementDraftSeed>)),
-          getJobCardsAction(new Date().toISOString().slice(0, 10))
-            .then((cards) =>
-              (cards ?? []).filter((card) => card.orderId === foundOrder.id)
-            )
+          getJobCardsForOrderAction(foundOrder.id, new Date().toISOString().slice(0, 10))
             .catch(() => []),
-          getInventoryItemsAction().catch(() => []),
-          getInventoryMovementsAction()
-            .then((movements) =>
-              (movements ?? []).filter((movement) => movement.orderId === foundOrder.id)
-            )
-            .catch(() => []),
-          getCustomerFabricsAction()
-            .then((fabrics) =>
-              (fabrics ?? []).filter((fabric) => fabric.orderId === foundOrder.id)
-            )
-            .catch(() => []),
+          getOrderInventoryDataAction(foundOrder.id).catch(() => ({
+            inventoryItems: [],
+            inventoryMovements: [],
+            customerFabrics: [],
+          })),
         ]);
       if (cancelled) return;
-      setCustomer(foundCustomer);
-      setAttachments(foundAttachments);
-      setPayments(foundPayments);
-      setAdjustments(foundAdjustments);
-      setBillingSettings(foundBillingSettings);
-      setGarmentTypes(foundGarmentTypes);
+      setCustomer(bootstrap.customer);
+      setAttachments(bootstrap.attachments);
+      setPayments(bootstrap.payments);
+      setAdjustments(bootstrap.adjustments);
+      setBillingSettings(bootstrap.billingSettings);
+      setGarmentTypes(bootstrap.garmentTypes);
       setMeasurementSeeds(foundMeasurementSeeds);
-      setJobCards(foundJobCards);
-      setInventoryItems(foundInventoryItems ?? []);
-      setInventoryMovements(foundInventoryMovements ?? []);
-      setCustomerFabrics(foundCustomerFabrics ?? []);
+      setJobCards(foundJobCards ?? []);
+      setInventoryItems(foundInventoryData.inventoryItems ?? []);
+      setInventoryMovements(foundInventoryData.inventoryMovements ?? []);
+      setCustomerFabrics(foundInventoryData.customerFabrics ?? []);
       setLoaded(true);
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [params.id, canViewPayments]);
+  }, [params.id]);
 
   const inventoryItemsById = useMemo(
     () => new Map(inventoryItems.map((item) => [item.id, item])),

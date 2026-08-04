@@ -14,13 +14,15 @@ import {
   type ExpenseFilters,
 } from "@/lib/data/expenses-db";
 import {
-  getAllOrderFinancialAdjustments,
+  getOrderFinancialAdjustments,
   isMissingOrderFinancialAdjustmentsSchemaError,
 } from "@/lib/data/order-financial-adjustments-db";
-import { getAllOrders } from "@/lib/data/orders-db";
+import {
+  getOrderListRowsByIds,
+  getReceivableOrderRows,
+} from "@/lib/data/orders-db";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { expenseCategories, paymentModes } from "@/lib/constants";
-import { isReceivableOrder } from "@/lib/order-finance";
 import { hasPermission } from "@/lib/permissions";
 import type {
   CustomerSnapshot,
@@ -90,6 +92,7 @@ export interface FinancialAdjustmentLedgerRow {
 }
 
 export interface PaymentsPageInitialFilters {
+  activeTab?: "collections" | "pending-dues" | "adjustments" | "expenses";
   range: DateRange;
   paymentMode?: PaymentMode;
   paymentType?: PaymentType;
@@ -168,6 +171,7 @@ export async function getPaymentsPageInitialDataAction(
 
   const canViewPayments = hasPermission(permissions, "orders.viewPayments");
   const canViewExpenses = hasPermission(permissions, "expenses.view");
+  const activeTab = filters.activeTab ?? (canViewPayments ? "collections" : "expenses");
   const admin = createAdminClient();
 
   let report: PaymentsReport | null = null;
@@ -177,35 +181,64 @@ export async function getPaymentsPageInitialDataAction(
   let adjustments: FinancialAdjustmentLedgerRow[] | null = null;
 
   if (canViewPayments) {
-    const source = await getPaymentsReportSourceData(admin);
-    report = buildPaymentsReportFromSource(
-      source,
-      {
-        range: filters.range,
-        paymentMode: filters.paymentMode,
-        paymentType: filters.paymentType,
-        customerQuery: filters.customerQuery,
-      },
-      todayIso
-    );
+    const todaySource = await getPaymentsReportSourceData(admin, {
+      range: { from: todayIso, to: todayIso },
+    });
+    if (activeTab === "collections") {
+      const source = await getPaymentsReportSourceData(
+        admin,
+        {
+          range: filters.range,
+          paymentMode: filters.paymentMode,
+          paymentType: filters.paymentType,
+          customerQuery: filters.customerQuery,
+        }
+      );
+      report = buildPaymentsReportFromSource(
+        source,
+        {
+          range: filters.range,
+          paymentMode: filters.paymentMode,
+          paymentType: filters.paymentType,
+          customerQuery: filters.customerQuery,
+        },
+        todayIso
+      );
+    }
     todayReport = buildPaymentsReportFromSource(
-      source,
+      todaySource,
       { range: { from: todayIso, to: todayIso } },
       todayIso
     );
-    pendingDuesOrders = source.allOrders
-      .filter(isReceivableOrder)
-      .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
-    adjustments = source.financialAdjustmentsAvailable
-      ? filterFinancialAdjustmentRows(source.allAdjustments, source.allOrders, {
+    if (activeTab === "pending-dues") {
+      pendingDuesOrders = await getPendingDuesOrders(supabase);
+    }
+    if (activeTab === "adjustments") {
+      try {
+        const adjustmentRows = await getOrderFinancialAdjustments(admin, {
           from: filters.range.from,
           to: filters.range.to,
           adjustmentType: filters.adjustmentType,
           paymentMode: filters.adjustmentPaymentMode,
-          query: filters.adjustmentQuery,
           includeVoided: true,
-        })
-      : null;
+        });
+        const adjustmentOrders = await getOrderListRowsByIds(
+          supabase,
+          adjustmentRows.map((adjustment) => adjustment.orderId)
+        );
+        adjustments = filterFinancialAdjustmentRows(adjustmentRows, adjustmentOrders, {
+            from: filters.range.from,
+            to: filters.range.to,
+            adjustmentType: filters.adjustmentType,
+            paymentMode: filters.adjustmentPaymentMode,
+            query: filters.adjustmentQuery,
+            includeVoided: true,
+        });
+      } catch (error) {
+        if (!isMissingOrderFinancialAdjustmentsSchemaError(error)) throw error;
+        adjustments = null;
+      }
+    }
   }
 
   let expenses: Expense[] | null = null;
@@ -213,16 +246,19 @@ export async function getPaymentsPageInitialDataAction(
   let todaysExpenseRows: Expense[] | null = null;
   if (canViewExpenses) {
     try {
-      expenses = await getExpenses(admin, {
-        from: filters.range.from,
-        to: filters.range.to,
-        source: filters.expenseSource,
-        category: filters.expenseCategory,
-        paymentMode: filters.expensePaymentMode,
-        query: filters.expenseQuery,
-        includeVoided: true,
-      });
+      if (activeTab === "expenses") {
+        expenses = await getExpenses(admin, {
+          from: filters.range.from,
+          to: filters.range.to,
+          source: filters.expenseSource,
+          category: filters.expenseCategory,
+          paymentMode: filters.expensePaymentMode,
+          query: filters.expenseQuery,
+          includeVoided: true,
+        });
+      }
       todaysExpenseRows =
+        activeTab === "expenses" &&
         filters.range.from === todayIso &&
         filters.range.to === todayIso &&
         !filters.expenseSource &&
@@ -231,7 +267,8 @@ export async function getPaymentsPageInitialDataAction(
         !filters.expenseQuery
           ? expenses
           : await getExpenses(admin, { from: todayIso, to: todayIso });
-      todayExpenses = todaysExpenseRows.reduce(
+      const countedTodaysExpenses = todaysExpenseRows ?? [];
+      todayExpenses = countedTodaysExpenses.reduce(
         (sum, expense) => sum + Number(expense.amount),
         0
       );
@@ -332,10 +369,7 @@ export async function getDailyClosingAction(todayIso: string): Promise<DailyClos
 async function getPendingDuesOrders(
   supabase: ReturnType<typeof createServerClient>
 ): Promise<Order[]> {
-  const allOrders = await getAllOrders(supabase);
-  return allOrders
-    .filter(isReceivableOrder)
-    .sort((a, b) => (a.deliveryDate < b.deliveryDate ? -1 : 1));
+  return getReceivableOrderRows(supabase);
 }
 
 // "Pending Dues" summary card total.
@@ -367,10 +401,17 @@ export async function getFinancialAdjustmentsAction(
 
   try {
     const admin = createAdminClient();
-    const [adjustments, orders] = await Promise.all([
-      getAllOrderFinancialAdjustments(admin),
-      getAllOrders(supabase),
-    ]);
+    const adjustments = await getOrderFinancialAdjustments(admin, {
+      from: filters.from,
+      to: filters.to,
+      adjustmentType: filters.adjustmentType,
+      paymentMode: filters.paymentMode,
+      includeVoided: filters.includeVoided,
+    });
+    const orders = await getOrderListRowsByIds(
+      supabase,
+      adjustments.map((adjustment) => adjustment.orderId)
+    );
     const ordersById = new Map(orders.map((order) => [order.id, order]));
     const query = filters.query?.trim().toLowerCase() ?? "";
 

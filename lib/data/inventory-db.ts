@@ -16,6 +16,12 @@ const INVENTORY_ITEM_COLUMNS =
 const LEGACY_INVENTORY_ITEM_COLUMNS =
   "id, item_type, name, sku, color, unit, quantity_on_hand, reorder_level, cost_per_unit, active, notes, created_at, updated_at";
 
+const INVENTORY_REPORT_ITEM_COLUMNS =
+  "id, item_type, name, sku, unit, quantity_on_hand, reorder_level, cost_per_unit, vendor_name, purchase_date, purchase_cost, active";
+
+const LEGACY_INVENTORY_REPORT_ITEM_COLUMNS =
+  "id, item_type, name, sku, unit, quantity_on_hand, reorder_level, cost_per_unit, active";
+
 const INVENTORY_MOVEMENT_COLUMNS =
   "id, item_id, movement_type, quantity, movement_date, reason, order_id, job_card_id, recorded_by, created_at";
 
@@ -42,6 +48,21 @@ interface InventoryItemRow {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface InventoryReportItemRow {
+  id: string;
+  item_type: InventoryItemType;
+  name: string;
+  sku: string | null;
+  unit: InventoryUnit;
+  quantity_on_hand: number;
+  reorder_level: number;
+  cost_per_unit: number | null;
+  vendor_name?: string | null;
+  purchase_date?: string | null;
+  purchase_cost?: number | null;
+  active: boolean;
 }
 
 interface InventoryMovementRow {
@@ -146,16 +167,152 @@ export interface CustomerFabricInput {
 }
 
 export async function getInventoryItems(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  options: { query?: string; limit?: number } = {}
 ): Promise<InventoryItem[]> {
+  let query = supabase
+    .from("inventory_items")
+    .select(INVENTORY_ITEM_COLUMNS)
+    .order("name");
+  const searchText = options.query?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(
+      [
+        `name.ilike.${pattern}`,
+        `sku.ilike.${pattern}`,
+        `color.ilike.${pattern}`,
+        `item_type.ilike.${pattern}`,
+        `notes.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
+  if (options.limit && options.limit > 0) query = query.limit(options.limit);
+  let { data, error } = await query;
+  if (error && isMissingInventoryPurchaseSchemaError(error)) {
+    let fallback = supabase
+      .from("inventory_items")
+      .select(LEGACY_INVENTORY_ITEM_COLUMNS)
+      .order("name");
+    if (searchText) {
+      const pattern = `%${searchText}%`;
+      fallback = fallback.or(
+        [
+          `name.ilike.${pattern}`,
+          `sku.ilike.${pattern}`,
+          `color.ilike.${pattern}`,
+          `item_type.ilike.${pattern}`,
+          `notes.ilike.${pattern}`,
+        ].join(",")
+      );
+    }
+    if (options.limit && options.limit > 0) fallback = fallback.limit(options.limit);
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as InventoryItemRow[]) ?? []).map(mapInventoryItem);
+}
+
+export async function getInventoryReportItems(
+  supabase: SupabaseClient,
+  options: { itemType?: InventoryItemType; query?: string } = {}
+): Promise<InventoryItem[]> {
+  let query = supabase
+    .from("inventory_items")
+    .select(INVENTORY_REPORT_ITEM_COLUMNS)
+    .eq("active", true)
+    .order("name");
+  if (options.itemType) query = query.eq("item_type", options.itemType);
+  const searchText = options.query?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(
+      [
+        `name.ilike.${pattern}`,
+        `sku.ilike.${pattern}`,
+        `item_type.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
+
+  let { data, error } = await query;
+  if (error && isMissingInventoryPurchaseSchemaError(error)) {
+    let fallback = supabase
+      .from("inventory_items")
+      .select(LEGACY_INVENTORY_REPORT_ITEM_COLUMNS)
+      .eq("active", true)
+      .order("name");
+    if (options.itemType) fallback = fallback.eq("item_type", options.itemType);
+    if (searchText) {
+      const pattern = `%${searchText}%`;
+      fallback = fallback.or(
+        [
+          `name.ilike.${pattern}`,
+          `sku.ilike.${pattern}`,
+          `item_type.ilike.${pattern}`,
+        ].join(",")
+      );
+    }
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as InventoryReportItemRow[]) ?? []).map(
+    mapInventoryReportItem
+  );
+}
+
+export interface InventoryItemStats {
+  stockItemsCount: number;
+  lowStockCount: number;
+  stockValue: number;
+}
+
+export async function getInventoryItemStats(
+  supabase: SupabaseClient
+): Promise<InventoryItemStats> {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("active, quantity_on_hand, reorder_level, cost_per_unit");
+  if (error) throw error;
+  const rows =
+    (data as Array<{
+      active: boolean;
+      quantity_on_hand: number;
+      reorder_level: number;
+      cost_per_unit: number | null;
+    }> | null) ?? [];
+  return {
+    stockItemsCount: rows.filter((row) => row.active).length,
+    lowStockCount: rows.filter(
+      (row) => row.active && Number(row.quantity_on_hand) <= Number(row.reorder_level)
+    ).length,
+    stockValue: rows.reduce(
+      (sum, row) => sum + Number(row.quantity_on_hand) * Number(row.cost_per_unit ?? 0),
+      0
+    ),
+  };
+}
+
+export async function getInventoryItemsByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<InventoryItem[]> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
   let { data, error } = await supabase
     .from("inventory_items")
     .select(INVENTORY_ITEM_COLUMNS)
+    .in("id", uniqueIds)
     .order("name");
   if (error && isMissingInventoryPurchaseSchemaError(error)) {
     const fallback = await supabase
       .from("inventory_items")
       .select(LEGACY_INVENTORY_ITEM_COLUMNS)
+      .in("id", uniqueIds)
       .order("name");
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
@@ -227,7 +384,8 @@ export async function adjustInventoryStock(
 
 export async function getInventoryMovements(
   supabase: SupabaseClient,
-  itemId?: string
+  itemId?: string,
+  options: { orderId?: string; jobCardId?: string } = {}
 ): Promise<InventoryMovement[]> {
   let query = supabase
     .from("inventory_movements")
@@ -235,6 +393,8 @@ export async function getInventoryMovements(
     .order("movement_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (itemId) query = query.eq("item_id", itemId);
+  if (options.orderId) query = query.eq("order_id", options.orderId);
+  if (options.jobCardId) query = query.eq("job_card_id", options.jobCardId);
   let { data, error } = await query;
   if (error && isMissingInventoryPurchaseSchemaError(error)) {
     let fallback = supabase
@@ -243,6 +403,8 @@ export async function getInventoryMovements(
       .order("movement_date", { ascending: false })
       .order("created_at", { ascending: false });
     if (itemId) fallback = fallback.eq("item_id", itemId);
+    if (options.orderId) fallback = fallback.eq("order_id", options.orderId);
+    if (options.jobCardId) fallback = fallback.eq("job_card_id", options.jobCardId);
     const result = await fallback;
     data = result.data as unknown as typeof data;
     error = result.error;
@@ -252,13 +414,31 @@ export async function getInventoryMovements(
 }
 
 export async function getCustomerFabrics(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  options: { orderId?: string; query?: string; limit?: number } = {}
 ): Promise<CustomerFabric[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("customer_fabrics")
     .select(CUSTOMER_FABRIC_COLUMNS)
     .order("received_date", { ascending: false })
     .order("created_at", { ascending: false });
+  if (options.orderId) query = query.eq("order_id", options.orderId);
+  const searchText = options.query?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(
+      [
+        `customer_name.ilike.${pattern}`,
+        `customer_phone.ilike.${pattern}`,
+        `fabric_description.ilike.${pattern}`,
+        `color.ilike.${pattern}`,
+        `status.ilike.${pattern}`,
+        `notes.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
+  if (options.limit && options.limit > 0) query = query.limit(options.limit);
+  const { data, error } = await query;
   if (error) throw error;
   return ((data as unknown as CustomerFabricRow[]) ?? []).map(mapCustomerFabric);
 }
@@ -346,6 +526,25 @@ function mapInventoryItem(row: InventoryItemRow): InventoryItem {
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapInventoryReportItem(row: InventoryReportItemRow): InventoryItem {
+  return {
+    id: row.id,
+    itemType: row.item_type,
+    name: row.name,
+    sku: row.sku ?? undefined,
+    unit: row.unit,
+    quantityOnHand: row.quantity_on_hand,
+    reorderLevel: row.reorder_level,
+    costPerUnit: row.cost_per_unit ?? undefined,
+    vendorName: row.vendor_name?.trim() ? row.vendor_name : undefined,
+    purchaseDate: row.purchase_date ?? undefined,
+    purchaseCost: row.purchase_cost ?? undefined,
+    active: row.active,
+    createdAt: "",
+    updatedAt: "",
   };
 }
 

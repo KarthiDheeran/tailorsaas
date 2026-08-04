@@ -13,7 +13,8 @@ import {
 import {
   deleteUntouchedOrderAction,
   getOrderByIdAction,
-  getOrdersPageDataAction,
+  getOrdersForCustomerListAction,
+  getOrdersListPageAction,
 } from "@/app/(shell)/orders/actions";
 import type { Customer, Order } from "@/lib/types";
 
@@ -36,23 +37,13 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
-import { isReceivableOrder } from "@/lib/order-finance";
+import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 const PAGE_SIZE = 10;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDERS_VIEW_KEY = "tailorsaas:orders-view";
 type OrdersView = "classic" | "modern";
-
-// Same plain YYYY-MM-DD string date-math convention as lib/dashboard.ts
-// (never Date/Intl formatting) so server/client rendering stays consistent.
-function addDaysIso(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d) + days * DAY_MS)
-    .toISOString()
-    .slice(0, 10);
-}
 
 function OrdersPageContent() {
   const { hasPermission } = useCurrentUser();
@@ -64,6 +55,7 @@ function OrdersPageContent() {
     null
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery);
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
@@ -75,6 +67,7 @@ function OrdersPageContent() {
   const [sortDir, setSortDir] = useState<OrdersSortDir>("desc");
   const [refreshTick, setRefreshTick] = useState(0);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
+  const [, setOpeningOrderId] = useState<string | null>(null);
   const [pendingOpenOrderId, setPendingOpenOrderId] = useState<string | null>(null);
   const [openingNewOrderHref, setOpeningNewOrderHref] = useState<string | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
@@ -86,6 +79,8 @@ function OrdersPageContent() {
   // app/(shell)/customers/actions.ts against the same server-side copy of
   // the mock arrays), not direct client-side lib/data/stub-data.ts calls.
   const [orders, setOrders] = useState<Order[]>([]);
+  const [totalOrderCount, setTotalOrderCount] = useState(0);
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [customersById, setCustomersById] = useState<Record<string, Customer>>({});
   // Only gates the very first load — refreshTick-triggered refetches (status
   // change, edit save, etc.) shouldn't re-blank the table with a spinner.
@@ -111,11 +106,26 @@ function OrdersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getOrdersPageDataAction()
+    getOrdersListPageAction({
+      page,
+      pageSize: PAGE_SIZE,
+      sortKey,
+      sortDir,
+      searchQuery: debouncedSearchQuery,
+      orderDateFrom: orderDateRange.from || undefined,
+      orderDateTo: orderDateRange.to || undefined,
+      balanceFilter,
+      statusFilter,
+      deliveryFilter,
+      deliveryFrom: deliveryFilter === "custom" ? deliveryCustomRange.from || undefined : undefined,
+      deliveryTo: deliveryFilter === "custom" ? deliveryCustomRange.to || undefined : undefined,
+      todayIso: new Date().toISOString().slice(0, 10),
+    })
       .then((result) => {
         if (cancelled) return;
         setOrders(result.orders);
-        setCustomersById(Object.fromEntries(result.customers.map((c) => [c.id, c])));
+        setTotalOrderCount(result.totalCount);
+        setCustomersById({});
         setLoadError(null);
       })
       .catch((error) => {
@@ -129,7 +139,40 @@ function OrdersPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [refreshTick]);
+  }, [
+    refreshTick,
+    page,
+    sortKey,
+    sortDir,
+    debouncedSearchQuery,
+    orderDateRange.from,
+    orderDateRange.to,
+    balanceFilter,
+    statusFilter,
+    deliveryFilter,
+    deliveryCustomRange.from,
+    deliveryCustomRange.to,
+  ]);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerOrders([]);
+      return;
+    }
+    let cancelled = false;
+    getOrdersForCustomerListAction(selectedCustomer.id)
+      .then((result) => {
+        if (!cancelled) setCustomerOrders(result);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load customer orders."));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomer, refreshTick]);
 
   // New Order redirects here with ?created=1 (and optionally &orderId=... if
   // "View Order" was clicked from the success modal) on success. Read via
@@ -192,14 +235,8 @@ function OrdersPageContent() {
   useEffect(() => {
     if (!pendingOpenOrderId || isLoading) return;
 
-    const loadedOrder = orders.find((order) => order.id === pendingOpenOrderId);
-    if (loadedOrder) {
-      setDetailsOrder(loadedOrder);
-      setPendingOpenOrderId(null);
-      return;
-    }
-
     let cancelled = false;
+    setOpeningOrderId(pendingOpenOrderId);
     getOrderByIdAction(pendingOpenOrderId)
       .then((order) => {
         if (cancelled) return;
@@ -210,12 +247,28 @@ function OrdersPageContent() {
         if (cancelled) return;
         setLoadError(getErrorMessage(error, "Failed to open the selected order."));
         setPendingOpenOrderId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOpeningOrderId(null);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [pendingOpenOrderId, isLoading, orders]);
+  }, [pendingOpenOrderId, isLoading]);
+
+  function handleOpenOrder(order: Order) {
+    setOpeningOrderId(order.id);
+    getOrderByIdAction(order.id)
+      .then((fullOrder) => {
+        setDetailsOrder(fullOrder ?? order);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        setLoadError(getErrorMessage(error, "Failed to open the selected order."));
+      })
+      .finally(() => setOpeningOrderId(null));
+  }
 
   function handleStatusChanged() {
     setRefreshTick((t) => t + 1);
@@ -240,6 +293,12 @@ function OrdersPageContent() {
   // order mutation.
   function handleOrderUpdated(updatedOrder: Order) {
     setDetailsOrder(updatedOrder);
+    setOrders((current) =>
+      current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
+    );
+    setCustomerOrders((current) =>
+      current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
+    );
     setRefreshTick((t) => t + 1);
   }
 
@@ -290,81 +349,37 @@ function OrdersPageContent() {
     setPage(1);
   }
 
-  const trimmedQuery = searchQuery.trim().toLowerCase();
-  const filteredOrders = orders.filter((order) => {
-    if (orderDateRange.from && order.orderDate < orderDateRange.from) return false;
-    if (orderDateRange.to && order.orderDate > orderDateRange.to) return false;
-    if (trimmedQuery) {
-      const customer = customersById[order.customerId];
-      const matchesQuery =
-        order.orderNumber.toLowerCase().includes(trimmedQuery) ||
-        customer?.name.toLowerCase().includes(trimmedQuery) ||
-        customer?.phone.includes(searchQuery.trim());
-      if (!matchesQuery) return false;
-    }
-    if (balanceFilter === "paid" && isReceivableOrder(order)) return false;
-    if (
-      balanceFilter === "due" &&
-      !(isReceivableOrder(order) && order.deliveryDate >= todayIso)
-    )
-      return false;
-    if (
-      balanceFilter === "overdue" &&
-      !(isReceivableOrder(order) && order.deliveryDate < todayIso)
-    )
-      return false;
-    if (statusFilter !== "all" && order.status !== statusFilter) return false;
-    if (deliveryFilter === "dueToday" && order.deliveryDate !== todayIso)
-      return false;
-    if (
-      deliveryFilter === "dueTomorrow" &&
-      order.deliveryDate !== addDaysIso(todayIso, 1)
-    )
-      return false;
-    if (
-      deliveryFilter === "dueWeek" &&
-      !(
-        order.deliveryDate >= todayIso &&
-        order.deliveryDate <= addDaysIso(todayIso, 7)
-      )
-    )
-      return false;
-    if (deliveryFilter === "overdue" && !(order.deliveryDate < todayIso))
-      return false;
-    if (deliveryFilter === "custom") {
-      if (deliveryCustomRange.from && order.deliveryDate < deliveryCustomRange.from)
-        return false;
-      if (deliveryCustomRange.to && order.deliveryDate > deliveryCustomRange.to)
-        return false;
-    }
-    return true;
-  });
-
-  const allOrders = [...filteredOrders].sort((a, b) => {
-    const cmp = a[sortKey] < b[sortKey] ? -1 : a[sortKey] > b[sortKey] ? 1 : 0;
-    if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
-    const aSequence = a.orderSequence ?? (Number(a.orderNumber) || 0);
-    const bSequence = b.orderSequence ?? (Number(b.orderNumber) || 0);
-    return bSequence - aSequence;
-  });
-  const customerOrders = selectedCustomer
-    ? orders
-        .filter((order) => order.customerId === selectedCustomer.id)
-        .sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1))
-    : [];
-  const totalPages = Math.max(1, Math.ceil(allOrders.length / PAGE_SIZE));
-  const pagedOrders = allOrders.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
+  const totalPages = Math.max(1, Math.ceil(totalOrderCount / PAGE_SIZE));
+  const pagedOrders = orders;
   const selectedCustomerNewOrderHref = selectedCustomer
     ? `/orders/new?customerId=${selectedCustomer.id}`
     : "";
-  const rangeStart = allOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, allOrders.length);
+  const rangeStart = totalOrderCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, totalOrderCount);
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+    (n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2
+  );
 
-  function handleExportOrders() {
-    const exportOrders = selectedCustomer ? customerOrders : allOrders;
+  async function handleExportOrders() {
+    const exportOrders = selectedCustomer
+      ? customerOrders
+      : (
+          await getOrdersListPageAction({
+            page: 1,
+            pageSize: 10000,
+            sortKey,
+            sortDir,
+            searchQuery,
+            orderDateFrom: orderDateRange.from || undefined,
+            orderDateTo: orderDateRange.to || undefined,
+            balanceFilter,
+            statusFilter,
+            deliveryFilter,
+            deliveryFrom: deliveryFilter === "custom" ? deliveryCustomRange.from || undefined : undefined,
+            deliveryTo: deliveryFilter === "custom" ? deliveryCustomRange.to || undefined : undefined,
+            todayIso,
+          })
+        ).orders;
     const headers = [
       "Order No",
       "Customer",
@@ -471,7 +486,7 @@ function OrdersPageContent() {
           </div>
           <ExportCsvButton
             onClick={handleExportOrders}
-            disabled={isLoading || (selectedCustomer ? customerOrders.length === 0 : allOrders.length === 0)}
+            disabled={isLoading || (selectedCustomer ? customerOrders.length === 0 : totalOrderCount === 0)}
             label={t("reports.exportCsv")}
           />
           {canCreate && (
@@ -588,7 +603,7 @@ function OrdersPageContent() {
             customersById={customersById}
             editableStatus
             onStatusChange={handleStatusChanged}
-            onRowClick={setDetailsOrder}
+            onRowClick={handleOpenOrder}
             showActions={canEdit}
             onDelete={handleDeleteOrder}
             compact={isClassicOrdersView}
@@ -604,16 +619,16 @@ function OrdersPageContent() {
             onSort={handleSort}
             editableStatus
             onStatusChange={handleStatusChanged}
-            onRowClick={setDetailsOrder}
+            onRowClick={handleOpenOrder}
             showActions={canEdit}
             onDelete={handleDeleteOrder}
             compact={isClassicOrdersView}
           />
-          {allOrders.length > 0 && (
+          {totalOrderCount > 0 && (
             <div className={cn("mt-5 flex items-center justify-between text-sm", isClassicOrdersView && "mt-2 text-xs")}>
               <span className="text-ink-muted">
                 {t("common.showing")} {rangeStart} {t("common.to")} {rangeEnd}{" "}
-                {t("common.of")} {allOrders.length} {t("orders.ordersLabel")}
+                {t("common.of")} {totalOrderCount} {t("orders.ordersLabel")}
               </span>
               <div className="flex items-center gap-1.5">
                 <button
@@ -624,10 +639,13 @@ function OrdersPageContent() {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (n) => (
+                {pageNumbers.map(
+                  (n, index) => (
+                    <span key={`${n}-${index}`} className="contents">
+                      {index > 0 && n - pageNumbers[index - 1] > 1 && (
+                        <span className="px-1 text-ink-faint">...</span>
+                      )}
                     <button
-                      key={n}
                       onClick={() => setPage(n)}
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
@@ -638,6 +656,7 @@ function OrdersPageContent() {
                     >
                       {n}
                     </button>
+                    </span>
                   )
                 )}
                 <button
@@ -656,7 +675,7 @@ function OrdersPageContent() {
 
       <OrderDetailsDrawer
         order={detailsOrder}
-        customer={detailsOrder ? customersById[detailsOrder.customerId] : undefined}
+        customer={detailsOrder ? customersById[detailsOrder.customerId] ?? detailsOrder.customerSnapshot : undefined}
         onClose={() => setDetailsOrder(null)}
         onStatusChange={handleStatusChanged}
         onOrderUpdated={handleOrderUpdated}

@@ -21,7 +21,7 @@ import {
 } from "@/lib/reports";
 import { formatDate } from "@/components/orders/orders-table";
 import type { JobCardStage } from "@/lib/job-cards";
-import type { Staff } from "@/lib/types";
+import type { StaffOption } from "@/lib/data/staff-db";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +72,7 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
   });
   const [stage, setStage] = useState<ProductionStageFilter>("all");
   const [staffId, setStaffId] = useState("");
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffOption[]>([]);
   const [report, setReport] = useState<ProductionReport | null>(EMPTY_REPORT);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);

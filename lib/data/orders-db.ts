@@ -33,6 +33,12 @@ import type { GarmentSection } from "@/lib/catalog";
 const ORDER_ITEM_COLUMNS =
   "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, field_schema_snapshot, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
+const ORDER_ITEM_REPEAT_COLUMNS =
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
+
+const ORDER_ITEM_SUMMARY_COLUMNS =
+  "id, order_id, serial_no, particular, size, qty, rate, amount";
+
 interface OrderItemRow {
   id: string;
   serial_no: number;
@@ -220,23 +226,6 @@ export async function findOrderByOrderNumber(
   return row ? { id: row.id, orderNumber: row.order_number } : undefined;
 }
 
-export async function getAllOrders(supabase: SupabaseClient): Promise<Order[]> {
-  let { data, error } = await supabase
-    .from("orders")
-    .select(ORDER_COLUMNS)
-    .order("order_date", { ascending: false });
-  if (error && isMissingInvoiceNumberSchemaError(error)) {
-    const fallback = await supabase
-      .from("orders")
-      .select(LEGACY_ORDER_COLUMNS)
-      .order("order_date", { ascending: false });
-    data = fallback.data as unknown as typeof data;
-    error = fallback.error;
-  }
-  if (error) throw error;
-  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
-}
-
 export async function getOrderById(
   supabase: SupabaseClient,
   id: string
@@ -259,6 +248,30 @@ export async function getOrderById(
   return data ? mapOrder(data as unknown as OrderRow) : undefined;
 }
 
+export async function getOrdersByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<Order[]> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+  let { data, error } = await supabase
+    .from("orders")
+    .select(ORDER_COLUMNS)
+    .in("id", uniqueIds)
+    .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(LEGACY_ORDER_COLUMNS)
+      .in("id", uniqueIds)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
 export async function getOrdersForCustomer(
   supabase: SupabaseClient,
   customerId: string
@@ -274,6 +287,517 @@ export async function getOrdersForCustomer(
       .select(LEGACY_ORDER_COLUMNS)
       .eq("customer_id", customerId)
       .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export interface OrderListPageFilters {
+  searchQuery?: string;
+  orderDateFrom?: string;
+  orderDateTo?: string;
+  balanceFilter?: "all" | "paid" | "due" | "overdue";
+  statusFilter?: "all" | OrderStatus;
+  deliveryFilter?: "all" | "dueToday" | "dueTomorrow" | "dueWeek" | "overdue" | "custom";
+  deliveryFrom?: string;
+  deliveryTo?: string;
+  todayIso: string;
+}
+
+export interface OrderListPageOptions {
+  page: number;
+  pageSize: number;
+  sortKey: "orderDate" | "deliveryDate";
+  sortDir: "asc" | "desc";
+  filters: OrderListPageFilters;
+}
+
+export interface OrderListPageResult {
+  orders: Order[];
+  totalCount: number;
+}
+
+export async function getOrderListPageRows(
+  supabase: SupabaseClient,
+  options: OrderListPageOptions
+): Promise<OrderListPageResult> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  const fallbackColumns = `
+    id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+
+  async function run(selectColumns: string) {
+    const { filters } = options;
+    const sortField = options.sortKey === "deliveryDate" ? "delivery_date" : "order_date";
+    const from = Math.max(0, (options.page - 1) * options.pageSize);
+    const to = from + options.pageSize - 1;
+    let query = supabase
+      .from("orders")
+      .select(selectColumns, { count: "exact" });
+
+    if (filters.orderDateFrom) query = query.gte("order_date", filters.orderDateFrom);
+    if (filters.orderDateTo) query = query.lte("order_date", filters.orderDateTo);
+    if (filters.statusFilter && filters.statusFilter !== "all") {
+      query = query.eq("status", filters.statusFilter);
+    }
+
+    if (filters.balanceFilter === "paid") {
+      query = query.or("balance.lte.0,status.eq.Cancelled");
+    } else if (filters.balanceFilter === "due") {
+      query = query.gt("balance", 0).neq("status", "Cancelled").gte("delivery_date", filters.todayIso);
+    } else if (filters.balanceFilter === "overdue") {
+      query = query.gt("balance", 0).neq("status", "Cancelled").lt("delivery_date", filters.todayIso);
+    }
+
+    if (filters.deliveryFilter === "dueToday") {
+      query = query.eq("delivery_date", filters.todayIso);
+    } else if (filters.deliveryFilter === "dueTomorrow") {
+      query = query.eq("delivery_date", addDaysForQuery(filters.todayIso, 1));
+    } else if (filters.deliveryFilter === "dueWeek") {
+      query = query.gte("delivery_date", filters.todayIso).lte("delivery_date", addDaysForQuery(filters.todayIso, 7));
+    } else if (filters.deliveryFilter === "overdue") {
+      query = query.lt("delivery_date", filters.todayIso);
+    } else if (filters.deliveryFilter === "custom") {
+      if (filters.deliveryFrom) query = query.gte("delivery_date", filters.deliveryFrom);
+      if (filters.deliveryTo) query = query.lte("delivery_date", filters.deliveryTo);
+    }
+
+    const searchText = filters.searchQuery?.trim().replace(/[%,]/g, " ");
+    if (searchText) {
+      const pattern = `%${searchText}%`;
+      query = query.or(`order_number.ilike.${pattern},customer_snapshot->>name.ilike.${pattern},customer_snapshot->>phone.ilike.${pattern}`);
+    }
+
+    return query
+      .order(sortField, { ascending: options.sortDir === "asc" })
+      .order("order_sequence", { ascending: false, nullsFirst: false })
+      .order("order_number", { ascending: false })
+      .range(from, to);
+  }
+
+  let { data, error, count } = await run(columns);
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await run(fallbackColumns);
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+    count = fallback.count;
+  }
+  if (error) throw error;
+  return {
+    orders: ((data as unknown as OrderRow[]) ?? []).map(mapOrder),
+    totalCount: count ?? 0,
+  };
+}
+
+function addDaysForQuery(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) + days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export async function getOrderListRowsInDateRange(
+  supabase: SupabaseClient,
+  field: "order_date" | "delivery_date",
+  fromIso: string,
+  toIso: string,
+  options: { customerQuery?: string } = {}
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let query = supabase
+    .from("orders")
+    .select(columns)
+    .gte(field, fromIso)
+    .lte(field, toIso)
+    .order(field, { ascending: false });
+  const searchText = options.customerQuery?.trim().replace(/[%,]/g, " ");
+  if (searchText) {
+    const pattern = `%${searchText}%`;
+    query = query.or(`order_number.ilike.${pattern},customer_snapshot->>name.ilike.${pattern},customer_snapshot->>phone.ilike.${pattern}`);
+  }
+  let { data, error } = await query;
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    let fallback = supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .gte(field, fromIso)
+      .lte(field, toIso)
+      .order(field, { ascending: false });
+    if (searchText) {
+      const pattern = `%${searchText}%`;
+      fallback = fallback.or(`order_number.ilike.${pattern},customer_snapshot->>name.ilike.${pattern},customer_snapshot->>phone.ilike.${pattern}`);
+    }
+    const result = await fallback;
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getOrderListRowsInTrialDateRange(
+  supabase: SupabaseClient,
+  fromIso: string,
+  toIso: string
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .gte("trial_date", fromIso)
+    .lte("trial_date", toIso)
+    .order("trial_date", { ascending: true });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .gte("trial_date", fromIso)
+      .lte("trial_date", toIso)
+      .order("trial_date", { ascending: true });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getOrderItemParticulars(
+  supabase: SupabaseClient
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("order_items")
+    .select("particular")
+    .order("particular");
+  if (error) throw error;
+  const names = ((data as { particular: string }[] | null) ?? [])
+    .map((row) => row.particular.trim())
+    .filter(Boolean);
+  return Array.from(new Set(names)).sort();
+}
+
+export async function getOrderListRowsByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<Order[]> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .in("id", uniqueIds)
+    .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .in("id", uniqueIds)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getActiveOrderIds(
+  supabase: SupabaseClient
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id")
+    .not("status", "in", '("Delivered","Cancelled")');
+  if (error) throw error;
+  return ((data as { id: string }[] | null) ?? []).map((row) => row.id);
+}
+
+export async function getProductionPrintOrderRows(
+  supabase: SupabaseClient
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .not("status", "in", '("Delivered","Cancelled")')
+    .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .not("status", "in", '("Delivered","Cancelled")')
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getReceivableOrderRows(
+  supabase: SupabaseClient
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .gt("balance", 0)
+    .neq("status", "Cancelled")
+    .order("delivery_date", { ascending: true });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at
+      `)
+      .gt("balance", 0)
+      .neq("status", "Cancelled")
+      .order("delivery_date", { ascending: true });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as Array<OrderRow & { order_items?: OrderItemRow[] }>) ?? [])
+    .map((row) => mapOrder({ ...row, order_items: row.order_items ?? [] }));
+}
+
+export async function getReceivableOrderListRows(
+  supabase: SupabaseClient
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .gt("balance", 0)
+    .neq("status", "Cancelled")
+    .order("delivery_date", { ascending: true });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .gt("balance", 0)
+      .neq("status", "Cancelled")
+      .order("delivery_date", { ascending: true });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getOrderDatesByIds(
+  supabase: SupabaseClient,
+  ids: string[]
+): Promise<Map<string, string>> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, order_date")
+    .in("id", uniqueIds);
+  if (error) throw error;
+  return new Map(
+    ((data as { id: string; order_date: string }[] | null) ?? []).map((row) => [
+      row.id,
+      row.order_date,
+    ])
+  );
+}
+
+export async function getDeliveryDeskOrderRows(
+  supabase: SupabaseClient,
+  todayIso: string
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .neq("status", "Cancelled")
+    .neq("status", "Delivered")
+    .or(`status.eq.Ready,delivery_date.lte.${todayIso}`)
+    .order("delivery_date", { ascending: true })
+    .order("order_number", { ascending: true });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .neq("status", "Cancelled")
+      .neq("status", "Delivered")
+      .or(`status.eq.Ready,delivery_date.lte.${todayIso}`)
+      .order("delivery_date", { ascending: true })
+      .order("order_number", { ascending: true });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getOrderListRowsForCustomer(
+  supabase: SupabaseClient,
+  customerId: string
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .eq("customer_id", customerId)
+    .order("order_date", { ascending: false });
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+      `)
+      .eq("customer_id", customerId)
+      .order("order_date", { ascending: false });
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getRepeatableOrdersForCustomer(
+  supabase: SupabaseClient,
+  customerId: string,
+  limit = 12
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_REPEAT_COLUMNS} )
+  `;
+  let { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .eq("customer_id", customerId)
+    .order("order_date", { ascending: false })
+    .limit(limit);
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    const fallback = await supabase
+      .from("orders")
+      .select(`
+        id, order_number, customer_id, customer_snapshot, order_date, trial_date,
+        delivery_date, total_amount, advance_paid, balance, payment_mode, status,
+        payment_status, created_at, updated_at,
+        order_items!order_items_order_id_fkey ( ${ORDER_ITEM_REPEAT_COLUMNS} )
+      `)
+      .eq("customer_id", customerId)
+      .order("order_date", { ascending: false })
+      .limit(limit);
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
   }

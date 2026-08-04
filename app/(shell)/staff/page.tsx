@@ -8,6 +8,7 @@ import {
   startJobCardAction,
 } from "@/app/(shell)/job-cards/actions";
 import {
+  getStaffPayablesDataAction,
   getStaffPageDataAction,
   recordStaffPaymentAction,
   updateStaffAction,
@@ -55,6 +56,11 @@ function StaffPageContent() {
   const [payingStaff, setPayingStaff] = useState<Staff | null>(null);
   const [viewingPayableStaff, setViewingPayableStaff] = useState<Staff | null>(null);
   const [payablePeriod, setPayablePeriod] = useState<PayablePeriod>("This Week");
+  const [payablesRefreshKey, setPayablesRefreshKey] = useState(0);
+  const [hasBootstrappedPayables, setHasBootstrappedPayables] = useState(false);
+  const [loadedPayablesKey, setLoadedPayablesKey] = useState("");
+  const [loadedPayablesRefreshKey, setLoadedPayablesRefreshKey] = useState(0);
+  const [isPayablesLoading, setIsPayablesLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Named isDataLoading, not isLoading, since useCurrentUser() above already
   // owns that name for the auth/session load.
@@ -73,7 +79,9 @@ function StaffPageContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getStaffPageDataAction(todayIso)
+    const range = payablePeriodRange("This Week", todayIso);
+    const payablesKey = payablesRangeKey("This Week", range);
+    getStaffPageDataAction(todayIso, { fromIso: range.start, toIso: range.end })
       .then((result) => {
         if (cancelled) return;
         setAllRows(result.staffRows);
@@ -81,6 +89,9 @@ function StaffPageContent() {
         setJobCardQueueRows(result.jobCardQueueRows);
         setStaffPayments(result.staffPayments);
         setStaffWorkEarnings(result.staffWorkEarnings);
+        setHasBootstrappedPayables(true);
+        setLoadedPayablesKey(payablesKey);
+        setLoadedPayablesRefreshKey(0);
         setLoadError(null);
       })
       .catch((error) => {
@@ -95,6 +106,47 @@ function StaffPageContent() {
       cancelled = true;
     };
   }, [refreshKey, todayIso]);
+
+  useEffect(() => {
+    if (!canManage || !hasBootstrappedPayables) return;
+    let cancelled = false;
+    const range = payablePeriodRange(payablePeriod, todayIso);
+    const payablesKey = payablesRangeKey(payablePeriod, range);
+    if (
+      loadedPayablesKey === payablesKey &&
+      loadedPayablesRefreshKey === payablesRefreshKey
+    ) {
+      return;
+    }
+    setIsPayablesLoading(true);
+    getStaffPayablesDataAction(todayIso, { fromIso: range.start, toIso: range.end })
+      .then((result) => {
+        if (cancelled) return;
+        setStaffPayments(result.staffPayments);
+        setStaffWorkEarnings(result.staffWorkEarnings);
+        setLoadedPayablesKey(payablesKey);
+        setLoadedPayablesRefreshKey(payablesRefreshKey);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, "Failed to load staff payables."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsPayablesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    canManage,
+    hasBootstrappedPayables,
+    loadedPayablesKey,
+    loadedPayablesRefreshKey,
+    payablePeriod,
+    payablesRefreshKey,
+    todayIso,
+  ]);
 
   const rows = allRows.filter(({ staff }) => {
     const nameQuery = filters.nameQuery.trim().toLowerCase();
@@ -199,6 +251,7 @@ function StaffPageContent() {
               payments={staffPayments}
               todayIso={todayIso}
               period={payablePeriod}
+              isLoading={isPayablesLoading}
               onPeriodChange={setPayablePeriod}
               onRecordPayment={setPayingStaff}
               onViewDetails={setViewingPayableStaff}
@@ -227,7 +280,7 @@ function StaffPageContent() {
               onClose={() => setPayingStaff(null)}
               onSaved={() => {
                 setPayingStaff(null);
-                setRefreshKey((key) => key + 1);
+                setPayablesRefreshKey((key) => key + 1);
               }}
             />
           )}
@@ -418,6 +471,13 @@ function payablePeriodRange(period: PayablePeriod, todayIso: string) {
   };
 }
 
+function payablesRangeKey(
+  period: PayablePeriod,
+  range: { start?: string; end?: string }
+) {
+  return `${period}:${range.start ?? ""}:${range.end ?? ""}`;
+}
+
 function payablePeriodLabel(period: PayablePeriod, todayIso: string, allLabel: string) {
   if (period === "All") return allLabel;
   const { start, end } = payablePeriodRange(period, todayIso);
@@ -496,6 +556,7 @@ function StaffPayablesTable({
   payments,
   todayIso,
   period,
+  isLoading,
   onPeriodChange,
   onRecordPayment,
   onViewDetails,
@@ -505,6 +566,7 @@ function StaffPayablesTable({
   payments: StaffPayment[];
   todayIso: string;
   period: PayablePeriod;
+  isLoading: boolean;
   onPeriodChange: (period: PayablePeriod) => void;
   onRecordPayment: (staff: Staff) => void;
   onViewDetails: (staff: Staff) => void;
@@ -549,7 +611,9 @@ function StaffPayablesTable({
         <div>
           <h2 className="text-sm font-semibold text-ink">Payables Summary</h2>
           <p className="text-xs text-ink-muted">
-            {payablePeriodLabel(period, todayIso, "All recorded work and payments")}
+            {isLoading
+              ? "Refreshing payables..."
+              : payablePeriodLabel(period, todayIso, "All recorded work and payments")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2"><input value={staffSearch} onChange={(event) => setStaffSearch(event.target.value)} placeholder="Search staff name or code" className="h-10 min-w-60 rounded-lg border border-border px-3 text-sm" /><div className="flex rounded-lg border border-border bg-white p-1">

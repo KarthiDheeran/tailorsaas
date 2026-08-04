@@ -6,7 +6,6 @@ import {
   getAddOnsAction,
   getGarmentTypeConfigurationsAction,
 } from "@/app/(shell)/catalog/actions";
-import { getCustomersAction } from "@/app/(shell)/customers/actions";
 import { getOrderPricingBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getNewOrderPreferencesAction } from "@/app/(shell)/settings/order-preferences/actions";
 import { getActiveOperatorStaffAction } from "@/app/(shell)/settings/operator-actions";
@@ -14,12 +13,10 @@ import { useCurrentUser } from "@/components/auth/current-user-provider";
 import {
   readNewOrderBillingSettings,
   readNewOrderCatalogReference,
-  readNewOrderCustomers,
   readNewOrderOperatorStaff,
   readNewOrderPreferences,
   writeNewOrderBillingSettings,
   writeNewOrderCatalogReference,
-  writeNewOrderCustomers,
   writeNewOrderOperatorStaff,
   writeNewOrderPreferences,
 } from "@/lib/new-order-reference-browser-cache";
@@ -39,7 +36,6 @@ export function ReferenceDataWarmer() {
   const { currentUser, isLoading, hasPermission } = useCurrentUser();
   const scopeId = currentUser?.id;
   const canWarmOrderData = !isLoading && hasPermission("orders.create");
-  const canWarmCustomers = !isLoading && (hasPermission("orders.create") || hasPermission("customers.view"));
 
   useEffect(() => {
     if (!scopeId || !canWarmOrderData) return;
@@ -80,16 +76,6 @@ export function ReferenceDataWarmer() {
       }
     });
   }, [canWarmOrderData, scopeId]);
-
-  useEffect(() => {
-    if (!scopeId || !canWarmCustomers) return;
-    return runIdle(() => {
-      if (readNewOrderCustomers(scopeId)) return;
-      void getCustomersAction()
-        .then((customers) => writeNewOrderCustomers(scopeId, customers))
-        .catch(() => undefined);
-    });
-  }, [canWarmCustomers, scopeId]);
 
   return null;
 }

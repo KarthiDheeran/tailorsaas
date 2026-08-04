@@ -166,6 +166,7 @@ function PaymentsPageContent() {
     let cancelled = false;
     getPaymentsPageInitialDataAction(
       {
+        activeTab: tab,
         range: { from: rangeFrom, to: rangeTo },
         paymentMode: paymentMode || undefined,
         paymentType: paymentType || undefined,
@@ -182,13 +183,17 @@ function PaymentsPageContent() {
     )
       .then((result) => {
         if (cancelled) return;
-        if (result.report) setReport(result.report);
+        if (tab === "collections") setReport(result.report ?? EMPTY_REPORT);
         if (result.dailyClosing) setDailyClosing(result.dailyClosing);
-        if (result.pendingDuesOrders) setPendingDuesOrders(result.pendingDuesOrders);
-        setAdjustmentsMigrationMissing(canViewPayments && result.adjustments === null);
-        setAdjustments(result.adjustments ?? []);
-        setExpensesMigrationMissing(canViewExpenses && result.expenses === null);
-        setExpenses(result.expenses ?? []);
+        if (tab === "pending-dues") setPendingDuesOrders(result.pendingDuesOrders ?? []);
+        if (tab === "adjustments") {
+          setAdjustmentsMigrationMissing(canViewPayments && result.adjustments === null);
+          setAdjustments(result.adjustments ?? []);
+        }
+        if (tab === "expenses") {
+          setExpensesMigrationMissing(canViewExpenses && result.expenses === null);
+          setExpenses(result.expenses ?? []);
+        }
         setLoadError(null);
       })
       .catch((error) => {
@@ -205,6 +210,7 @@ function PaymentsPageContent() {
   }, [
     canViewPayments,
     canViewExpenses,
+    tab,
     rangeFrom,
     rangeTo,
     paymentMode,
