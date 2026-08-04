@@ -945,9 +945,8 @@ function ConfigureItemModal({
       return;
     }
     if ((e.ctrlKey && e.key === "Enter") || (e.altKey && e.key.toLowerCase() === "s")) {
-      if (previousMeasurementsOpen || addOnsOpen) return;
       e.preventDefault();
-      formRef.current?.requestSubmit();
+      e.stopPropagation();
       return;
     }
     if (e.key !== "Tab") return;
@@ -974,6 +973,7 @@ function ConfigureItemModal({
         onKeyDown={handleKeyDown}
       >
         <div
+          data-order-item-dialog="true"
           ref={modalRef}
           role="dialog"
           aria-modal="true"
@@ -1161,9 +1161,6 @@ function ConfigureItemModal({
                 className="min-w-48 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
                 {mode === "add" ? "Save Item Details" : "Update Item Details"}
-                <span className="ml-2 rounded border border-white/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/90">
-                  Alt+S
-                </span>
               </button>
               <button
                 type="button"
@@ -1596,9 +1593,14 @@ export function computeOrderItems(
     // customer defaults can include retired fields (for example `hip` after
     // Pant was reconfigured to Height + Waist); keeping those hidden keys in
     // a new payload would correctly fail the server's metadata validation.
-    // Edit Order has its own path that preserves historical passthrough keys.
+    // Existing order items must also keep values that were loaded before the
+    // active metadata was resolved (or whose fields have since been retired).
+    // New/repeated items still submit only active typed keys, so stale customer
+    // defaults cannot leak into a newly created order.
     const serializedMeasurementValues = it.typedFieldDraft
-      ? it.typedFieldDraft.typedValues
+      ? it.orderItemId
+        ? serializeGarmentFieldDraft(it.typedFieldDraft)
+        : it.typedFieldDraft.typedValues
       : it.measurement
         ? measurementValuesOnly(it.measurement.values)
         : {};
@@ -1637,7 +1639,9 @@ export function computeOrderItems(
               ? { [MEASUREMENT_NOTES_KEY]: measurementNotes }
               : {}),
           }
-        : undefined,
+        : it.orderItemId
+          ? {}
+          : undefined,
       fabricSource: it.fabricSource,
       fabricNotes: it.fabricNotes.trim() || undefined,
       designNotes: it.designNotes.trim() || undefined,

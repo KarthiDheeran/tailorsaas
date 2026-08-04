@@ -477,6 +477,17 @@ async function validateAndSnapshotOrderItems(
 
   const validatedItems: OrderItem[] = [];
   for (const item of items) {
+    const existingItem = item.id ? existingById.get(item.id) : undefined;
+    // Omission from an existing row means this was a quantity/rate-only edit.
+    // An explicit object (including {}) still represents a deliberate edit.
+    const submittedMeasurements =
+      item.measurements === undefined && existingItem
+        ? existingItem.measurements
+        : item.measurements;
+    const itemWithPreservedMeasurements: OrderItem = {
+      ...item,
+      measurements: submittedMeasurements,
+    };
     const configuration = item.garmentTypeId ? configurationById.get(item.garmentTypeId) : undefined;
     if (expectedSection && configuration && configuration.garment.section !== expectedSection) {
       return {
@@ -487,22 +498,22 @@ async function validateAndSnapshotOrderItems(
     const fields = configuration ? resolveRuntimeGarmentFields(configuration.fields, []) : null;
     if (!fields || fields.length === 0) {
       validatedItems.push({
-        ...item,
-        fieldSchemaSnapshot: item.fieldSchemaSnapshot ?? (item.id ? existingById.get(item.id)?.fieldSchemaSnapshot : undefined),
+        ...itemWithPreservedMeasurements,
+        fieldSchemaSnapshot: item.fieldSchemaSnapshot ?? existingItem?.fieldSchemaSnapshot,
       });
       continue;
     }
 
-    const existingMeasurements = item.id ? existingById.get(item.id)?.measurements ?? {} : {};
+    const existingMeasurements = existingItem?.measurements ?? {};
     const allowedLegacyCodes = new Set(Object.keys(existingMeasurements));
-    const validation = validateGarmentFieldValues(fields, item.measurements ?? {}, allowedLegacyCodes);
+    const validation = validateGarmentFieldValues(fields, submittedMeasurements ?? {}, allowedLegacyCodes);
     if (validation.error) return { items: [], error: `Item ${item.serialNo}: ${validation.error}` };
 
     validatedItems.push({
-      ...item,
+      ...itemWithPreservedMeasurements,
       fieldSchemaSnapshot: buildFieldSchemaSnapshot(
         fields,
-        item.measurements ?? {},
+        submittedMeasurements ?? {},
         shouldPrintMeasurementsOnJobCard(item.fieldSchemaSnapshot)
       ),
     });

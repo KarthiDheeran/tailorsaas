@@ -1420,6 +1420,31 @@ function NewOrderPageContent() {
     setSavedOrder(created.data);
   }
 
+  const handleSaveShortcutRef = useRef(handleSave);
+  handleSaveShortcutRef.current = handleSave;
+
+  useEffect(() => {
+    function handleSaveShortcut(event: KeyboardEvent) {
+      const isSaveShortcut =
+        (event.altKey && event.key.toLowerCase() === "s") ||
+        (event.ctrlKey && event.key === "Enter");
+      if (!isSaveShortcut || event.repeat || saving || savedOrder) return;
+      if (document.querySelector('[data-order-item-dialog="true"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (finalizeOpen) void handleSaveShortcutRef.current();
+      else setFinalizeOpen(true);
+    }
+
+    window.addEventListener("keydown", handleSaveShortcut, true);
+    return () => window.removeEventListener("keydown", handleSaveShortcut, true);
+  }, [finalizeOpen, savedOrder, saving]);
+
   function handleViewOrder() {
     if (!savedOrder) return;
     setLeavingToOrders(true);
@@ -2231,9 +2256,11 @@ function NewOrderPageContent() {
               type="button"
               onClick={() => setFinalizeOpen(true)}
               disabled={saving}
+              aria-keyshortcuts="Alt+S Control+Enter"
+              title="Save order (Alt+S or Ctrl+Enter)"
               className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
-              {saving ? "Saving…" : t("orders.saveOrder")}
+              {saving ? "Saving…" : `${t("orders.saveOrder")} · Alt+S`}
             </button>
           </div>
         </div>

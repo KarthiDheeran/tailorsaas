@@ -252,18 +252,11 @@ export function EditOrderForm({
     : deliveryDate < orderDate
       ? "Delivery date cannot be before order date."
       : undefined;
-  const trialDateError =
-    trialDate && orderDate && trialDate < orderDate
-      ? "Trial date cannot be before order date."
-      : trialDate && deliveryDate && trialDate > deliveryDate
-        ? "Trial date cannot be after delivery date."
-        : undefined;
   const itemsError =
     validItems.length === 0 ? "Select at least one valid garment item." : undefined;
   const hasErrors =
     !!orderDateError ||
     !!deliveryDateError ||
-    !!trialDateError ||
     !!itemsError ||
     !!attachmentValidationError;
   const draftOrder: Order = {
@@ -352,14 +345,30 @@ export function EditOrderForm({
       return;
     }
 
-    const updated = await updateOrderAction(order.id, {
-      orderDate,
-      trialDate,
-      deliveryDate,
-      deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
-      items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
-      status,
-    });
+    let updated: Awaited<ReturnType<typeof updateOrderAction>>;
+    try {
+      updated = await updateOrderAction(order.id, {
+        orderDate,
+        trialDate,
+        deliveryDate,
+        deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
+        items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
+        status,
+      });
+    } catch (submitError) {
+      await persistEditableOrderAttachments({
+        attachments: existingAttachments,
+        removedIds: [],
+        itemOptions: originalAttachmentItemOptions,
+      });
+      setSubmitting(false);
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not update the order. Please try again."
+      );
+      return;
+    }
     if (!updated.success) {
       await persistEditableOrderAttachments({
         attachments: existingAttachments,
@@ -497,24 +506,6 @@ export function EditOrderForm({
             />
             {submitAttempted && deliveryDateError && (
               <p className="text-xs text-chip-red-fg">{deliveryDateError}</p>
-            )}
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-ink-muted">
-              {t("orders.trialDate")}{" "}
-              <span className="font-normal">({t("common.optional")})</span>
-            </span>
-            <input
-              type="date"
-              value={trialDate}
-              onChange={(e) => setTrialDate(e.target.value)}
-              className={cn(
-                inputClass,
-                submitAttempted && trialDateError && "border-chip-red-fg"
-              )}
-            />
-            {submitAttempted && trialDateError && (
-              <p className="text-xs text-chip-red-fg">{trialDateError}</p>
             )}
           </label>
           <label className="flex flex-col gap-1.5 sm:col-span-3">
