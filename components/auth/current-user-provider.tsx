@@ -17,6 +17,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -49,6 +50,53 @@ import {
 } from "@/lib/theme";
 
 type ActionResult = { success: boolean; error?: string };
+
+const CURRENT_USER_CACHE_KEY = "tailorsaas:current-user-cache";
+
+type CurrentUserCache = {
+  authUserId: string;
+  profile: AppUser;
+  role?: Role;
+  displayTheme: DisplayTheme;
+};
+
+function readCurrentUserCache(): CurrentUserCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CURRENT_USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CurrentUserCache>;
+    if (!parsed.authUserId || !parsed.profile) return null;
+    return {
+      authUserId: parsed.authUserId,
+      profile: parsed.profile,
+      role: parsed.role,
+      displayTheme: isDisplayTheme(parsed.displayTheme)
+        ? parsed.displayTheme
+        : DEFAULT_THEME,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCurrentUserCache(cache: CurrentUserCache) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // A blocked/full sessionStorage must not break navigation.
+  }
+}
+
+function clearCurrentUserCache() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(CURRENT_USER_CACHE_KEY);
+  } catch {
+    // Cache cleanup is best-effort.
+  }
+}
 
 interface CurrentUserContextValue {
   currentUser: AppUser | undefined;
@@ -100,8 +148,24 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [displayTheme, setDisplayThemeState] = useState<DisplayTheme>(DEFAULT_THEME);
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const profileRef = useRef<AppUser | undefined>(undefined);
   const pathname = usePathname();
   const needsUsersAccessData = pathname?.startsWith("/users-access") ?? false;
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    const cached = readCurrentUserCache();
+    if (!cached) return;
+    setAuthUserId(cached.authUserId);
+    setProfile(cached.profile);
+    setRole(cached.role);
+    setDisplayThemeState(cached.displayTheme);
+    setAuthResolved(true);
+    setProfileResolved(true);
+  }, []);
 
   // Tracks the real Supabase auth session — fires once on mount with the
   // current session, then again on every sign-in/sign-out/token refresh.
@@ -111,10 +175,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       .getUser()
       .then(({ data }) => {
         setAuthUserId(data.user?.id ?? null);
+        if (!data.user) clearCurrentUserCache();
       })
       .catch((error) => {
         console.error("Failed to load authenticated user.", error);
         setAuthUserId(null);
+        clearCurrentUserCache();
       })
       .finally(() => {
         setAuthResolved(true);
@@ -123,6 +189,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUserId(session?.user?.id ?? null);
+      if (!session?.user) clearCurrentUserCache();
       setAuthResolved(true);
     });
     return () => subscription.unsubscribe();
@@ -142,7 +209,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         setProfileResolved(true);
         return;
       }
-      setProfileResolved(false);
+      const hasProfileForCurrentUser = profileRef.current?.id === authUserId;
+      if (!hasProfileForCurrentUser) {
+        setProfile(undefined);
+        setRole(undefined);
+        setProfileResolved(false);
+      }
       const supabase = createClient();
       try {
         type ProfileWithRole = AppUser & { role?: Role | Role[] | null };
@@ -181,12 +253,26 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
           : roleId
             ? await getRoleById(supabase, roleId)
             : undefined;
-        if (!cancelled) setRole(resolvedRole);
+        if (!cancelled) {
+          setRole(resolvedRole);
+          if (profileRow) {
+            writeCurrentUserCache({
+              authUserId,
+              profile: profileRow,
+              role: resolvedRole,
+              displayTheme: isDisplayTheme(profileRow.preferred_theme)
+                ? profileRow.preferred_theme
+                : DEFAULT_THEME,
+            });
+          }
+        }
       } catch (error) {
         console.error("Failed to load workspace profile.", error);
         if (!cancelled) {
-          setProfile(undefined);
-          setRole(undefined);
+          if (!hasProfileForCurrentUser) {
+            setProfile(undefined);
+            setRole(undefined);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -324,12 +410,20 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       setProfile((current) =>
         current ? { ...current, preferred_theme: theme } : current
       );
+      if (profile && authUserId) {
+        writeCurrentUserCache({
+          authUserId,
+          profile: { ...profile, preferred_theme: theme },
+          role,
+          displayTheme: theme,
+        });
+      }
       return { success: true };
     },
-    [displayTheme]
+    [authUserId, displayTheme, profile, role]
   );
 
-  const isLoading = !authResolved || !profileResolved;
+  const isLoading = !authResolved || (!profile && !profileResolved);
 
   const value = useMemo<CurrentUserContextValue>(() => {
     void refreshTick; // force recompute after role/user writes

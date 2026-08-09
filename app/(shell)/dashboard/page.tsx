@@ -19,15 +19,18 @@ const DEFAULT_SUMMARY_STAGES = [
   "Unassigned",
   "Cutting",
   "Stitching",
-  "Finishing",
-  "Trial / Alteration",
   "Ready",
   "Delivered",
 ];
+const HIDDEN_SUMMARY_STAGES = new Set(["Finishing", "Trial / Alteration"]);
 
 function displayStage(stage: string) {
   if (stage === "Trial" || stage === "Alteration") return "Trial / Alteration";
   return stage;
+}
+
+function isVisibleSummaryStage(stage: string) {
+  return !HIDDEN_SUMMARY_STAGES.has(displayStage(stage));
 }
 
 function GarmentProductionSummary({
@@ -55,18 +58,22 @@ function GarmentProductionSummary({
 }) {
   const selectedDisplayStage =
     selectedStage === "all" ? "all" : displayStage(selectedStage);
+  const summaryRows = rows.filter((row) => isVisibleSummaryStage(row.stage));
+  const summaryStageOptions = stages.filter(isVisibleSummaryStage);
   const visibleStages =
     selectedDisplayStage === "all"
       ? [
           ...DEFAULT_SUMMARY_STAGES,
-          ...Array.from(new Set(rows.map((row) => displayStage(row.stage))))
+          ...Array.from(new Set(summaryRows.map((row) => displayStage(row.stage))))
             .filter((stage) => !DEFAULT_SUMMARY_STAGES.includes(stage))
             .sort(),
         ]
-      : [selectedDisplayStage];
+      : isVisibleSummaryStage(selectedDisplayStage)
+        ? [selectedDisplayStage]
+        : DEFAULT_SUMMARY_STAGES;
   const byGarment = new Map<string, Record<string, number>>();
 
-  for (const row of rows) {
+  for (const row of summaryRows) {
     const stage = displayStage(row.stage);
     const garment = byGarment.get(row.garment) ?? {};
     garment[stage] = (garment[stage] ?? 0) + row.quantity;
@@ -145,7 +152,7 @@ function GarmentProductionSummary({
               className="mt-1 block h-9 min-w-40 rounded-lg border border-border bg-white px-3 text-sm"
             >
               <option value="all">All statuses</option>
-              {stages.map((stage) => (
+              {summaryStageOptions.map((stage) => (
                 <option key={stage} value={stage}>
                   {displayStage(stage)}
                 </option>
@@ -155,7 +162,7 @@ function GarmentProductionSummary({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-[13px]">
+        <table className="w-full min-w-[620px] text-left text-[13px]">
           <thead className="bg-surface-muted/70 font-semibold text-ink-muted">
             <tr className="border-b border-border-soft">
               <th className="whitespace-nowrap px-4 py-2.5">Garment</th>

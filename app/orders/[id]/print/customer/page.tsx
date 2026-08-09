@@ -45,7 +45,7 @@ type ReceiptRow =
       total: number;
     };
 
-const ROWS_PER_RECEIPT_PAGE = 14;
+const ROWS_PER_RECEIPT_PAGE = 12;
 const RECEIPT_PRINT_PAGE_WIDTH_MM = 210;
 const RECEIPT_PRINT_PAGE_HEIGHT_MM = 297;
 const CUSTOMER_RECEIPT_WIDTH = "6in";
@@ -378,6 +378,7 @@ function CustomerReceiptPrintPageContent({
           background: white;
           color: #111827;
           font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          contain: layout paint;
         }
 
         .receipt-main-content {
@@ -385,6 +386,7 @@ function CustomerReceiptPrintPageContent({
           max-width: var(--customer-receipt-content-width);
           margin: 0 auto;
           min-height: 0;
+          overflow: hidden;
         }
 
         .receipt-header {
@@ -396,10 +398,11 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-shop-name {
-          font-size: 14px;
+          font-size: 16px;
           line-height: 1;
           font-weight: 800;
           letter-spacing: 0;
+          overflow-wrap: anywhere;
         }
 
         .receipt-tagline {
@@ -412,7 +415,7 @@ function CustomerReceiptPrintPageContent({
           margin: 1mm 0 0;
           display: grid;
           gap: 0.4mm;
-          font-size: 8.5px;
+          font-size: 9.2px;
           line-height: 1.08;
         }
 
@@ -421,6 +424,7 @@ function CustomerReceiptPrintPageContent({
           grid-template-columns: 17mm 1fr;
           gap: 1.5mm;
           min-width: 0;
+          max-width: 100%;
         }
 
         .receipt-customer .receipt-details div {
@@ -482,8 +486,8 @@ function CustomerReceiptPrintPageContent({
           margin: 0;
           min-width: 0;
           overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          overflow-wrap: anywhere;
+          white-space: normal;
           font-weight: 700;
         }
 
@@ -495,18 +499,20 @@ function CustomerReceiptPrintPageContent({
 
         .receipt-items {
           width: 100%;
+          max-width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          font-size: 9.8px;
-          line-height: 1.12;
+          font-size: 10.8px;
+          line-height: 1.14;
         }
 
         .receipt-items th {
           border-bottom: 1px solid #111827;
           padding: 1.5px 2px;
           text-align: left;
-          font-size: 9.2px;
+          font-size: 10px;
           font-weight: 800;
+          overflow: hidden;
         }
 
         .receipt-items th:first-child {
@@ -527,18 +533,18 @@ function CustomerReceiptPrintPageContent({
           vertical-align: top;
           border-bottom: 1px solid #e5e7eb;
           break-inside: avoid;
+          overflow: hidden;
+          overflow-wrap: anywhere;
         }
 
         .receipt-items td:first-child {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
           font-weight: 650;
+          white-space: normal;
         }
 
         .receipt-items .addon-row td {
           color: #4b5563;
-          font-size: 9px;
+          font-size: 9.6px;
           border-bottom-color: #f1f5f9;
         }
 
@@ -550,6 +556,7 @@ function CustomerReceiptPrintPageContent({
         .num {
           text-align: right !important;
           white-space: nowrap;
+          overflow-wrap: normal !important;
         }
 
         .receipt-bottom-row {
@@ -565,6 +572,7 @@ function CustomerReceiptPrintPageContent({
           border-top: 1px solid #111827;
           padding-top: 1mm;
           min-height: 0;
+          overflow: hidden;
         }
 
         .receipt-preprinted-reserved {
@@ -580,9 +588,10 @@ function CustomerReceiptPrintPageContent({
         .receipt-amount-summary {
           width: 34mm;
           justify-self: end;
-          font-size: 8px;
+          font-size: 9px;
           line-height: 1.08;
           text-align: right;
+          overflow: hidden;
         }
 
         .receipt-amount-summary div {
@@ -600,13 +609,16 @@ function CustomerReceiptPrintPageContent({
         .receipt-amount-summary strong {
           white-space: nowrap;
           font-weight: 800;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .receipt-amount-summary .balance {
           margin-top: 1px;
           border-top: 1px solid #111827;
           padding-top: 1px;
-          font-size: 9px;
+          font-size: 10px;
         }
 
         @media screen {

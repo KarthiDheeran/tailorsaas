@@ -146,6 +146,38 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+async function timeOrderSaveStep<T>(
+  workflow: "existing-customer" | "new-customer",
+  step: string,
+  work: () => Promise<T>
+): Promise<T> {
+  if (process.env.PERFORMANCE_DIAGNOSTICS !== "true") return work();
+  const startedAt = performance.now();
+  try {
+    const result = await work();
+    console.info(
+      `[ORDER SAVE PERF] ${JSON.stringify({
+        workflow,
+        step,
+        durationMs: Number((performance.now() - startedAt).toFixed(1)),
+        status: "success",
+      })}`
+    );
+    return result;
+  } catch (error) {
+    console.info(
+      `[ORDER SAVE PERF] ${JSON.stringify({
+        workflow,
+        step,
+        durationMs: Number((performance.now() - startedAt).toFixed(1)),
+        status: "error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      })}`
+    );
+    throw error;
+  }
+}
+
 async function resolveMeasurementTaker(
   staffId?: string,
 ): Promise<{ operator?: Pick<ActiveSharedDesktopOperator, "id" | "name">; error?: string }> {
@@ -905,38 +937,64 @@ export async function createOrderAction(data: {
   measurementTakenByOperatorId?: string;
   createdByOperatorId?: string;
 }): Promise<ActionResult<Order>> {
+  const workflow = "existing-customer";
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.create");
+  const guard = await timeOrderSaveStep(workflow, "requireServerPermission", () =>
+    requireServerPermission(supabase, "orders.create")
+  );
   if (!guard.ok) return { success: false, error: guard.error };
-  const operatorGuard = await requireActiveSharedDesktopOperator();
+  const operatorGuard = await timeOrderSaveStep(workflow, "requireActiveSharedDesktopOperator", () =>
+    requireActiveSharedDesktopOperator()
+  );
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
-  const measurementTaker = await resolveMeasurementTaker(data.measurementTakenByOperatorId);
+  const measurementTaker = await timeOrderSaveStep(workflow, "resolveMeasurementTaker", () =>
+    resolveMeasurementTaker(data.measurementTakenByOperatorId)
+  );
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
-  const selectedCreator = await resolveMeasurementTaker(data.createdByOperatorId);
+  const selectedCreator = await timeOrderSaveStep(workflow, "resolveCreatedByOperator", () =>
+    resolveMeasurementTaker(data.createdByOperatorId)
+  );
   if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
-  const scopeError = await requireAllowedOrderSection(supabase, data.orderSection);
+  const scopeError = await timeOrderSaveStep(workflow, "requireAllowedOrderSection", () =>
+    requireAllowedOrderSection(supabase, data.orderSection)
+  );
   if (scopeError) return { success: false, error: scopeError };
   if (data.items.length === 0) {
     return { success: false, error: "At least one item is required." };
   }
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
-  const prepared = await validateAndSnapshotOrderItems(supabase, data.items, [], data.orderSection);
-  if (prepared.error) return { success: false, error: prepared.error };
-  const order = await createOrder(supabase, { ...data, items: prepared.items, status: "In Progress" });
-  await recordOrderOperatorAttribution(
-    createAdminClient(),
-    order.id,
-    selectedCreator.operator ?? operatorGuard.operator,
-    measurementTaker.operator ?? operatorGuard.operator,
-    { hasAdvancePayment: data.advancePaid > 0 },
+  const prepared = await timeOrderSaveStep(workflow, "validateAndSnapshotOrderItems", () =>
+    validateAndSnapshotOrderItems(supabase, data.items, [], data.orderSection)
   );
-  await recomputeOrderTotals(createAdminClient(), order.id);
-  await trySyncJobCardsForOrder(supabase, order.id);
-  return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
+  if (prepared.error) return { success: false, error: prepared.error };
+  const order = await timeOrderSaveStep(workflow, "createOrder", () =>
+    createOrder(supabase, { ...data, items: prepared.items, status: "In Progress" })
+  );
+  await Promise.all([
+    timeOrderSaveStep(workflow, "recordOrderOperatorAttribution", () =>
+      recordOrderOperatorAttribution(
+        createAdminClient(),
+        order.id,
+        selectedCreator.operator ?? operatorGuard.operator,
+        measurementTaker.operator ?? operatorGuard.operator,
+        { hasAdvancePayment: data.advancePaid > 0 },
+      )
+    ),
+    timeOrderSaveStep(workflow, "recomputeOrderTotals", () =>
+      recomputeOrderTotals(createAdminClient(), order.id)
+    ),
+    timeOrderSaveStep(workflow, "syncJobCardsForOrder", () =>
+      trySyncJobCardsForOrder(supabase, order.id)
+    ),
+  ]);
+  const finalOrder = await timeOrderSaveStep(workflow, "finalGetOrderById", () =>
+    getOrderById(createAdminClient(), order.id)
+  );
+  return { success: true, data: finalOrder ?? order };
 }
 
 export async function createOrderForNewCustomerAction(data: {
@@ -960,21 +1018,34 @@ export async function createOrderForNewCustomerAction(data: {
     createdByOperatorId?: string;
   };
 }): Promise<ActionResult<Order>> {
+  const workflow = "new-customer";
   const supabase = createServerClient();
-  const orderGuard = await requireServerPermission(supabase, "orders.create");
+  const orderGuard = await timeOrderSaveStep(workflow, "requireOrderPermission", () =>
+    requireServerPermission(supabase, "orders.create")
+  );
   if (!orderGuard.ok) return { success: false, error: orderGuard.error };
-  const operatorGuard = await requireActiveSharedDesktopOperator();
+  const operatorGuard = await timeOrderSaveStep(workflow, "requireActiveSharedDesktopOperator", () =>
+    requireActiveSharedDesktopOperator()
+  );
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
-  const measurementTaker = await resolveMeasurementTaker(data.order.measurementTakenByOperatorId);
+  const measurementTaker = await timeOrderSaveStep(workflow, "resolveMeasurementTaker", () =>
+    resolveMeasurementTaker(data.order.measurementTakenByOperatorId)
+  );
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
-  const selectedCreator = await resolveMeasurementTaker(data.order.createdByOperatorId);
+  const selectedCreator = await timeOrderSaveStep(workflow, "resolveCreatedByOperator", () =>
+    resolveMeasurementTaker(data.order.createdByOperatorId)
+  );
   if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.order.orderSection)) {
     return { success: false, error: "Select a valid order section." };
   }
-  const scopeError = await requireAllowedOrderSection(supabase, data.order.orderSection);
+  const scopeError = await timeOrderSaveStep(workflow, "requireAllowedOrderSection", () =>
+    requireAllowedOrderSection(supabase, data.order.orderSection)
+  );
   if (scopeError) return { success: false, error: scopeError };
-  const customerGuard = await requireServerPermission(supabase, "customers.create");
+  const customerGuard = await timeOrderSaveStep(workflow, "requireCustomerPermission", () =>
+    requireServerPermission(supabase, "customers.create")
+  );
   if (!customerGuard.ok) return { success: false, error: customerGuard.error };
   if (!data.customer.name.trim()) return { success: false, error: "Name is required." };
   if (!data.customer.phone.trim()) return { success: false, error: "Phone is required." };
@@ -987,10 +1058,12 @@ export async function createOrderForNewCustomerAction(data: {
   const dateError = validateOrderDates(data.order);
   if (dateError) return { success: false, error: dateError };
 
-  const existing = await getCustomerByNameAndPhone(
-    supabase,
-    data.customer.name.trim(),
-    data.customer.phone.trim()
+  const existing = await timeOrderSaveStep(workflow, "checkDuplicateCustomer", () =>
+    getCustomerByNameAndPhone(
+      supabase,
+      data.customer.name.trim(),
+      data.customer.phone.trim()
+    )
   );
   if (existing) {
     return {
@@ -1001,13 +1074,15 @@ export async function createOrderForNewCustomerAction(data: {
 
   let customer: Customer;
   try {
-    customer = await createCustomer(supabase, {
-      name: data.customer.name.trim(),
-      phone: data.customer.phone.trim(),
-      address: data.customer.address.trim(),
-      area: data.customer.area.trim(),
-      gender: data.customer.gender,
-    });
+    customer = await timeOrderSaveStep(workflow, "createCustomer", () =>
+      createCustomer(supabase, {
+        name: data.customer.name.trim(),
+        phone: data.customer.phone.trim(),
+        address: data.customer.address.trim(),
+        area: data.customer.area.trim(),
+        gender: data.customer.gender,
+      })
+    );
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return {
@@ -1018,31 +1093,46 @@ export async function createOrderForNewCustomerAction(data: {
     throw error;
   }
 
-  const prepared = await validateAndSnapshotOrderItems(supabase, data.order.items, [], data.order.orderSection);
+  const prepared = await timeOrderSaveStep(workflow, "validateAndSnapshotOrderItems", () =>
+    validateAndSnapshotOrderItems(supabase, data.order.items, [], data.order.orderSection)
+  );
   if (prepared.error) return { success: false, error: prepared.error };
 
   let order: Order;
   try {
-    order = await createOrder(supabase, {
-      ...data.order,
-      items: prepared.items,
-      customerId: customer.id,
-      status: "In Progress",
-    });
+    order = await timeOrderSaveStep(workflow, "createOrder", () =>
+      createOrder(supabase, {
+        ...data.order,
+        items: prepared.items,
+        customerId: customer.id,
+        status: "In Progress",
+      })
+    );
   } catch (error) {
     await deleteCustomer(createAdminClient(), customer.id);
     throw error;
   }
-  await recordOrderOperatorAttribution(
-    createAdminClient(),
-    order.id,
-    selectedCreator.operator ?? operatorGuard.operator,
-    measurementTaker.operator ?? operatorGuard.operator,
-    { hasAdvancePayment: data.order.advancePaid > 0 },
+  await Promise.all([
+    timeOrderSaveStep(workflow, "recordOrderOperatorAttribution", () =>
+      recordOrderOperatorAttribution(
+        createAdminClient(),
+        order.id,
+        selectedCreator.operator ?? operatorGuard.operator,
+        measurementTaker.operator ?? operatorGuard.operator,
+        { hasAdvancePayment: data.order.advancePaid > 0 },
+      )
+    ),
+    timeOrderSaveStep(workflow, "syncJobCardsForOrder", () =>
+      trySyncJobCardsForOrder(supabase, order.id)
+    ),
+    timeOrderSaveStep(workflow, "recomputeOrderTotals", () =>
+      recomputeOrderTotals(createAdminClient(), order.id)
+    ),
+  ]);
+  const finalOrder = await timeOrderSaveStep(workflow, "finalGetOrderById", () =>
+    getOrderById(createAdminClient(), order.id)
   );
-  await trySyncJobCardsForOrder(supabase, order.id);
-  await recomputeOrderTotals(createAdminClient(), order.id);
-  return { success: true, data: (await getOrderById(createAdminClient(), order.id)) ?? order };
+  return { success: true, data: finalOrder ?? order };
 }
 
 export async function updateOrderAction(
