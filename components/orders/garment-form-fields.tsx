@@ -388,7 +388,18 @@ export function GarmentFormFields({
   });
 
   if (layout === "columns") {
-    return <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)]">{content}</div>;
+    const groupEntries = Object.entries(groups);
+    const columnsClass =
+      groupEntries.length >= 3
+        ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)]"
+        : groupEntries.length === 2
+          ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(430px,0.95fr)_minmax(500px,1.1fr)]"
+          : "grid min-w-0 items-start gap-4 xl:grid-cols-1";
+    return (
+      <div className={columnsClass}>
+        {content}
+      </div>
+    );
   }
 
   return <>{content}</>;

@@ -502,6 +502,20 @@ function ConfigureItemModal({
     () => runtimeFields.filter((field) => field.fieldType !== "instruction"),
     [runtimeFields]
   );
+  const measurementSectionCount = useMemo(
+    () => new Set(nonInstructionFields.map((field) => field.sectionName)).size,
+    [nonInstructionFields]
+  );
+  const measurementGridClass =
+    measurementSectionCount >= 3
+      ? "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)_360px]"
+      : measurementSectionCount === 2
+        ? "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(430px,0.95fr)_minmax(500px,1.1fr)_340px]"
+        : "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(400px,0.95fr)_minmax(360px,0.85fr)]";
+  const measurementContentSpanClass =
+    measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-1";
+  const instructionSpanClass =
+    measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-2";
   const instructionFields = useMemo(
     () => runtimeFields.filter((field) => field.fieldType === "instruction"),
     [runtimeFields]
@@ -1137,15 +1151,15 @@ function ConfigureItemModal({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-muted/40 px-5 py-4">
-              <section className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)_360px]">
+              <section className={measurementGridClass}>
                 {metadataLoading ? (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-3">Loading configured fields...</p>
+                  <p className={cn("rounded-lg bg-white px-3 py-2 text-sm text-ink-muted", measurementContentSpanClass)}>Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
-                  <div className="min-w-0 xl:col-span-3">
+                  <div className={cn("min-w-0", measurementContentSpanClass)}>
                     <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout="columns" firstControlRef={firstMeasurementRef} />
                   </div>
                 ) : (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-3">
+                  <p className={cn("rounded-lg bg-white px-3 py-2 text-sm text-ink-muted", measurementContentSpanClass)}>
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
@@ -1197,7 +1211,7 @@ function ConfigureItemModal({
                   </label>
                 </section>
 
-                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4 xl:col-span-3">
+                {!metadataLoading && instructionFields.length > 0 && <section className={cn("min-w-0 rounded-lg border border-border-soft bg-white p-4", instructionSpanClass)}>
                   <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
                   <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
                 </section>}
