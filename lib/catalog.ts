@@ -36,6 +36,7 @@ export const CATALOG_FIELD_INPUT_TYPES = [
   "select",
   "multiselect",
   "checkbox",
+  "table",
 ] as const;
 export type CatalogFieldInputType = (typeof CATALOG_FIELD_INPUT_TYPES)[number];
 

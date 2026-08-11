@@ -6,13 +6,159 @@ import { ChevronDown } from "lucide-react";
 import type {
   GarmentFieldValue,
   GarmentFieldValues,
+  GarmentTableRow,
   RuntimeGarmentField,
+} from "@/lib/garment-form-runtime";
+import {
+  computeGarmentTableCell,
+  garmentTableColumnOptions,
+  garmentTableSelectedOptionMetadata,
 } from "@/lib/garment-form-runtime";
 
 function multiselectValues(value: GarmentFieldValue): string[] {
   return Array.isArray(value)
     ? value.filter((option): option is string => typeof option === "string")
     : [];
+}
+
+function tableRows(value: GarmentFieldValue, field: RuntimeGarmentField): GarmentTableRow[] {
+  const existing = Array.isArray(value)
+    ? value.filter((row): row is GarmentTableRow => row !== null && typeof row === "object" && !Array.isArray(row))
+    : [];
+  const count = Math.max(field.tableConfig?.rows ?? 11, existing.length);
+  return Array.from({ length: count }, (_, index) => existing[index] ?? {});
+}
+
+function TableFieldControl({
+  field,
+  value,
+  disabled,
+  onChange,
+}: {
+  field: RuntimeGarmentField;
+  value: GarmentFieldValue;
+  disabled: boolean;
+  onChange: (code: string, value: GarmentFieldValue) => void;
+}) {
+  const config = field.tableConfig;
+  if (!config) {
+    return (
+      <p className="rounded-md border border-dashed border-border p-3 text-sm text-ink-muted">
+        Table columns are not configured for {field.name}.
+      </p>
+    );
+  }
+  const rows = tableRows(value, field);
+  const columnClass = (key: string, type: string) => {
+    if (key === "qty") return "w-[72px] min-w-[72px]";
+    if (key === "total") return "w-[76px] min-w-[76px]";
+    if (key === "tailorAmount" || key === "itemPrice") return "w-[112px] min-w-[112px]";
+    if (type === "display") return "w-[130px] min-w-[130px]";
+    return "w-[150px] min-w-[150px]";
+  };
+  const updateCell = (
+    rowIndex: number,
+    key: string,
+    nextValue: string | number | null,
+    defaults: Record<string, string | number> = {}
+  ) => {
+    const nextRows = rows.map((row, index) => index === rowIndex ? { ...row, [key]: nextValue, ...defaults } : row);
+    const normalized = nextRows.map((row) => {
+      const next = { ...row };
+      for (const column of config.columns) {
+        if (column.type === "calculated" || column.type === "display") {
+          const computed = computeGarmentTableCell(next, column);
+          next[column.key] = computed === "" ? null : computed;
+        }
+      }
+      return next;
+    });
+    onChange(field.code, normalized);
+  };
+
+  return (
+    <div className="col-span-full overflow-x-auto rounded-lg border border-border-soft bg-white">
+      <table className="w-full min-w-0 table-fixed text-left text-xs">
+        <thead className="bg-surface-muted text-ink-muted">
+          <tr>
+            {config.columns.map((column) => (
+              <th key={column.key} className={`${columnClass(column.key, column.type)} px-2 py-2 font-semibold`}>
+                {column.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="border-t border-border-soft">
+              {config.columns.map((column) => {
+                const rowConfig = config.rowConfigs[rowIndex];
+                const computed = computeGarmentTableCell(row, column);
+                const cellValue = column.type === "calculated" || column.type === "display"
+                  ? computed
+                  : row[column.key] ?? "";
+                return (
+                  <td key={column.key} className={`${columnClass(column.key, column.type)} px-1.5 py-1.5`}>
+                    {column.type === "select" ? (
+                      <select
+                        disabled={disabled}
+                        value={String(cellValue ?? "")}
+                        onChange={(event) => {
+                          const nextValue = event.target.value || null;
+                          const metadata = nextValue
+                            ? garmentTableSelectedOptionMetadata(column, rowConfig, nextValue)
+                            : { defaults: {} };
+                          updateCell(rowIndex, column.key, nextValue, {
+                            ...metadata.defaults,
+                            ...(metadata.workerStage ? { workerStage: metadata.workerStage } : {}),
+                          });
+                        }}
+                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                      >
+                        <option value="">Select...</option>
+                        {garmentTableColumnOptions(column, rowConfig).map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </select>
+                    ) : column.readonly ? (
+                      <div className="min-h-8 truncate rounded border border-border-soft bg-surface-muted px-2 py-1.5 text-xs font-medium text-ink">
+                        {cellValue === null || cellValue === undefined || cellValue === "" ? "—" : String(cellValue)}
+                      </div>
+                    ) : column.type === "number" ? (
+                      <input
+                        disabled={disabled}
+                        type="number"
+                        value={cellValue === null ? "" : String(cellValue)}
+                        onChange={(event) =>
+                          updateCell(
+                            rowIndex,
+                            column.key,
+                            event.target.value === "" ? null : Number(event.target.value)
+                          )
+                        }
+                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                      />
+                    ) : column.type === "calculated" || column.type === "display" ? (
+                      <div className="min-h-8 truncate rounded border border-border-soft bg-surface-muted px-2 py-1.5 text-xs font-medium text-ink">
+                        {cellValue === null || cellValue === undefined || cellValue === "" ? "—" : String(cellValue)}
+                      </div>
+                    ) : (
+                      <input
+                        disabled={disabled}
+                        value={cellValue === null ? "" : String(cellValue)}
+                        onChange={(event) => updateCell(rowIndex, column.key, event.target.value || null)}
+                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                      />
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function FieldControl({
@@ -31,13 +177,20 @@ function FieldControl({
   controlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-[13px] font-medium text-ink-muted">
+    <label className="flex min-w-0 flex-col gap-1 text-[13px] font-medium text-ink-muted">
       <span>
         {field.name}
         {field.required && <b className="ml-1 text-chip-red-fg">*</b>}
         {field.unit && ` (${field.unit})`}
       </span>
-      {field.inputType === "textarea" ? (
+      {field.inputType === "table" ? (
+        <TableFieldControl
+          field={field}
+          value={value}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      ) : field.inputType === "textarea" ? (
         <textarea
           ref={controlRef as Ref<HTMLTextAreaElement>}
           disabled={disabled}
@@ -45,7 +198,7 @@ function FieldControl({
           value={(value as string | null) ?? ""}
           placeholder={field.placeholder ?? undefined}
           onChange={(event) => onChange(field.code, event.target.value)}
-          className="min-h-16 rounded-md border border-border bg-white p-2 text-sm text-ink"
+          className="min-h-16 w-full min-w-0 rounded-md border border-border bg-white p-2 text-sm text-ink"
         />
       ) : field.inputType === "select" ? (
         <span className="relative block">
@@ -103,7 +256,7 @@ function FieldControl({
           <span className="text-sm text-ink">Yes</span>
         </span>
       ) : (
-        <span className="block">
+        <span className="block min-w-0">
           <input
             ref={controlRef as Ref<HTMLInputElement>}
             disabled={disabled}
@@ -124,7 +277,7 @@ function FieldControl({
                   : event.target.value
               )
             }
-            className="h-10 min-w-0 flex-1 rounded-md border border-border bg-white px-2 text-sm text-ink"
+            className="h-10 w-full min-w-0 rounded-md border border-border bg-white px-2 text-sm text-ink"
           />
         </span>
       )}
@@ -169,7 +322,9 @@ export function GarmentFormFields({
   }, {});
 
   let controlIndex = 0;
-  const content = Object.entries(groups).map(([section, group]) => (
+  const content = Object.entries(groups).map(([section, group]) => {
+    const hasTable = group.some((field) => field.inputType === "table");
+    return (
     <section
       key={section}
       className={
@@ -181,7 +336,7 @@ export function GarmentFormFields({
       {showSectionHeadings && (
         <h4 className="mb-3 text-[15px] font-semibold text-ink">{section}</h4>
       )}
-      <div className={layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" : layout === "instructions" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
+      <div className={hasTable ? "grid grid-cols-1 gap-3" : layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3" : layout === "instructions" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
         {group.map((field) => {
           const isFirst = controlIndex++ === 0;
           return <FieldControl
@@ -196,10 +351,11 @@ export function GarmentFormFields({
         })}
       </div>
     </section>
-  ));
+    );
+  });
 
   if (layout === "columns") {
-    return <div className="grid min-w-0 gap-4">{content}</div>;
+    return <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(360px,1fr)_minmax(520px,1.15fr)]">{content}</div>;
   }
 
   return <>{content}</>;

@@ -30,6 +30,8 @@ function field(overrides: Partial<RuntimeGarmentField> = {}): RuntimeGarmentFiel
     unit: "inch",
     placeholder: "",
     options: [],
+    uiMetadata: {},
+    tableConfig: null,
     min: null,
     max: null,
     decimalPlaces: 2,

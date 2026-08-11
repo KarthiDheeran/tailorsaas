@@ -1,6 +1,30 @@
 import type { CatalogGarmentTypeField, CatalogSection } from "@/lib/catalog";
 
-export type GarmentFieldValue = number | string | string[] | boolean | null;
+export type GarmentTableColumnType = "text" | "number" | "select" | "calculated" | "display";
+
+export type GarmentTableColumn = {
+  key: string;
+  label: string;
+  type: GarmentTableColumnType;
+  options?: string[];
+  optionsSource?: string;
+  source?: string;
+  formula?: "qty*tailorAmount" | "qty*rate" | "qty*itemPrice";
+  template?: string;
+  readonly?: boolean;
+};
+
+export type GarmentTableRowConfig = Record<string, unknown>;
+
+export type GarmentTableConfig = {
+  rows: number;
+  rowConfigs: GarmentTableRowConfig[];
+  columns: GarmentTableColumn[];
+};
+
+export type GarmentTableRow = Record<string, string | number | null>;
+export type GarmentTableValue = GarmentTableRow[];
+export type GarmentFieldValue = number | string | string[] | boolean | GarmentTableValue | null;
 export type GarmentFieldValues = Record<string, GarmentFieldValue>;
 
 /** Request-local editable values plus historical keys not in the active schema. */
@@ -41,7 +65,7 @@ export type RuntimeGarmentField = {
   code: string;
   name: string;
   fieldType: "measurement" | "style" | "instruction";
-  inputType: "number" | "text" | "textarea" | "select" | "multiselect" | "checkbox";
+  inputType: "number" | "text" | "textarea" | "select" | "multiselect" | "checkbox" | "table";
   sectionId: string | null;
   sectionName: string;
   sectionOrder: number;
@@ -50,16 +74,197 @@ export type RuntimeGarmentField = {
   unit: string | null;
   placeholder: string | null;
   options: string[];
+  uiMetadata: Record<string, unknown>;
+  tableConfig: GarmentTableConfig | null;
   min: number | null;
   max: number | null;
   decimalPlaces: number | null;
   defaultValue: GarmentFieldValue;
 };
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim() !== "");
+}
+
+function numberOrNull(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionName(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  const object = asObject(value);
+  const name = typeof object.name === "string" ? object.name : typeof object.label === "string" ? object.label : "";
+  return name.trim();
+}
+
+export function garmentTableOptionMetadata(
+  value: unknown
+): { defaults: Record<string, number>; workerStage?: string } {
+  const object = asObject(value);
+  const defaults = Object.fromEntries(
+    ["tailorAmount", "itemPrice", "rate", "qty"].flatMap((key) => {
+      const parsed = numberOrNull(object[key]);
+      return parsed === null ? [] : [[key, parsed]];
+    })
+  );
+  const workerStage = typeof object.workerStage === "string" && object.workerStage.trim()
+    ? object.workerStage.trim()
+    : undefined;
+  return { defaults, workerStage };
+}
+
+function optionList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+export function resolveGarmentTableConfig(
+  metadata: Record<string, unknown> | null | undefined
+): GarmentTableConfig | null {
+  const root = asObject(metadata);
+  const table = asObject(root.table ?? root);
+  const rawColumns = Array.isArray(table.columns) ? table.columns : [];
+  const columns = rawColumns.flatMap((rawColumn): GarmentTableColumn[] => {
+    const column = asObject(rawColumn);
+    const key = typeof column.key === "string" ? column.key.trim() : "";
+    const label = typeof column.label === "string" ? column.label.trim() : key;
+    const type = typeof column.type === "string" ? column.type : "text";
+    if (!key || !label) return [];
+    if (!["text", "number", "select", "calculated", "display"].includes(type)) return [];
+    return [{
+      key,
+      label,
+      type: type as GarmentTableColumnType,
+      options: stringList(column.options),
+      optionsSource: typeof column.optionsSource === "string" ? column.optionsSource.trim() : undefined,
+      source: typeof column.source === "string" ? column.source.trim() : undefined,
+      formula:
+        column.formula === "qty*tailorAmount" || column.formula === "qty*rate" || column.formula === "qty*itemPrice"
+          ? column.formula
+          : undefined,
+      template: typeof column.template === "string" ? column.template : undefined,
+      readonly: column.readonly === true,
+    }];
+  });
+  if (columns.length === 0) return null;
+  const rawRows = Array.isArray(table.rows) ? table.rows : [];
+  const rowConfigs = rawRows.map(asObject);
+  const rows = rowConfigs.length > 0
+    ? Math.min(rowConfigs.length, 50)
+    : typeof table.rows === "number" && Number.isInteger(table.rows)
+      ? Math.max(1, Math.min(table.rows, 50))
+      : 11;
+  return { rows, rowConfigs, columns };
+}
+
+function numberFromCell(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function resolveSourceValue(row: GarmentTableRow, source: string | undefined): string {
+  if (!source) return "";
+  const value = row[source];
+  return value === null || value === undefined ? "" : String(value);
+}
+
+export function garmentTableColumnOptions(
+  column: GarmentTableColumn,
+  rowConfig?: GarmentTableRowConfig
+): string[] {
+  if (column.optionsSource && rowConfig) {
+    const sourceKey = column.optionsSource.replace(/^row\./, "");
+    const rowOptions = optionList(rowConfig[sourceKey]).map(optionName).filter(Boolean);
+    if (rowOptions.length > 0) return rowOptions;
+  }
+  return column.options ?? [];
+}
+
+export function garmentTableOptionDefaults(
+  column: GarmentTableColumn,
+  rowConfig: GarmentTableRowConfig | undefined,
+  selectedValue: string
+): Record<string, number> {
+  if (!column.optionsSource || !rowConfig || !selectedValue) return {};
+  const sourceKey = column.optionsSource.replace(/^row\./, "");
+  const option = optionList(rowConfig[sourceKey]).find((candidate) => optionName(candidate) === selectedValue);
+  return option ? garmentTableOptionMetadata(option).defaults : {};
+}
+
+export function garmentTableSelectedOptionMetadata(
+  column: GarmentTableColumn,
+  rowConfig: GarmentTableRowConfig | undefined,
+  selectedValue: string
+): { defaults: Record<string, number>; workerStage?: string } {
+  if (!column.optionsSource || !rowConfig || !selectedValue) return { defaults: {} };
+  const sourceKey = column.optionsSource.replace(/^row\./, "");
+  const option = optionList(rowConfig[sourceKey]).find((candidate) => optionName(candidate) === selectedValue);
+  return option ? garmentTableOptionMetadata(option) : { defaults: {} };
+}
+
+export function computeGarmentTableCell(
+  row: GarmentTableRow,
+  column: GarmentTableColumn
+): string | number {
+  if (column.type === "display") {
+    if (column.template) {
+      return column.template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key: string) => {
+        const value = row[key];
+        return value === null || value === undefined ? "" : String(value);
+      }).replace(/\s+/g, " ").trim();
+    }
+    return resolveSourceValue(row, column.source);
+  }
+  if (column.type === "calculated") {
+    if (column.formula === "qty*rate") return numberFromCell(row.qty) * numberFromCell(row.rate);
+    if (column.formula === "qty*itemPrice") return numberFromCell(row.qty) * numberFromCell(row.itemPrice);
+    return numberFromCell(row.qty) * numberFromCell(row.tailorAmount);
+  }
+  return "";
+}
+
+function normalizeGarmentTableValue(
+  value: unknown,
+  config: GarmentTableConfig | null
+): GarmentTableValue {
+  if (!Array.isArray(value)) return [];
+  const columns = config?.columns ?? [];
+  return value.flatMap((rawRow): GarmentTableRow[] => {
+    const row = asObject(rawRow);
+    const normalized: GarmentTableRow = {};
+    let hasAnyValue = false;
+    const entries = columns.length > 0 ? columns.map((column) => column.key) : Object.keys(row);
+    for (const key of entries) {
+      const column = columns.find((item) => item.key === key);
+      const rawCell = row[key];
+      let cell: string | number | null;
+      if (rawCell === null || rawCell === undefined || rawCell === "") {
+        cell = null;
+      } else if (column?.type === "number" || column?.type === "calculated") {
+        const parsed = typeof rawCell === "number" ? rawCell : Number(rawCell);
+        cell = Number.isFinite(parsed) ? parsed : null;
+      } else {
+        cell = String(rawCell);
+      }
+      if (cell !== null && cell !== "") hasAnyValue = true;
+      normalized[key] = cell;
+    }
+    return hasAnyValue ? [normalized] : [];
+  });
+}
+
 export function normalizeGarmentFieldValue(value: unknown, inputType: RuntimeGarmentField["inputType"]): GarmentFieldValue {
   if (value === undefined || value === null || value === "") return null;
   if (inputType === "checkbox") return value === true || value === "true";
   if (inputType === "multiselect") return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  if (inputType === "table") return normalizeGarmentTableValue(value, null);
   if (inputType === "number") {
     const parsed = typeof value === "number" ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : null;
@@ -89,6 +294,8 @@ export function resolveRuntimeGarmentFields(
       unit: assignment.field.unit,
       placeholder: assignment.field.placeholder,
       options: assignment.field.options,
+      uiMetadata: assignment.field.uiMetadata,
+      tableConfig: resolveGarmentTableConfig(assignment.field.uiMetadata),
       min: assignment.field.minValue,
       max: assignment.field.maxValue,
       decimalPlaces: assignment.field.decimalPlaces,
@@ -98,7 +305,9 @@ export function resolveRuntimeGarmentFields(
 }
 
 export function mergeQuickAddons(values: GarmentFieldValues): GarmentFieldValues {
-  const quick = Array.isArray(values.quick_addon) ? values.quick_addon : [];
+  const quick = Array.isArray(values.quick_addon)
+    ? values.quick_addon.filter((item): item is string => typeof item === "string")
+    : [];
   const existing = typeof values.final_instructions === "string" ? values.final_instructions : "";
   const seen = new Set(existing.split("\n").map((line) => line.trim().replace(/\s+/g, " ").toLocaleLowerCase()).filter(Boolean));
   const additions = quick.filter((item) => {
@@ -125,6 +334,7 @@ export type FieldSchemaSnapshot = {
     fieldDisplayOrder: number;
     unit: string | null;
     options: string[];
+    uiMetadata?: Record<string, unknown>;
     value: GarmentFieldValue;
   }>;
 };
@@ -171,12 +381,17 @@ export function validateGarmentFieldValues(
     if (field.inputType === "multiselect" && !Array.isArray(rawValue) && rawValue !== null && rawValue !== undefined) {
       return invalid(code, `Invalid multiselect value for ${field.name}`);
     }
+    if (field.inputType === "table" && !Array.isArray(rawValue) && rawValue !== null && rawValue !== undefined) {
+      return invalid(code, `Invalid table value for ${field.name}`);
+    }
 
-    const value = normalizeGarmentFieldValue(rawValue, field.inputType);
+    const value = field.inputType === "table"
+      ? normalizeGarmentTableValue(rawValue, field.tableConfig)
+      : normalizeGarmentFieldValue(rawValue, field.inputType);
     if (field.inputType === "select" && value !== null && typeof value === "string" && !field.options.includes(value)) {
       return invalid(code, `Invalid value for ${field.name}`);
     }
-    if (field.inputType === "multiselect" && Array.isArray(value) && value.some((option) => !field.options.includes(option))) {
+    if (field.inputType === "multiselect" && Array.isArray(value) && value.some((option) => typeof option !== "string" || !field.options.includes(option))) {
       return invalid(code, `Invalid value for ${field.name}`);
     }
     if (field.inputType === "number" && value !== null) {
@@ -186,6 +401,22 @@ export function validateGarmentFieldValues(
       }
       if (field.decimalPlaces !== null && Number(value.toFixed(field.decimalPlaces)) !== value) {
         return invalid(code, `Value for ${field.name} has too many decimal places`);
+      }
+    }
+    if (field.inputType === "table" && Array.isArray(value) && field.tableConfig) {
+      for (let rowIndex = 0; rowIndex < value.length; rowIndex += 1) {
+        const row = value[rowIndex];
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        for (const column of field.tableConfig.columns) {
+          const cell = row[column.key];
+          const options = garmentTableColumnOptions(column, field.tableConfig.rowConfigs[rowIndex]);
+          if (column.type === "select" && cell !== null && cell !== undefined && cell !== "" && options.length > 0 && !options.includes(String(cell))) {
+            return invalid(code, `Invalid ${column.label} in ${field.name} row ${rowIndex + 1}`);
+          }
+          if ((column.type === "number" || column.type === "calculated") && cell !== null && cell !== undefined && typeof cell !== "number") {
+            return invalid(code, `Invalid number in ${field.name} row ${rowIndex + 1}`);
+          }
+        }
       }
     }
     values[code] = value;
@@ -219,7 +450,10 @@ export function buildFieldSchemaSnapshot(
       fieldDisplayOrder: field.displayOrder,
       unit: field.unit,
       options: field.options,
-      value: normalizeGarmentFieldValue(submittedValues[field.code], field.inputType),
+      uiMetadata: field.uiMetadata,
+      value: field.inputType === "table"
+        ? normalizeGarmentTableValue(submittedValues[field.code], field.tableConfig)
+        : normalizeGarmentFieldValue(submittedValues[field.code], field.inputType),
     })),
   };
 }
@@ -248,6 +482,17 @@ function hasHistoricalValue(value: unknown): boolean {
 }
 
 export function historicalGarmentValueText(value: unknown): string {
+  if (Array.isArray(value) && value.some((item) => item && typeof item === "object" && !Array.isArray(item))) {
+    return value
+      .map((item) => {
+        const row = item as Record<string, unknown>;
+        return Object.values(row)
+          .filter((cell) => cell !== null && cell !== undefined && String(cell).trim() !== "")
+          .join(" | ");
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string").join(", ");
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object" && value !== null) {

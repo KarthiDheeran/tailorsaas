@@ -11,7 +11,6 @@ import {
 import { getGarmentTypeConfigurationAction } from "@/app/(shell)/catalog/actions";
 import {
   getAddOnsForGarment,
-  calculateGarmentAmount,
   measurementFieldLabel,
   type CatalogGarmentTypeField,
   type CatalogAddOn,
@@ -210,6 +209,64 @@ function selectedAddOns(
   );
 }
 
+type DisplayAddOn = { name: string; amount: number };
+
+function numberFromUnknown(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
+  const values = it.typedFieldDraft?.typedValues ?? {};
+  return Object.entries(values).flatMap(([fieldCode, value]) => {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((row, index): OrderItemAddOn[] => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return [];
+      const record = row as Record<string, unknown>;
+      const item = typeof record.item === "string" ? record.item.trim() : "";
+      if (!item) return [];
+      const qty = numberFromUnknown(record.qty);
+      const itemPrice = numberFromUnknown(record.itemPrice);
+      const tailorAmount = numberFromUnknown(record.tailorAmount);
+      const workerStage = typeof record.workerStage === "string" ? record.workerStage.trim() : "";
+      const total = numberFromUnknown(record.total) || qty * itemPrice;
+      if (total <= 0) return [];
+      const display =
+        typeof record.display === "string" && record.display.trim()
+          ? record.display.trim()
+          : qty > 0
+            ? `${item} - ${qty}`
+            : item;
+      return [{
+        key: `table:${fieldCode}:${index}`,
+        label: display,
+        amount: total,
+        workerStageRates:
+          workerStage && tailorAmount > 0
+            ? { [workerStage]: tailorAmount }
+            : undefined,
+      }];
+    });
+  });
+}
+
+function selectedDisplayAddOns(
+  it: DraftItem,
+  garmentTypes: CatalogGarmentType[],
+  addOns: CatalogAddOn[]
+): DisplayAddOn[] {
+  return [
+    ...selectedAddOns(it, garmentTypes, addOns).map((addOn) => ({
+      name: addOn.name,
+      amount: addOn.defaultPrice,
+    })),
+    ...billableTableAddOns(it).map((addOn) => ({
+      name: addOn.label,
+      amount: addOn.amount,
+    })),
+  ];
+}
+
 function formatGarmentCodeName(garment: CatalogGarmentType): string {
   return `${garmentCodeLabel(garment)} - ${garment.name}`;
 }
@@ -371,6 +428,8 @@ function ConfigureItemModal({
         unit: "inch",
         placeholder: null,
         options: [],
+        uiMetadata: {},
+        tableConfig: null,
         min: null,
         max: null,
         decimalPlaces: 2,
@@ -1076,23 +1135,18 @@ function ConfigureItemModal({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-muted/40 px-5 py-4">
-              <section className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              <section className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(360px,1fr)_minmax(520px,1.15fr)_380px]">
                 {metadataLoading ? (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted lg:col-span-2">Loading configured fields...</p>
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-2">Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
-                  <div className="min-w-0 lg:col-span-2 xl:col-span-2">
+                  <div className="min-w-0 xl:col-span-2">
                     <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout="columns" firstControlRef={firstMeasurementRef} />
                   </div>
                 ) : (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted lg:col-span-2">
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-2">
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
-
-                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
-                  <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
-                  <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
-                </section>}
 
                 <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
                   <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
@@ -1136,6 +1190,11 @@ function ConfigureItemModal({
                     <span><b className="block font-semibold">Print body measurements on job card</b><span className="text-xs text-ink-muted">Measurements stay saved even when they are not printed.</span></span>
                   </label>
                 </section>
+
+                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4 xl:col-span-2">
+                  <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
+                  <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
+                </section>}
               </section>
 
             </div>
@@ -1395,7 +1454,7 @@ export function NewOrderItemsCard({
             <tbody>
               {rows.map(({ item, index }) => {
                 const garment = findGarmentById(garmentTypes, item.garmentTypeId);
-                const selected = selectedAddOns(item, garmentTypes, addOns);
+                const selected = selectedDisplayAddOns(item, garmentTypes, addOns);
                 const amount = computeAmount(item, garmentTypes, addOns);
                 return (
                   <tr key={item.draftKey} className="border-t border-border-soft transition-colors hover:bg-surface-muted">
@@ -1565,7 +1624,15 @@ function computeAmount(
   garmentTypes: CatalogGarmentType[],
   addOns: CatalogAddOn[]
 ): number {
-  return calculateGarmentAmount(it.rate, selectedAddOns(it, garmentTypes, addOns), it.qty);
+  const catalogAddOnsTotal = selectedAddOns(it, garmentTypes, addOns).reduce(
+    (sum, addOn) => sum + addOn.defaultPrice,
+    0
+  );
+  const tableAddOnsTotal = billableTableAddOns(it).reduce(
+    (sum, addOn) => sum + addOn.amount,
+    0
+  );
+  return (it.rate + catalogAddOnsTotal + tableAddOnsTotal) * it.qty;
 }
 
 export function computeOrderItems(
@@ -1584,7 +1651,9 @@ export function computeOrderItems(
       amount: a.defaultPrice,
       workerStageRates: a.workerStageRates,
     }));
-    const addOnsTotal = itemAddOns.reduce((sum, a) => sum + a.amount, 0);
+    const tableAddOns = billableTableAddOns(it);
+    const allItemAddOns = [...itemAddOns, ...tableAddOns];
+    const addOnsTotal = allItemAddOns.reduce((sum, a) => sum + a.amount, 0);
     const finalRate = it.rate + addOnsTotal;
     // Only snapshot measurements onto the item when the shopkeeper actually
     // opened/filled the modal for this row (it.measurement !== null) - not
@@ -1623,7 +1692,7 @@ export function computeOrderItems(
       size: it.color.trim() || undefined,
       qty: it.qty,
       rate: it.rate,
-      addOns: itemAddOns.length > 0 ? itemAddOns : undefined,
+      addOns: allItemAddOns.length > 0 ? allItemAddOns : undefined,
       addOnsTotal: addOnsTotal > 0 ? addOnsTotal : undefined,
       finalRate,
       amount: finalRate * it.qty,

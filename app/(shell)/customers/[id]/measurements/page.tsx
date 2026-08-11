@@ -212,7 +212,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
       code, name: code, fieldType: "measurement" as const, inputType: "number" as const,
       sectionId: null, sectionName: "Measurements", sectionOrder: 0, displayOrder: index,
       required: false, unit: "inch", placeholder: null, options: [], min: null, max: null,
-      decimalPlaces: 2, defaultValue: null,
+      uiMetadata: {}, tableConfig: null, decimalPlaces: 2, defaultValue: null,
     }));
     const configuration = configurationsByGarmentId.get(garmentId);
     const resolved = resolveRuntimeGarmentFields(configuration?.fields ?? null, []);

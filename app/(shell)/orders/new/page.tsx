@@ -1138,6 +1138,7 @@ function NewOrderPageContent() {
         it.alterationIssue.trim() !== "" ||
         it.alterationRequiredChange.trim() !== "" ||
         it.linkedOriginalOrderId !== "" ||
+        it.typedFieldDraft !== undefined ||
         it.measurement !== null
     );
   }
@@ -1176,6 +1177,7 @@ function NewOrderPageContent() {
         it.qty !== 1 ||
         it.rate !== 0 ||
         it.addOnIds.length > 0 ||
+        it.typedFieldDraft !== undefined ||
         it.measurement !== null
     );
 

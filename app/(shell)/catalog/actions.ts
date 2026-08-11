@@ -543,6 +543,16 @@ function validateCatalogFieldInput(data: CatalogFieldInput): string | null {
   if (!["select", "multiselect"].includes(data.inputType) && options.length > 0) {
     return "Only select and multiselect fields can have options.";
   }
+  if (data.inputType === "table") {
+    const table = data.uiMetadata?.table;
+    if (!table || typeof table !== "object" || Array.isArray(table)) {
+      return "Table fields need table metadata with rows and columns.";
+    }
+    const columns = (table as { columns?: unknown }).columns;
+    if (!Array.isArray(columns) || columns.length === 0) {
+      return "Table fields need at least one column.";
+    }
+  }
   return null;
 }
 
