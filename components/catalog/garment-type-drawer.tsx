@@ -45,6 +45,7 @@ export function GarmentTypeDrawer({
     garment?.shortcutCode?.toString() ?? ""
   );
   const [basePrice, setBasePrice] = useState<number>(garment?.basePrice ?? 0);
+  const [showOrderAddOns] = useState(garment?.showOrderAddOns ?? true);
   const [isActive, setIsActive] = useState(garment?.isActive ?? true);
   const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>(
     garment?.measurementFieldIds ?? []
@@ -139,6 +140,7 @@ export function GarmentTypeDrawer({
       basePrice,
       measurementFieldIds: selectedFieldIds,
       addOnIds: selectedAddOnIds,
+      showOrderAddOns,
       isActive,
     });
     setSubmitting(false);

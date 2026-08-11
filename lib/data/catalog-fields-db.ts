@@ -172,7 +172,7 @@ const GARMENT_FIELD_SELECT = `
 `;
 
 const GARMENT_CONFIGURATION_SELECT = `
-  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, is_active,
+  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, is_active,
   garment_type_fields(${GARMENT_FIELD_SELECT})
 `;
 
@@ -184,6 +184,7 @@ type GarmentConfigurationRow = {
   base_price: number;
   measurement_field_ids: string[] | null;
   addon_ids: string[] | null;
+  show_order_addons?: boolean | null;
   is_active: boolean;
   garment_type_fields: GarmentFieldRow[] | null;
 };
@@ -197,6 +198,7 @@ function mapConfigurationGarment(row: GarmentConfigurationRow): CatalogGarmentTy
     basePrice: Number(row.base_price),
     measurementFieldIds: row.measurement_field_ids ?? [],
     addOnIds: row.addon_ids ?? [],
+    showOrderAddOns: row.show_order_addons !== false,
     isActive: row.is_active,
   };
 }
@@ -358,6 +360,7 @@ export async function saveGarmentTypeConfiguration(
     p_shortcut_code: garment.shortcutCode,
     p_base_price: garment.basePrice,
     p_addon_ids: garment.addOnIds,
+    p_show_order_addons: garment.showOrderAddOns,
     p_is_active: garment.isActive,
     p_legacy_measurement_field_ids: legacyMeasurementFieldIds,
     p_field_assignments: assignments.map((assignment) => ({

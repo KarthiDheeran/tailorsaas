@@ -197,6 +197,7 @@ export interface CatalogGarmentType {
   basePrice: number;
   measurementFieldIds: string[];
   addOnIds: string[];
+  showOrderAddOns: boolean;
   isActive: boolean;
 }
 
@@ -412,6 +413,7 @@ export type GarmentTypeInput = {
   basePrice: number;
   measurementFieldIds: string[];
   addOnIds: string[];
+  showOrderAddOns: boolean;
   isActive: boolean;
 };
 

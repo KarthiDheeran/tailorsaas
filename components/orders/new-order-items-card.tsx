@@ -479,9 +479,10 @@ function ConfigureItemModal({
   const [addOnsOpen, setAddOnsOpen] = useState(false);
   const [activeAddOnIndex, setActiveAddOnIndex] = useState(0);
   const [addOnsPosition, setAddOnsPosition] = useState<FloatingMenuPosition | null>(null);
+  const showOrderAddOns = garment.showOrderAddOns !== false;
   const addOnOptions = useMemo(
-    () => getAddOnsForGarment(garment, addOns).filter((addOn) => addOn.isActive),
-    [addOns, garment]
+    () => showOrderAddOns ? getAddOnsForGarment(garment, addOns).filter((addOn) => addOn.isActive) : [],
+    [addOns, garment, showOrderAddOns]
   );
   const addOnInstructionNames = useMemo(
     () => addOnOptions.map((addOn) => addOn.name),
@@ -818,6 +819,7 @@ function ConfigureItemModal({
   ]);
 
   function toggleAddOn(id: string) {
+    if (!showOrderAddOns) return;
     const alreadySelected = selectedAddOnIds.includes(id);
     const addOn = addOnOptions.find((candidate) => candidate.id === id);
     setSelectedAddOnIds((current) =>
@@ -980,7 +982,7 @@ function ConfigureItemModal({
       garmentTypeId: garment.id,
       qty: quantity,
       color: color.trim(),
-      addOnIds: selectedAddOnIds,
+      addOnIds: showOrderAddOns ? selectedAddOnIds : [],
       printMeasurementsOnJobCard,
       typedFieldDraft,
       measurement: hasMeasurementContent || measurement.updateCustomerMeasurements
@@ -1135,51 +1137,55 @@ function ConfigureItemModal({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-muted/40 px-5 py-4">
-              <section className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(360px,1fr)_minmax(520px,1.15fr)_380px]">
+              <section className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)_360px]">
                 {metadataLoading ? (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-2">Loading configured fields...</p>
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-3">Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
-                  <div className="min-w-0 xl:col-span-2">
+                  <div className="min-w-0 xl:col-span-3">
                     <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout="columns" firstControlRef={firstMeasurementRef} />
                   </div>
                 ) : (
-                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-2">
+                  <p className="rounded-lg bg-white px-3 py-2 text-sm text-ink-muted xl:col-span-3">
                     No configured measurements or style fields for this garment.
                   </p>
                 )}
 
                 <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
-                  <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
-                  <p className="mb-2 text-sm text-ink-muted">
-                    Selected extras are added to Final Instructions for the tailor.
-                  </p>
-                  {addOnOptions.length === 0 ? (
-                    <p className="rounded-md bg-surface-muted px-3 py-2 text-sm text-ink-muted">
-                      No add-ons configured for this garment.
-                    </p>
-                  ) : (
-                    <div ref={addOnsComboboxRef} className="relative">
-                      <input
-                        ref={addOnsInputRef}
-                        type="text"
-                        role="combobox"
-                        aria-expanded={addOnsOpen}
-                        aria-controls={addOnsListId}
-                        aria-autocomplete="list"
-                        data-enter-next-skip="true"
-                        aria-label="Search or select add-ons"
-                        placeholder="Search or select add-ons"
-                        value={addOnSearch}
-                        onFocus={() => setAddOnsOpen(true)}
-                        onChange={(event) => {
-                          setAddOnSearch(event.target.value);
-                          setAddOnsOpen(true);
-                          setActiveAddOnIndex(0);
-                        }}
-                        onKeyDown={handleAddOnsInputKeyDown}
-                        className="h-10 w-full rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
-                      />
-                    </div>
+                  {showOrderAddOns && (
+                    <>
+                      <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
+                      <p className="mb-2 text-sm text-ink-muted">
+                        Selected extras are added to Final Instructions for the tailor.
+                      </p>
+                      {addOnOptions.length === 0 ? (
+                        <p className="rounded-md bg-surface-muted px-3 py-2 text-sm text-ink-muted">
+                          No add-ons configured for this garment.
+                        </p>
+                      ) : (
+                        <div ref={addOnsComboboxRef} className="relative">
+                          <input
+                            ref={addOnsInputRef}
+                            type="text"
+                            role="combobox"
+                            aria-expanded={addOnsOpen}
+                            aria-controls={addOnsListId}
+                            aria-autocomplete="list"
+                            data-enter-next-skip="true"
+                            aria-label="Search or select add-ons"
+                            placeholder="Search or select add-ons"
+                            value={addOnSearch}
+                            onFocus={() => setAddOnsOpen(true)}
+                            onChange={(event) => {
+                              setAddOnSearch(event.target.value);
+                              setAddOnsOpen(true);
+                              setActiveAddOnIndex(0);
+                            }}
+                            onKeyDown={handleAddOnsInputKeyDown}
+                            className="h-10 w-full rounded-md border border-border bg-white px-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                   <label className="mt-4 flex flex-col gap-1">
                     <span className="text-[13px] font-medium text-ink-muted">Notes</span>
@@ -1191,7 +1197,7 @@ function ConfigureItemModal({
                   </label>
                 </section>
 
-                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4 xl:col-span-2">
+                {!metadataLoading && instructionFields.length > 0 && <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4 xl:col-span-3">
                   <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
                   <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
                 </section>}
@@ -1232,7 +1238,8 @@ function ConfigureItemModal({
           </form>
         </div>
       </div>
-      {addOnsOpen &&
+      {showOrderAddOns &&
+        addOnsOpen &&
         addOnsPosition &&
         typeof document !== "undefined" &&
         createPortal(

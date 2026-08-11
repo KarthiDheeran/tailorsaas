@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type MutableRefObject, type Ref } from "react";
+import { useCallback, useState, type MutableRefObject, type Ref } from "react";
 import { ChevronDown } from "lucide-react";
 
 import type {
@@ -40,6 +40,7 @@ function TableFieldControl({
   disabled: boolean;
   onChange: (code: string, value: GarmentFieldValue) => void;
 }) {
+  const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnKey: string } | null>(null);
   const config = field.tableConfig;
   if (!config) {
     return (
@@ -75,6 +76,32 @@ function TableFieldControl({
     });
     onChange(field.code, normalized);
   };
+  const isActiveColumn = (key: string) => activeCell?.columnKey === key;
+  const isActiveRow = (rowIndex: number) => activeCell?.rowIndex === rowIndex;
+  const markActive = (rowIndex: number, columnKey: string) => {
+    setActiveCell({ rowIndex, columnKey });
+  };
+  const clearActive = (rowIndex: number, columnKey: string) => {
+    setActiveCell((current) =>
+      current?.rowIndex === rowIndex && current.columnKey === columnKey ? null : current
+    );
+  };
+  const focusableCellClass = (rowIndex: number, key: string) =>
+    `h-8 w-full min-w-0 rounded border px-2 text-xs text-ink outline-none transition-colors ${
+      activeCell?.rowIndex === rowIndex && activeCell.columnKey === key
+        ? "border-primary bg-primary-tint ring-2 ring-primary/25"
+        : isActiveColumn(key)
+          ? "border-primary/40 bg-primary-tint/50"
+          : "border-border bg-white focus:border-primary focus:ring-2 focus:ring-primary/25"
+    }`;
+  const readOnlyCellClass = (rowIndex: number, key: string) =>
+    `min-h-8 truncate rounded border px-2 py-1.5 text-xs font-medium text-ink transition-colors ${
+      isActiveColumn(key)
+        ? "border-primary/30 bg-primary-tint/50"
+        : isActiveRow(rowIndex)
+          ? "border-border-soft bg-surface-muted/80"
+          : "border-border-soft bg-surface-muted"
+    }`;
 
   return (
     <div className="col-span-full overflow-x-auto rounded-lg border border-border-soft bg-white">
@@ -82,7 +109,7 @@ function TableFieldControl({
         <thead className="bg-surface-muted text-ink-muted">
           <tr>
             {config.columns.map((column) => (
-              <th key={column.key} className={`${columnClass(column.key, column.type)} px-2 py-2 font-semibold`}>
+              <th key={column.key} className={`${columnClass(column.key, column.type)} px-2 py-2 font-semibold transition-colors ${isActiveColumn(column.key) ? "bg-primary-tint text-primary-strong" : ""}`}>
                 {column.label}
               </th>
             ))}
@@ -90,7 +117,7 @@ function TableFieldControl({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="border-t border-border-soft">
+            <tr key={rowIndex} className={`border-t border-border-soft transition-colors ${isActiveRow(rowIndex) ? "bg-primary-tint/20" : ""}`}>
               {config.columns.map((column) => {
                 const rowConfig = config.rowConfigs[rowIndex];
                 const computed = computeGarmentTableCell(row, column);
@@ -98,11 +125,13 @@ function TableFieldControl({
                   ? computed
                   : row[column.key] ?? "";
                 return (
-                  <td key={column.key} className={`${columnClass(column.key, column.type)} px-1.5 py-1.5`}>
+                  <td key={column.key} className={`${columnClass(column.key, column.type)} px-1.5 py-1.5 transition-colors ${isActiveColumn(column.key) ? "bg-primary-tint/30" : ""}`}>
                     {column.type === "select" ? (
                       <select
                         disabled={disabled}
                         value={String(cellValue ?? "")}
+                        onFocus={() => markActive(rowIndex, column.key)}
+                        onBlur={() => clearActive(rowIndex, column.key)}
                         onChange={(event) => {
                           const nextValue = event.target.value || null;
                           const metadata = nextValue
@@ -113,7 +142,7 @@ function TableFieldControl({
                             ...(metadata.workerStage ? { workerStage: metadata.workerStage } : {}),
                           });
                         }}
-                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                        className={focusableCellClass(rowIndex, column.key)}
                       >
                         <option value="">Select...</option>
                         {garmentTableColumnOptions(column, rowConfig).map((option) => (
@@ -121,7 +150,7 @@ function TableFieldControl({
                         ))}
                       </select>
                     ) : column.readonly ? (
-                      <div className="min-h-8 truncate rounded border border-border-soft bg-surface-muted px-2 py-1.5 text-xs font-medium text-ink">
+                      <div className={readOnlyCellClass(rowIndex, column.key)}>
                         {cellValue === null || cellValue === undefined || cellValue === "" ? "—" : String(cellValue)}
                       </div>
                     ) : column.type === "number" ? (
@@ -129,6 +158,8 @@ function TableFieldControl({
                         disabled={disabled}
                         type="number"
                         value={cellValue === null ? "" : String(cellValue)}
+                        onFocus={() => markActive(rowIndex, column.key)}
+                        onBlur={() => clearActive(rowIndex, column.key)}
                         onChange={(event) =>
                           updateCell(
                             rowIndex,
@@ -136,18 +167,20 @@ function TableFieldControl({
                             event.target.value === "" ? null : Number(event.target.value)
                           )
                         }
-                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                        className={focusableCellClass(rowIndex, column.key)}
                       />
                     ) : column.type === "calculated" || column.type === "display" ? (
-                      <div className="min-h-8 truncate rounded border border-border-soft bg-surface-muted px-2 py-1.5 text-xs font-medium text-ink">
+                      <div className={readOnlyCellClass(rowIndex, column.key)}>
                         {cellValue === null || cellValue === undefined || cellValue === "" ? "—" : String(cellValue)}
                       </div>
                     ) : (
                       <input
                         disabled={disabled}
                         value={cellValue === null ? "" : String(cellValue)}
+                        onFocus={() => markActive(rowIndex, column.key)}
+                        onBlur={() => clearActive(rowIndex, column.key)}
                         onChange={(event) => updateCell(rowIndex, column.key, event.target.value || null)}
-                        className="h-8 w-full min-w-0 rounded border border-border bg-white px-2 text-xs text-ink"
+                        className={focusableCellClass(rowIndex, column.key)}
                       />
                     )}
                   </td>
@@ -355,7 +388,7 @@ export function GarmentFormFields({
   });
 
   if (layout === "columns") {
-    return <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(360px,1fr)_minmax(520px,1.15fr)]">{content}</div>;
+    return <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)]">{content}</div>;
   }
 
   return <>{content}</>;

@@ -309,7 +309,7 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
-  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, is_active";
+  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, is_active";
 const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
@@ -321,6 +321,7 @@ interface GarmentRow {
   base_price: number;
   measurement_field_ids: string[];
   addon_ids: string[];
+  show_order_addons?: boolean | null;
   is_active: boolean;
 }
 
@@ -344,6 +345,7 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
     basePrice: row.base_price,
     measurementFieldIds: row.measurement_field_ids ?? [],
     addOnIds: row.addon_ids ?? [],
+    showOrderAddOns: row.show_order_addons !== false,
     isActive: row.is_active,
   };
 }
@@ -431,6 +433,7 @@ export async function createGarmentType(
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
+      show_order_addons: data.showOrderAddOns,
       is_active: data.isActive,
     })
     .select(GARMENT_COLUMNS)
@@ -453,6 +456,7 @@ export async function updateGarmentType(
       base_price: data.basePrice,
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
+      show_order_addons: data.showOrderAddOns,
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     })
