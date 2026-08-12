@@ -54,7 +54,7 @@ export async function getDeliveryDeskOrdersAction(
 
   const orders = await profileDataFunction(
     { functionName: "getDeliveryDeskOrderRows", tableOrRpc: "orders,order_items" },
-    () => getDeliveryDeskOrderRows(supabase, todayIso)
+    () => getDeliveryDeskOrderRows(supabase)
   );
 
   return orders

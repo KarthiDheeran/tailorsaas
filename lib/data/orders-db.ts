@@ -698,8 +698,7 @@ export async function getOrderDatesByIds(
 }
 
 export async function getDeliveryDeskOrderRows(
-  supabase: SupabaseClient,
-  todayIso: string
+  supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
