@@ -139,7 +139,7 @@ function DeliveryDeskContent() {
     const ready = rows.filter((row) => row.order.status === "Ready");
     const dueOrOverdue = rows.filter((row) => row.order.deliveryDate <= today);
     const balanceDue = rows.reduce((sum, row) => sum + orderBalance(row.order), 0);
-    const canDeliver = ready.filter((row) => row.order.balance <= 0);
+    const canDeliver = ready;
     return {
       ready: ready.length,
       dueOrOverdue: dueOrOverdue.length,
@@ -380,7 +380,7 @@ function DeliveryDeskContent() {
                 filteredRows.map((row) => {
                   const order = row.order;
                   const phone = customerPhone(row);
-                  const canDeliverNow = order.status === "Ready" && order.balance <= 0;
+                  const canDeliverNow = order.status === "Ready";
                   const deliverDisabled = !canMarkDelivered || !canDeliverNow || pendingOrderId === order.id || isPending;
                   return (
                     <tr key={order.id} className="align-top hover:bg-surface-muted/60">
@@ -455,9 +455,7 @@ function DeliveryDeskContent() {
                                 ? "No permission"
                                 : order.status !== "Ready"
                                   ? "Order is not ready"
-                                  : isReceivableOrder(order)
-                                    ? "Collect balance first"
-                                    : "Mark delivered"
+                                  : "Mark delivered"
                             }
                             onClick={() => markDelivered(order.id)}
                             className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-45"

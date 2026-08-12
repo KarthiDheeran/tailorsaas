@@ -710,9 +710,7 @@ export async function getDeliveryDeskOrderRows(
   let { data, error } = await supabase
     .from("orders")
     .select(columns)
-    .neq("status", "Cancelled")
-    .neq("status", "Delivered")
-    .or(`status.eq.Ready,delivery_date.lte.${todayIso}`)
+    .eq("status", "Ready")
     .order("delivery_date", { ascending: true })
     .order("order_number", { ascending: true });
   if (error && isMissingInvoiceNumberSchemaError(error)) {
@@ -724,9 +722,7 @@ export async function getDeliveryDeskOrderRows(
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
       `)
-      .neq("status", "Cancelled")
-      .neq("status", "Delivered")
-      .or(`status.eq.Ready,delivery_date.lte.${todayIso}`)
+      .eq("status", "Ready")
       .order("delivery_date", { ascending: true })
       .order("order_number", { ascending: true });
     data = fallback.data as unknown as typeof data;

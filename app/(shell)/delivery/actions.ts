@@ -15,6 +15,7 @@ import {
 import type { PaymentMode } from "@/lib/types";
 import {
   isMissingJobCardsSchemaError,
+  reconcileJobCardsForOrderStatus,
   syncJobCardsForOrder,
 } from "@/lib/data/job-cards-db";
 import {
@@ -81,13 +82,6 @@ export async function markOrderDeliveredAction(
       error: "Only Ready orders can be marked delivered from Delivery Desk.",
     };
   }
-  if (existing.balance > 0) {
-    return {
-      success: false,
-      error: "Collect the pending balance before marking this order delivered.",
-    };
-  }
-
   const order = await updateOrderStatus(supabase, orderId, "Delivered");
   if (!order) return { success: false, error: "Order not found." };
   await recordDeliveryOperatorAttribution(createAdminClient(), order.id, operatorGuard.operator);
@@ -146,6 +140,11 @@ export async function quickCollectAndDeliverAction(data: {
   });
   if (error) return { success: false, error: error.message || "Could not complete delivery." };
   const admin = createAdminClient();
+  try {
+    await reconcileJobCardsForOrderStatus(admin, data.orderId);
+  } catch (syncError) {
+    if (!isMissingJobCardsSchemaError(syncError)) throw syncError;
+  }
   await recordDeliveryOperatorAttribution(admin, data.orderId, operatorGuard.operator);
   if (data.amount > 0) {
     const payments = await getPaymentsForOrder(admin, data.orderId);

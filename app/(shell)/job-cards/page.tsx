@@ -146,16 +146,16 @@ function defaultJobCardSort(a: JobCard, b: JobCard) {
   return a.item.serialNo - b.item.serialNo || a.unitNo - b.unitNo;
 }
 
-function groupJobCardsByOrderLine(cards: JobCard[]): JobCardLine[] {
+function groupJobCardsByOrder(cards: JobCard[]): JobCardLine[] {
   const byLine = new Map<string, JobCard[]>();
   for (const card of cards) {
-    const key = `${card.orderId}:${card.item.serialNo}`;
+    const key = card.orderId;
     const current = byLine.get(key) ?? [];
     current.push(card);
     byLine.set(key, current);
   }
   return Array.from(byLine.entries()).map(([id, rows]) => {
-    const cardsInLine = rows.slice().sort((a, b) => a.unitNo - b.unitNo);
+    const cardsInLine = rows.slice().sort(defaultJobCardSort);
     const slipRefs = new Map<string, NonNullable<JobCard["stageSlipRefs"]>[number]>();
     for (const card of cardsInLine) {
       for (const slip of card.stageSlipRefs ?? []) {
@@ -215,13 +215,27 @@ function customerFabricsForJobCard(card: JobCard, fabrics: CustomerFabric[]) {
 }
 
 function GarmentLineCell({ line }: { line: JobCardLine }) {
-  const quantity = Math.max(1, line.card.totalUnits);
+  const itemsBySerial = new Map<number, JobCard>();
+  for (const card of line.cards) {
+    if (!itemsBySerial.has(card.item.serialNo)) itemsBySerial.set(card.item.serialNo, card);
+  }
+  const garments = new Map<string, { name: string; qty: number }>();
+  for (const card of Array.from(itemsBySerial.values())) {
+    const key = card.garment.trim().toLowerCase();
+    const current = garments.get(key) ?? { name: card.garment, qty: 0 };
+    current.qty += Math.max(1, Number(card.item.qty) || card.totalUnits || 1);
+    garments.set(key, current);
+  }
+  const summary = Array.from(garments.values());
+  const totalQty = summary.reduce((sum, item) => sum + item.qty, 0);
   return (
     <div>
-      <div className="font-medium text-ink">{line.card.garment}</div>
-      {quantity > 1 && (
+      <div className="font-medium text-ink">
+        {summary.map((item) => `${item.name} x${item.qty}`).join(", ")}
+      </div>
+      {summary.length > 1 && (
         <div className="text-xs text-ink-muted">
-          Qty {quantity}
+          {summary.length} items · {totalQty} pcs
         </div>
       )}
     </div>
@@ -229,6 +243,9 @@ function GarmentLineCell({ line }: { line: JobCardLine }) {
 }
 
 function lineStage(line: JobCardLine): JobCardStage {
+  if (["Ready", "Delivered", "Cancelled"].includes(line.card.orderStatus)) {
+    return line.card.orderStatus as JobCardStage;
+  }
   const stages = Array.from(new Set(line.cards.map(displayStage)));
   return stages.length === 1 ? stages[0] : line.card.stage;
 }
@@ -392,7 +409,7 @@ function JobCardsContent() {
     () => Array.from(new Set(jobCards.map((card) => card.garment))).sort(),
     [jobCards]
   );
-  const jobCardLines = useMemo(() => groupJobCardsByOrderLine(jobCards), [jobCards]);
+  const jobCardLines = useMemo(() => groupJobCardsByOrder(jobCards), [jobCards]);
   const filteredLines = jobCardLines.filter((line) => {
     const card = line.card;
     const stage = lineStage(line);
@@ -404,7 +421,7 @@ function JobCardsContent() {
     }
     if (stageFilter !== "all" && stage !== stageFilter) return false;
     if (!line.cards.some((candidate) => matchesDueFilter(candidate, dueFilter, todayIso))) return false;
-    if (garmentFilter !== "all" && card.garment !== garmentFilter) return false;
+    if (garmentFilter !== "all" && !line.cards.some((candidate) => candidate.garment === garmentFilter)) return false;
     if (dateRange.from && card.deliveryDate < dateRange.from) return false;
     if (dateRange.to && card.deliveryDate > dateRange.to) return false;
     return true;
@@ -658,18 +675,17 @@ function JobCardsContent() {
           </div>
 
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-ink-muted">{filteredLines.length} production item{filteredLines.length === 1 ? "" : "s"}</p>
+            <p className="text-sm font-medium text-ink-muted">{filteredLines.length} order{filteredLines.length === 1 ? "" : "s"}</p>
           </div>
           <div className="overflow-visible rounded-[14px] border border-border bg-white shadow-soft">
             <table className="w-full table-fixed text-left">
               <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
                 <tr className="h-[50px] border-b border-border">
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Order</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3">Production Slips</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3">Customer</th>
-                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Garment</th>
-                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Status</th>
-                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Due Date</th>
+                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Order</th>
+                  <th className="w-[22%] whitespace-nowrap px-4 py-3">Customer</th>
+                  <th className="w-[28%] whitespace-nowrap px-4 py-3">Garment</th>
+                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Status</th>
+                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Due Date</th>
                   <th className="w-[190px] whitespace-nowrap bg-white px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -696,22 +712,6 @@ function JobCardsContent() {
                         </Link>
                       ) : (
                         <span className="font-semibold text-ink-muted">{card.orderNumber}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      {line.stageSlipRefs.length > 0 ? (
-                        <div className="mt-1 flex max-w-full flex-wrap gap-1">
-                          {line.stageSlipRefs.map((slip) => (
-                            <span
-                              key={`${slip.stage}:${slip.slipCode}`}
-                              className="inline-flex max-w-full items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-muted"
-                            >
-                              {slip.stage} {slip.slipCode.replace(/^JCS-\d{4}-/, "")}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs font-semibold text-ink-muted">No slips printed</span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
@@ -768,7 +768,7 @@ function JobCardsContent() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  openDetails(card);
+                                  openDetails({ ...card, stageSlipRefs: line.stageSlipRefs });
                                   setOpenMenuCardId(null);
                                 }}
                                 className="block w-full px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface-muted"
@@ -1257,6 +1257,26 @@ function JobCardDetailsDrawer({
                 </span>
               )}
             </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-ink-muted">Production Slips</p>
+            {card.stageSlipRefs && card.stageSlipRefs.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 rounded-lg border border-border-soft p-3">
+                {card.stageSlipRefs.map((slip) => (
+                  <span
+                    key={`${slip.stage}:${slip.slipCode}`}
+                    className="inline-flex items-center rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted"
+                  >
+                    {slip.stage} {slip.slipCode.replace(/^JCS-\d{4}-/, "")}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border-soft px-3 py-2 text-sm text-ink-muted">
+                No production slips printed.
+              </div>
+            )}
           </div>
 
           <div>

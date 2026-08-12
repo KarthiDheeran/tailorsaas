@@ -9,7 +9,7 @@ import {
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import {
-  getOrderDatesByIds,
+  getOrderListRowsByIds,
   getOrderListRowsInDateRange,
   getReceivableOrderListRows,
 } from "@/lib/data/orders-db";
@@ -93,7 +93,7 @@ export async function getDashboardData(
     .map((o) => ({ ...o, daysLate: daysBetween(o.deliveryDate, todayIso) }))
     .sort((a, b) => b.daysLate - a.daysLate);
 
-  const paymentPending = receivableOrders;
+  const paymentPending = receivableOrders.filter((order) => order.status === "Delivered");
   const outstandingBalanceTotal = paymentPending.reduce(
     (sum, o) => sum + o.balance,
     0
@@ -117,15 +117,20 @@ export async function getDashboardData(
   let garmentStages: string[] = [];
   if (dashboardCards) {
     const cards = dashboardCards;
-    const orderDates = await getOrderDatesByIds(
+    const summaryOrders = await getOrderListRowsByIds(
       supabase,
       cards.map((card) => card.orderId)
     );
+    const ordersById = new Map(summaryOrders.map((order) => [order.id, order]));
     garmentStages = Array.from(new Set(cards.map((card) => card.stage))).sort();
     const grouped = new Map<string, DashboardData["garmentSummary"][number]>();
     for (const card of cards) {
-      const orderDate = orderDates.get(card.orderId) ?? "";
-      if (orderDate < summaryFrom || orderDate > summaryTo) continue;
+      const order = ordersById.get(card.orderId);
+      const summaryDate =
+        card.stage === "Delivered"
+          ? (order?.deliveredAt?.slice(0, 10) || order?.updatedAt?.slice(0, 10) || order?.orderDate || "")
+          : order?.orderDate ?? "";
+      if (summaryDate < summaryFrom || summaryDate > summaryTo) continue;
       if (filters?.stage && filters.stage !== "all" && card.stage !== filters.stage) continue;
       const key = `${card.garment}\u0000${card.stage}`;
       const row = grouped.get(key) ?? { garment: card.garment, stage: card.stage, quantity: 0 };

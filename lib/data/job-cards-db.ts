@@ -236,9 +236,11 @@ export interface JobCardStageSlipAssignmentInput {
   wageRate: number;
   wageAmount: number;
   notes?: string;
+  allowReadyBackfill?: boolean;
 }
 
 export interface JobCardStageSlipCompletionInput {
+  slipId: string;
   orderId: string;
   orderItemSerialNo: number;
   unitNo: number;
@@ -460,6 +462,15 @@ export async function assignJobCardForStageSlip(
   const requestedStage = taskTypeToStage(input.taskType);
   const isReplacementPrint =
     row.current_stage === requestedStage && row.assigned_staff_id === input.staffId;
+  const isReadyBackfill =
+    input.allowReadyBackfill === true &&
+    row.current_stage === "Ready" &&
+    row.order_status === "Ready" &&
+    requestedStage !== "Ready" &&
+    input.taskType !== "Delivery";
+  if (isReadyBackfill) {
+    return row.id;
+  }
   if (row.current_stage !== "Unassigned" && !isReplacementPrint) {
     throw new Error(
       `Complete the current ${row.current_stage} stage before printing the next stage card.`
@@ -778,6 +789,11 @@ export async function completeJobCardStageSlip(
 
   const expectedStage = taskTypeToStage(input.taskType);
   const nextStage: JobCardStage = input.isFinalStage ? "Ready" : "Unassigned";
+  const isManualReadyBackfill =
+    row.current_stage === "Ready" &&
+    row.order_status === "Ready" &&
+    expectedStage !== "Ready" &&
+    input.taskType !== "Delivery";
   const alreadyAdvanced =
     row.current_stage === nextStage &&
     (nextStage === "Ready" || !row.assigned_staff_id);
@@ -786,6 +802,50 @@ export async function completeJobCardStageSlip(
   // update succeeded but before the tally mark was saved.  Treat that retry
   // as recovery, not as a second payroll event.
   if (row.current_stage !== expectedStage) {
+    if (isManualReadyBackfill) {
+      const { data: slipData, error: slipError } = await supabase
+        .from("job_card_stage_slips")
+        .select("staff_id, tallied_at, order_id, order_item_serial_no, unit_no, stage")
+        .eq("id", input.slipId)
+        .maybeSingle();
+      if (slipError) throw slipError;
+      const slipRow = slipData as {
+        staff_id: string | null;
+        tallied_at: string | null;
+        order_id: string;
+        order_item_serial_no: number;
+        unit_no: number;
+        stage: TaskType;
+      } | null;
+      if (
+        !slipRow ||
+        slipRow.tallied_at ||
+        slipRow.staff_id !== input.staffId ||
+        slipRow.order_id !== input.orderId ||
+        slipRow.order_item_serial_no !== input.orderItemSerialNo ||
+        slipRow.unit_no !== input.unitNo ||
+        slipRow.stage !== input.taskType
+      ) {
+        throw new Error("This stage slip does not match the worker assigned to the scanned slip.");
+      }
+      await recordStaffWorkEarning(supabase, {
+        staffId: input.staffId,
+        jobCardId: row.id,
+        orderId: row.order_id,
+        jobCardNumber: row.job_card_number,
+        taskType: input.taskType,
+        completedDate: todayIso,
+        wageRate: input.wageRate,
+        wageAmount: input.wageAmount,
+      });
+      return {
+        jobCardId: row.id,
+        orderId: row.order_id,
+        fromStage: expectedStage,
+        toStage: "Ready",
+        alreadyCompleted: false,
+      };
+    }
     if (alreadyAdvanced) {
       return {
         jobCardId: row.id,
