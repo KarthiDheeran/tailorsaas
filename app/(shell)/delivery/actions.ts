@@ -44,9 +44,7 @@ function sortDeliveryDeskOrders(a: Order, b: Order): number {
   return a.orderNumber.localeCompare(b.orderNumber);
 }
 
-export async function getDeliveryDeskOrdersAction(
-  todayIso: string
-): Promise<DeliveryDeskOrder[]> {
+export async function getDeliveryDeskOrdersAction(): Promise<DeliveryDeskOrder[]> {
   return withPerformanceContext("getDeliveryDeskOrdersAction", async () => {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.view");

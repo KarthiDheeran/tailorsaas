@@ -115,7 +115,7 @@ function DeliveryDeskContent() {
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
-    getDeliveryDeskOrdersAction(today)
+    getDeliveryDeskOrdersAction()
       .then((result) => {
         if (cancelled) return;
         setRows(result);
