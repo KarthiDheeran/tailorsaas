@@ -198,11 +198,22 @@ export interface CatalogGarmentType {
   measurementFieldIds: string[];
   addOnIds: string[];
   showOrderAddOns: boolean;
+  bodyMeasurementLayout: BodyMeasurementLayout;
   isActive: boolean;
 }
 
 export const GARMENT_SECTIONS = ["Men", "Chudidar", "Blouse"] as const;
 export type GarmentSection = (typeof GARMENT_SECTIONS)[number];
+
+export const BODY_MEASUREMENT_LAYOUTS = ["columns", "compact_legacy"] as const;
+export type BodyMeasurementLayout = (typeof BODY_MEASUREMENT_LAYOUTS)[number];
+
+export function isBodyMeasurementLayout(value: unknown): value is BodyMeasurementLayout {
+  return (
+    typeof value === "string" &&
+    BODY_MEASUREMENT_LAYOUTS.includes(value as BodyMeasurementLayout)
+  );
+}
 
 export function isGarmentSection(value: unknown): value is GarmentSection {
   return typeof value === "string" && GARMENT_SECTIONS.includes(value as GarmentSection);
@@ -414,6 +425,7 @@ export type GarmentTypeInput = {
   measurementFieldIds: string[];
   addOnIds: string[];
   showOrderAddOns: boolean;
+  bodyMeasurementLayout: BodyMeasurementLayout;
   isActive: boolean;
 };
 

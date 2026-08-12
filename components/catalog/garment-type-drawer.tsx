@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import {
+  BODY_MEASUREMENT_LAYOUTS,
   GARMENT_SECTIONS,
   MEASUREMENT_FIELD_GROUPS,
   customMeasurementFieldId,
@@ -10,6 +11,7 @@ import {
   isCustomMeasurementFieldId,
   measurementFieldLabel,
   type CatalogAddOn,
+  type BodyMeasurementLayout,
   type CatalogGarmentType,
   type GarmentSection,
   type GarmentTypeInput,
@@ -46,6 +48,8 @@ export function GarmentTypeDrawer({
   );
   const [basePrice, setBasePrice] = useState<number>(garment?.basePrice ?? 0);
   const [showOrderAddOns] = useState(garment?.showOrderAddOns ?? true);
+  const [bodyMeasurementLayout, setBodyMeasurementLayout] =
+    useState<BodyMeasurementLayout>(garment?.bodyMeasurementLayout ?? "columns");
   const [isActive, setIsActive] = useState(garment?.isActive ?? true);
   const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>(
     garment?.measurementFieldIds ?? []
@@ -141,6 +145,7 @@ export function GarmentTypeDrawer({
       measurementFieldIds: selectedFieldIds,
       addOnIds: selectedAddOnIds,
       showOrderAddOns,
+      bodyMeasurementLayout,
       isActive,
     });
     setSubmitting(false);
@@ -262,6 +267,26 @@ export function GarmentTypeDrawer({
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Body Measurement Layout
+                  </span>
+                  <select
+                    value={bodyMeasurementLayout}
+                    onChange={(e) =>
+                      setBodyMeasurementLayout(e.target.value as BodyMeasurementLayout)
+                    }
+                    className={inputClass}
+                  >
+                    {BODY_MEASUREMENT_LAYOUTS.map((option) => (
+                      <option key={option} value={option}>
+                        {option === "compact_legacy"
+                          ? "Compact vertical"
+                          : "Normal columns"}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>

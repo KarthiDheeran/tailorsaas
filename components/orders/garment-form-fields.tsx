@@ -319,6 +319,96 @@ function FieldControl({
   );
 }
 
+function shortMeasurementCode(field: RuntimeGarmentField) {
+  const explicit = String(field.uiMetadata?.shortCode ?? field.uiMetadata?.legacyCode ?? "").trim();
+  if (explicit) return explicit;
+  const words = field.name.match(/[A-Za-z0-9]+/g) ?? [];
+  const generated = words.length <= 1
+    ? field.name.slice(0, 3)
+    : words.map((word) => word[0]).join("");
+  return `${generated.toLowerCase()}:`;
+}
+
+function CompactLegacyFieldControl({
+  field,
+  value,
+  error,
+  disabled,
+  onChange,
+  controlRef,
+}: {
+  field: RuntimeGarmentField;
+  value: GarmentFieldValue;
+  error?: string;
+  disabled: boolean;
+  onChange: (code: string, value: GarmentFieldValue) => void;
+  controlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
+}) {
+  if (
+    field.inputType === "table" ||
+    field.inputType === "textarea" ||
+    field.inputType === "multiselect" ||
+    field.inputType === "checkbox"
+  ) {
+    return <FieldControl field={field} value={value} error={error} disabled={disabled} onChange={onChange} controlRef={controlRef} />;
+  }
+
+  const label = (
+    <span className="truncate border-r border-border-soft bg-surface-muted px-2 py-1.5 text-xs font-semibold text-ink-muted" title={field.name}>
+      {field.name}
+      {field.required && <b className="ml-1 text-chip-red-fg">*</b>}
+    </span>
+  );
+  const code = <span className="px-1.5 text-[11px] font-medium text-ink-faint">{shortMeasurementCode(field)}</span>;
+  const inputClass = "h-7 min-w-0 border-0 bg-white px-2 text-xs text-ink outline-none focus:bg-primary-tint/40";
+
+  return (
+    <label className="grid min-w-0 grid-cols-[minmax(96px,1fr)_70px_34px] items-stretch overflow-hidden rounded border border-border bg-white">
+      {label}
+      {field.inputType === "select" ? (
+        <select
+          ref={controlRef as Ref<HTMLSelectElement>}
+          disabled={disabled}
+          required={field.required}
+          value={(value as string | null) ?? ""}
+          onChange={(event) => onChange(field.code, event.target.value)}
+          className={inputClass}
+        >
+          <option value=""></option>
+          {field.options.map((option) => (
+            <option key={option}>{option}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          ref={controlRef as Ref<HTMLInputElement>}
+          disabled={disabled}
+          required={field.required}
+          type={field.inputType === "number" ? "number" : "text"}
+          min={field.min ?? undefined}
+          max={field.max ?? undefined}
+          step={field.decimalPlaces === null ? undefined : 1 / 10 ** field.decimalPlaces}
+          value={(value as string | number | null) ?? ""}
+          placeholder={field.placeholder ?? undefined}
+          onChange={(event) =>
+            onChange(
+              field.code,
+              field.inputType === "number"
+                ? event.target.value === ""
+                  ? null
+                  : Number(event.target.value)
+                : event.target.value
+            )
+          }
+          className={inputClass}
+        />
+      )}
+      {code}
+      {error && <span className="col-span-3 border-t border-chip-red/30 px-2 py-1 text-[11px] text-chip-red-fg">{error}</span>}
+    </label>
+  );
+}
+
 export function GarmentFormFields({
   fields,
   values,
@@ -334,7 +424,7 @@ export function GarmentFormFields({
   errors?: Record<string, string>;
   disabled?: boolean;
   showSectionHeadings?: boolean;
-  layout?: "stack" | "columns" | "instructions";
+  layout?: "stack" | "columns" | "instructions" | "compactLegacyBody";
   onChange: (code: string, value: GarmentFieldValue) => void;
   firstControlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
@@ -357,11 +447,34 @@ export function GarmentFormFields({
   let controlIndex = 0;
   const content = Object.entries(groups).map(([section, group]) => {
     const hasTable = group.some((field) => field.inputType === "table");
+    const useTwoColumnVertical =
+      layout === "compactLegacyBody" &&
+      !hasTable &&
+      section.trim().toLowerCase() === "body measurements";
+    const firstColumnFields = useTwoColumnVertical
+      ? group.slice(0, Math.ceil(group.length / 2))
+      : group;
+    const secondColumnFields = useTwoColumnVertical
+      ? group.slice(Math.ceil(group.length / 2))
+      : [];
+    const renderControl = (field: RuntimeGarmentField) => {
+      const isFirst = controlIndex++ === 0;
+      const Control = useTwoColumnVertical ? CompactLegacyFieldControl : FieldControl;
+      return <Control
+        key={field.code}
+        field={field}
+        value={values[field.code]}
+        error={errors[field.code]}
+        disabled={disabled}
+        onChange={onChange}
+        controlRef={isFirst ? setFirstControlRef : undefined}
+      />;
+    };
     return (
     <section
       key={section}
       className={
-        layout === "columns"
+        layout === "columns" || layout === "compactLegacyBody"
           ? "min-w-0 rounded-lg border border-border-soft bg-white p-4"
           : "mb-4"
       }
@@ -369,25 +482,35 @@ export function GarmentFormFields({
       {showSectionHeadings && (
         <h4 className="mb-3 text-[15px] font-semibold text-ink">{section}</h4>
       )}
-      <div className={hasTable ? "grid grid-cols-1 gap-3" : layout === "columns" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3" : layout === "instructions" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3 md:grid-cols-3"}>
-        {group.map((field) => {
-          const isFirst = controlIndex++ === 0;
-          return <FieldControl
-            key={field.code}
-            field={field}
-            value={values[field.code]}
-            error={errors[field.code]}
-            disabled={disabled}
-            onChange={onChange}
-            controlRef={isFirst ? setFirstControlRef : undefined}
-          />;
-        })}
+      <div className={
+        hasTable
+          ? "grid grid-cols-1 gap-3"
+          : useTwoColumnVertical
+            ? "grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2"
+            : layout === "columns" || layout === "compactLegacyBody"
+              ? "grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
+              : layout === "instructions"
+                ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                : "grid grid-cols-2 gap-3 md:grid-cols-3"
+      }>
+        {useTwoColumnVertical ? (
+          <>
+            <div className="grid grid-cols-1 gap-3">
+              {firstColumnFields.map(renderControl)}
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              {secondColumnFields.map(renderControl)}
+            </div>
+          </>
+        ) : (
+          group.map(renderControl)
+        )}
       </div>
     </section>
     );
   });
 
-  if (layout === "columns") {
+  if (layout === "columns" || layout === "compactLegacyBody") {
     const groupEntries = Object.entries(groups);
     const columnsClass =
       groupEntries.length >= 3

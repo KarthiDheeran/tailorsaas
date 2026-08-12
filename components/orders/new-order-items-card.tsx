@@ -480,6 +480,10 @@ function ConfigureItemModal({
   const [activeAddOnIndex, setActiveAddOnIndex] = useState(0);
   const [addOnsPosition, setAddOnsPosition] = useState<FloatingMenuPosition | null>(null);
   const showOrderAddOns = garment.showOrderAddOns !== false;
+  const bodyMeasurementLayout =
+    garment.bodyMeasurementLayout === "compact_legacy"
+      ? "compactLegacyBody"
+      : "columns";
   const addOnOptions = useMemo(
     () => showOrderAddOns ? getAddOnsForGarment(garment, addOns).filter((addOn) => addOn.isActive) : [],
     [addOns, garment, showOrderAddOns]
@@ -1156,7 +1160,7 @@ function ConfigureItemModal({
                   <p className={cn("rounded-lg bg-white px-3 py-2 text-sm text-ink-muted", measurementContentSpanClass)}>Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
                   <div className={cn("min-w-0", measurementContentSpanClass)}>
-                    <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout="columns" firstControlRef={firstMeasurementRef} />
+                    <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout={bodyMeasurementLayout} firstControlRef={firstMeasurementRef} />
                   </div>
                 ) : (
                   <p className={cn("rounded-lg bg-white px-3 py-2 text-sm text-ink-muted", measurementContentSpanClass)}>

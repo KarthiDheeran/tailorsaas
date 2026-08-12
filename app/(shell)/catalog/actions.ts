@@ -41,6 +41,7 @@ import {
   CATALOG_FIELD_INPUT_TYPES,
   CATALOG_FIELD_TYPES,
   customMeasurementFieldLabel,
+  isBodyMeasurementLayout,
   isGarmentSection,
   isCustomMeasurementFieldId,
   measurementFields,
@@ -244,6 +245,9 @@ function validateGarmentInput(
   }
   if (!Number.isFinite(data.basePrice) || data.basePrice < 0) {
     return "Base price must be 0 or greater.";
+  }
+  if (!isBodyMeasurementLayout(data.bodyMeasurementLayout)) {
+    return "Choose a valid body measurement layout.";
   }
   for (const id of data.measurementFieldIds) {
     if (isCustomMeasurementFieldId(id)) {

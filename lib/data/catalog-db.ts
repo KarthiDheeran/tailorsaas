@@ -3,9 +3,11 @@ import {
   DEFAULT_WORK_STAGES,
   defaultGarmentSectionForName,
   initialShortcutCodeForGarmentName,
+  isBodyMeasurementLayout,
 } from "@/lib/catalog";
 import type {
   AddOnInput,
+  BodyMeasurementLayout,
   CatalogAddOn,
   CatalogGarmentType,
   CatalogWorkStage,
@@ -309,7 +311,7 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
-  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, is_active";
+  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, is_active";
 const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
@@ -322,6 +324,7 @@ interface GarmentRow {
   measurement_field_ids: string[];
   addon_ids: string[];
   show_order_addons?: boolean | null;
+  body_measurement_layout?: BodyMeasurementLayout | null;
   is_active: boolean;
 }
 
@@ -346,6 +349,9 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
     measurementFieldIds: row.measurement_field_ids ?? [],
     addOnIds: row.addon_ids ?? [],
     showOrderAddOns: row.show_order_addons !== false,
+    bodyMeasurementLayout: isBodyMeasurementLayout(row.body_measurement_layout)
+      ? row.body_measurement_layout
+      : "columns",
     isActive: row.is_active,
   };
 }
@@ -434,6 +440,7 @@ export async function createGarmentType(
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
       show_order_addons: data.showOrderAddOns,
+      body_measurement_layout: data.bodyMeasurementLayout,
       is_active: data.isActive,
     })
     .select(GARMENT_COLUMNS)
@@ -457,6 +464,7 @@ export async function updateGarmentType(
       measurement_field_ids: data.measurementFieldIds,
       addon_ids: data.addOnIds,
       show_order_addons: data.showOrderAddOns,
+      body_measurement_layout: data.bodyMeasurementLayout,
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     })
