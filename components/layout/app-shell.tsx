@@ -17,6 +17,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isLoading, hasPermission } = useCurrentUser();
   useGlobalNewOrderShortcut(!isLoading && hasPermission("orders.create"));
   useGlobalNavigationShortcuts([
+    { key: "F2", href: "/orders/new", enabled: !isLoading && hasPermission("orders.create"), modifier: "none" },
+    { key: "F3", href: "/delivery", enabled: !isLoading && hasPermission("orders.view"), modifier: "none" },
+    {
+      key: "F4",
+      href: "/job-cards/tally",
+      enabled: !isLoading && (hasPermission("orders.view") || hasPermission("staff.view")),
+      modifier: "none",
+    },
+    {
+      key: "F6",
+      href: "/job-cards/production-print",
+      enabled: !isLoading && hasPermission("orders.printJobCard"),
+      modifier: "none",
+    },
+    {
+      key: "F7",
+      href: "/job-cards",
+      enabled: !isLoading && (hasPermission("orders.view") || hasPermission("staff.view")),
+      modifier: "none",
+    },
     { key: "h", href: "/dashboard", enabled: !isLoading && hasPermission("dashboard.view") },
     { key: "o", href: "/orders", enabled: !isLoading && hasPermission("orders.view") },
     {

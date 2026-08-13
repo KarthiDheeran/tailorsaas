@@ -63,7 +63,7 @@ const navItems: NavItem[] = [
     shortcut: "Alt O",
     anyOf: ["orders.view", "orders.create"],
     children: [
-      { href: "/orders/new", label: "New Order", icon: ClipboardList, permission: "orders.create" },
+      { href: "/orders/new", label: "New Order", icon: ClipboardList, shortcut: "F2", permission: "orders.create" },
       { href: "/orders", label: "View Orders", icon: ClipboardList, permission: "orders.view", exact: true },
     ],
   },
@@ -75,12 +75,12 @@ const navItems: NavItem[] = [
     anyOf: ["orders.view", "staff.view", "orders.printJobCard"],
     activePrefixes: ["/job-cards"],
     children: [
-      { href: "/job-cards/tally", label: "Tally Scans", icon: FileText, anyOf: ["orders.view", "staff.view"] },
-      { href: "/job-cards", label: "Order Ready", icon: FileText, anyOf: ["orders.view", "staff.view"], exact: true },
-      { href: "/job-cards/production-print", label: "Production Print", icon: FileText, permission: "orders.printJobCard" },
+      { href: "/job-cards/tally", label: "Tally Scans", icon: FileText, shortcut: "F4", anyOf: ["orders.view", "staff.view"] },
+      { href: "/job-cards", label: "Order Ready", icon: FileText, shortcut: "F7", anyOf: ["orders.view", "staff.view"], exact: true },
+      { href: "/job-cards/production-print", label: "Production Print", icon: FileText, shortcut: "F6", permission: "orders.printJobCard" },
     ],
   },
-  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "Alt D", permission: "orders.view" },
+  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "F3", permission: "orders.view" },
   {
     href: "/customers",
     labelKey: "nav.customers",
