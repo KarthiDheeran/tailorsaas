@@ -14,15 +14,50 @@ import {
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 
 const MEASUREMENT_NOTES_KEY = "__measurementNotes";
+const PRODUCTION_BARCODE_OPTIONS = {
+  height: 30,
+  moduleWidth: 1.25,
+  quietZoneModules: 10,
+};
+
+function formatSlipDate(value: string | undefined) {
+  if (!value) return "-";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function tableWorkDetailLines(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return [];
+    const record = row as Record<string, unknown>;
+    const item = typeof record.item === "string" ? record.item.trim() : "";
+    if (!item) return [];
+    const qty = typeof record.qty === "number" ? record.qty : Number(record.qty);
+    if (!Number.isFinite(qty) || qty <= 0) return [item];
+    return [`${item} - ${qty}`];
+  });
+}
+
+function productionFieldText(value: unknown) {
+  const tableLines = tableWorkDetailLines(value);
+  if (tableLines.length > 0) return tableLines.join("\n");
+  return historicalGarmentValueText(value);
+}
 
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
   const value = toBarcodeValue(slip.slipCode);
-  const metrics = barcodeSvgMetrics(value);
+  const metrics = barcodeSvgMetrics(value, PRODUCTION_BARCODE_OPTIONS);
 
   return (
     <div className="production-barcode">
       <Image
-        src={barcodeSvgDataUri(value)}
+        src={barcodeSvgDataUri(value, PRODUCTION_BARCODE_OPTIONS)}
         alt={`Barcode for ${slip.stage} ${slip.slipCode}`}
         width={metrics.width}
         height={metrics.height}
@@ -42,6 +77,7 @@ function CuttingTicket({ slip }: { slip: JobCardStageSlip }) {
         <strong>{slip.orderNumber}</strong>
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
+        <span>Delivery: {formatSlipDate(slip.deliveryDate)}</span>
         <span>
           {slip.garmentType} · Qty {slip.quantity}
         </span>
@@ -78,6 +114,7 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         <strong>{slip.orderNumber}</strong>
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
+        <span>Delivery: {formatSlipDate(slip.deliveryDate)}</span>
         <span>
           {slip.garmentType} · Qty {slip.quantity}
         </span>
@@ -87,7 +124,7 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         {visible.length ? (
           visible.map((field) => (
             <div key={field.code} title={field.label} aria-label={field.label}>
-              <strong>{historicalGarmentValueText(field.value)}</strong>
+              <strong>{productionFieldText(field.value)}</strong>
             </div>
           ))
         ) : (
@@ -217,6 +254,8 @@ function ProductionPrintBundleContent() {
 
         .production-fields strong {
           font-size: 11px;
+          line-height: 1.18;
+          white-space: pre-line;
         }
 
         .production-measurement-notes {
@@ -235,7 +274,7 @@ function ProductionPrintBundleContent() {
           text-align: center;
           align-self: center;
           justify-self: end;
-          padding: 0 3mm;
+          padding: 0 1.5mm;
           background: #fff;
           overflow: visible;
           flex-shrink: 0;
@@ -260,7 +299,7 @@ function ProductionPrintBundleContent() {
           font-size: 11px;
           font-weight: 700;
           line-height: 1.1;
-          margin-top: 2px;
+          margin-top: 1px;
         }
 
         .production-hint {

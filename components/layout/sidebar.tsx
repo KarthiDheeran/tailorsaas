@@ -58,7 +58,7 @@ const moreNavItems: NavItem[] = [
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, shortcut: "Alt I", permission: "inventory.view" },
   { href: "/staff", labelKey: "nav.staff", icon: Users2, shortcut: "Alt W", permission: "staff.view" },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3, shortcut: "Alt R", permission: "reports.view" },
-  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, shortcut: "Alt M", anyOf: ["calendar.view", "orders.view", "customers.view"] },
+  { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, shortcut: "Alt M", permission: "communications.view" },
   {
     href: "/settings",
     labelKey: "nav.settings",

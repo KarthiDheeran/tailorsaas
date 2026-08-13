@@ -20,7 +20,7 @@ import {
 } from "@/lib/data/shop-billing-settings-db";
 import { barcodeSvgDataUri, barcodeSvgMetrics } from "@/lib/barcode-code128";
 import { formatCurrency } from "@/lib/currency";
-import type { Customer, Order, Payment } from "@/lib/types";
+import type { Customer, Order, OrderItemAddOn, Payment } from "@/lib/types";
 
 type PaymentModeSummary =
   | { kind: "none" }
@@ -80,6 +80,29 @@ function paymentModeLabel(summary: PaymentModeSummary) {
   return "Multiple";
 }
 
+function addOnReceiptQuantity(addOn: OrderItemAddOn, itemQty: number): number {
+  const qty = typeof addOn.qty === "number" ? addOn.qty : Number(addOn.qty);
+  return Number.isFinite(qty) && qty > 0 ? qty : itemQty;
+}
+
+function addOnReceiptRate(addOn: OrderItemAddOn): number {
+  const rate = typeof addOn.rate === "number" ? addOn.rate : Number(addOn.rate);
+  if (Number.isFinite(rate)) return rate;
+  const qty = typeof addOn.qty === "number" ? addOn.qty : Number(addOn.qty);
+  if (Number.isFinite(qty) && qty > 0) return addOn.amount / qty;
+  return addOn.amount;
+}
+
+function addOnReceiptTotal(addOn: OrderItemAddOn, fallbackQty: number, fallbackRate: number): number {
+  const total = typeof addOn.total === "number" ? addOn.total : Number(addOn.total);
+  if (Number.isFinite(total)) return total;
+  return fallbackQty * fallbackRate;
+}
+
+function normalizedTableAddOnLabel(label: string): string {
+  return label.replace(/\s+-\s+\d+$/, "").trim();
+}
+
 function receiptRows(order: Order): ReceiptRow[] {
   const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
   for (const item of order.items) {
@@ -97,10 +120,27 @@ function receiptRows(order: Order): ReceiptRow[] {
     group.item.qty += item.qty;
     group.item.total += item.qty * item.rate;
     for (const addOn of item.addOns ?? []) {
-      const addOnKey = `${addOn.label.trim().toLocaleLowerCase()}|${addOn.amount}`;
-      const row = group.addOns.get(addOnKey) ?? { type: "addon" as const, key: `addon-${groupKey}-${addOnKey}`, label: addOn.label, qty: 0, rate: addOn.amount, total: 0 };
-      row.qty += item.qty;
-      row.total += item.qty * addOn.amount;
+      const addOnQty = addOnReceiptQuantity(addOn, item.qty);
+      const addOnRate = addOnReceiptRate(addOn);
+      const addOnTotal = addOnReceiptTotal(addOn, addOnQty, addOnRate);
+      const isTableAddOn = addOn.key.startsWith("table:");
+      const normalizedLabel = isTableAddOn ? normalizedTableAddOnLabel(addOn.label) : addOn.label.trim();
+      const addOnKey = isTableAddOn
+        ? `${normalizedLabel.toLocaleLowerCase()}|${addOnQty}|${addOnRate}|${addOnTotal}`
+        : `${addOn.label.trim().toLocaleLowerCase()}|${addOnRate}`;
+      const row = group.addOns.get(addOnKey) ?? { type: "addon" as const, key: `addon-${groupKey}-${addOnKey}`, label: addOn.label, qty: 0, rate: addOnRate, total: 0 };
+      if (isTableAddOn && !row.label.match(/\s+-\s+\d+$/) && addOn.label.match(/\s+-\s+\d+$/)) {
+        row.label = addOn.label;
+      }
+      if (isTableAddOn) {
+        if (row.qty === 0 && row.total === 0) {
+          row.qty = addOnQty;
+          row.total = addOnTotal;
+        }
+      } else {
+        row.qty += addOnQty;
+        row.total += addOnTotal;
+      }
       group.addOns.set(addOnKey, row);
     }
   }

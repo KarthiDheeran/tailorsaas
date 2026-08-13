@@ -17,6 +17,7 @@ export interface JobCardStageSlip {
   customerSnapshot?: CustomerSnapshot;
   garmentType: string;
   quantity: number;
+  deliveryDate?: string;
   stage: TaskType;
   staffId?: string;
   staffName: string;
@@ -46,7 +47,7 @@ export interface CreateJobCardStageSlipInput {
 
 const JOB_CARD_STAGE_SLIP_COLUMNS = `
   id, scan_token, slip_code, order_id, order_item_serial_no, unit_no, order_number, customer_id,
-  customer_snapshot, garment_type, quantity, stage, staff_id, staff_name, wage_rate,
+  customer_snapshot, garment_type, quantity, delivery_date, stage, staff_id, staff_name, wage_rate,
   wage_amount, measurements_snapshot, field_schema_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
   printed_at, tallied_at, created_at
 `;
@@ -63,6 +64,7 @@ interface JobCardStageSlipRow {
   customer_snapshot: CustomerSnapshot | null;
   garment_type: string;
   quantity: number;
+  delivery_date?: string | null;
   stage: TaskType;
   staff_id: string | null;
   staff_name: string;
@@ -91,6 +93,7 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
     customerSnapshot: row.customer_snapshot ?? undefined,
     garmentType: row.garment_type,
     quantity: Number(row.quantity),
+    deliveryDate: row.delivery_date ?? undefined,
     stage: row.stage,
     staffId: row.staff_id ?? undefined,
     staffName: row.staff_name,
@@ -184,6 +187,7 @@ async function insertJobCardStageSlip(
       customer_snapshot: order.customerSnapshot ?? null,
       garment_type: item.size?.trim() ? `${item.particular} · ${item.size.trim()}` : item.particular,
       quantity,
+      delivery_date: order.deliveryDate,
       stage: input.stage,
       staff_id: staff?.id ?? null,
       staff_name: staff?.name ?? "Unassigned",

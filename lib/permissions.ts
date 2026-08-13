@@ -33,6 +33,7 @@ export type Permission =
   | "customers.edit"
   | "customers.viewMeasurements"
   | "customers.editMeasurements"
+  | "communications.view"
   | "catalog.view"
   | "catalog.manage"
   | "staff.view"
@@ -78,6 +79,8 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "customers.edit", label: "Edit customers", group: "Customers" },
   { key: "customers.viewMeasurements", label: "View measurements", group: "Customers" },
   { key: "customers.editMeasurements", label: "Edit measurements", group: "Customers" },
+
+  { key: "communications.view", label: "View communications", group: "Communications" },
 
   { key: "catalog.view", label: "View catalog", group: "Catalog" },
   { key: "catalog.manage", label: "Manage catalog", group: "Catalog" },

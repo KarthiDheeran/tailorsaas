@@ -42,18 +42,29 @@ export function ProductionPrintPage() {
     const normalized = query.trim().toLowerCase();
     const from = fromSequence === "" ? null : Number(fromSequence);
     const to = toSequence === "" ? null : Number(toSequence);
-    return (orders ?? []).filter((order) => {
-      if (["Cancelled", "Delivered"].includes(order.status)) return false;
-      if (order.orderSection && order.orderSection !== section) return false;
-      const sequence = sequenceFor(order);
-      if (sequence === null || (from !== null && sequence < from) || (to !== null && sequence > to)) return false;
-      if (fromDate && order.orderDate < fromDate) return false;
-      if (toDate && order.orderDate > toDate) return false;
-      if (!normalized) return true;
-      return [order.orderNumber, order.customerSnapshot?.name, order.customerSnapshot?.phone]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalized));
-    });
+    return (orders ?? [])
+      .filter((order) => {
+        if (["Cancelled", "Delivered"].includes(order.status)) return false;
+        if (order.orderSection && order.orderSection !== section) return false;
+        const sequence = sequenceFor(order);
+        if (sequence === null || (from !== null && sequence < from) || (to !== null && sequence > to)) return false;
+        if (fromDate && order.orderDate < fromDate) return false;
+        if (toDate && order.orderDate > toDate) return false;
+        if (!normalized) return true;
+        return [order.orderNumber, order.customerSnapshot?.name, order.customerSnapshot?.phone]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(normalized));
+      })
+      .sort((left, right) => {
+        const leftSequence = sequenceFor(left);
+        const rightSequence = sequenceFor(right);
+        if (leftSequence !== null && rightSequence !== null && leftSequence !== rightSequence) {
+          return rightSequence - leftSequence;
+        }
+        if (leftSequence !== null && rightSequence === null) return -1;
+        if (leftSequence === null && rightSequence !== null) return 1;
+        return right.orderDate.localeCompare(left.orderDate) || right.orderNumber.localeCompare(left.orderNumber);
+      });
   }, [fromSequence, fromDate, toDate, orders, query, section, toSequence]);
 
   function selectFiltered() {

@@ -161,7 +161,7 @@ export function orderItemToDraftItem(
     ? getAddOnsForGarment(garment, addOns)
         .filter((a) =>
           item.addOns?.some(
-            (io) => io.label.toLowerCase() === a.name.toLowerCase()
+            (io) => io.key === a.id
           )
         )
         .map((a) => a.id)
@@ -217,8 +217,10 @@ function numberFromUnknown(value: unknown): number {
 }
 
 function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
-  const values = it.typedFieldDraft?.typedValues ?? {};
-  return Object.entries(values).flatMap(([fieldCode, value]) => {
+  const values = it.typedFieldDraft
+    ? serializeGarmentFieldDraft(it.typedFieldDraft)
+    : {};
+  const rows = Object.entries(values).flatMap(([fieldCode, value]) => {
     if (!Array.isArray(value)) return [];
     return value.flatMap((row, index): OrderItemAddOn[] => {
       if (!row || typeof row !== "object" || Array.isArray(row)) return [];
@@ -230,7 +232,7 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
       const tailorAmount = numberFromUnknown(record.tailorAmount);
       const workerStage = typeof record.workerStage === "string" ? record.workerStage.trim() : "";
       const total = numberFromUnknown(record.total) || qty * itemPrice;
-      if (total <= 0) return [];
+      if (qty <= 0 && total <= 0) return [];
       const display =
         typeof record.display === "string" && record.display.trim()
           ? record.display.trim()
@@ -241,6 +243,9 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
         key: `table:${fieldCode}:${index}`,
         label: display,
         amount: total,
+        qty,
+        rate: itemPrice,
+        total,
         workerStageRates:
           workerStage && tailorAmount > 0
             ? { [workerStage]: tailorAmount }
@@ -248,6 +253,16 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
       }];
     });
   });
+  const byRow = new Map<string, OrderItemAddOn>();
+  for (const row of rows) {
+    const baseLabel = row.label.replace(/\s+-\s+\d+$/, "").trim().toLocaleLowerCase();
+    const rowKey = `${baseLabel}|${row.qty ?? ""}|${row.rate ?? row.amount}|${row.total ?? row.amount}`;
+    const existing = byRow.get(rowKey);
+    if (!existing || (!existing.label.match(/\s+-\s+\d+$/) && row.label.match(/\s+-\s+\d+$/))) {
+      byRow.set(rowKey, row);
+    }
+  }
+  return Array.from(byRow.values());
 }
 
 function selectedDisplayAddOns(

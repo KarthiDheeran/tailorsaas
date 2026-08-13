@@ -124,6 +124,9 @@ export interface OrderItemAddOn {
   key: string;
   label: string;
   amount: number;
+  qty?: number;
+  rate?: number;
+  total?: number;
   workerStageRates?: Partial<Record<string, number>>;
 }
 

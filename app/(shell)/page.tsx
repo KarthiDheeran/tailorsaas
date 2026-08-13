@@ -18,6 +18,7 @@ export default function Home() {
     (hasAnyPermission(["orders.viewPayments", "expenses.view"]) && "/payments") ||
     (hasPermission("inventory.view") && "/inventory") ||
     (hasPermission("reports.view") && "/reports") ||
+    (hasPermission("communications.view") && "/communications") ||
     (hasPermission("settings.view") && "/settings") ||
     (hasPermission("catalog.view") && "/catalog") ||
     null;

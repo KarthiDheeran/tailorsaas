@@ -37,9 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {
       key: "m",
       href: "/communications",
-      enabled:
-        !isLoading &&
-        (hasPermission("calendar.view") || hasPermission("orders.view") || hasPermission("customers.view")),
+      enabled: !isLoading && hasPermission("communications.view"),
     },
     { key: "g", href: "/settings", enabled: !isLoading && hasPermission("settings.view") },
   ]);

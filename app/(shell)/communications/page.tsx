@@ -648,7 +648,7 @@ function selectClassName(extra?: string): string {
 
 export default function CommunicationsPage() {
   return (
-    <RequirePermission anyOf={["calendar.view", "orders.view", "customers.view"]}>
+    <RequirePermission permission="communications.view">
       <CommunicationsContent />
     </RequirePermission>
   );

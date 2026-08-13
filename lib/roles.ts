@@ -66,6 +66,7 @@ export const DEFAULT_MANAGER_PERMISSIONS: Permission[] = [
   "customers.edit",
   "customers.viewMeasurements",
   "customers.editMeasurements",
+  "communications.view",
   "catalog.view",
   "reports.view",
 ];
@@ -95,6 +96,7 @@ export const DEFAULT_RECEPTIONIST_PERMISSIONS: Permission[] = [
   "customers.edit",
   "customers.viewMeasurements",
   "customers.editMeasurements",
+  "communications.view",
   "catalog.view",
 ];
 

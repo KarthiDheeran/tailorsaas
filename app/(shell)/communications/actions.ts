@@ -13,7 +13,7 @@ import {
   logWhatsAppMessage,
   type WhatsAppMessageInput,
 } from "@/lib/data/whatsapp-messages-db";
-import { hasAnyPermission, hasPermission } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { Order, WhatsAppMessage } from "@/lib/types";
@@ -25,7 +25,7 @@ type ActionResult<T = undefined> =
 export async function getWhatsAppMessagesAction(): Promise<WhatsAppMessage[] | null> {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
-  if (!hasAnyPermission(permissions, ["calendar.view", "orders.view", "customers.view"])) {
+  if (!hasPermission(permissions, "communications.view")) {
     return [];
   }
 
@@ -40,7 +40,7 @@ export async function getWhatsAppMessagesAction(): Promise<WhatsAppMessage[] | n
 export async function getReminderInboxAction(todayIso: string): Promise<CalendarData | null> {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
-  if (!hasAnyPermission(permissions, ["calendar.view", "orders.view", "customers.view"])) {
+  if (!hasPermission(permissions, "communications.view")) {
     return null;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(todayIso)) {
@@ -61,7 +61,7 @@ export async function getCommunicationTargetsAction(): Promise<{
 }> {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
-  if (!hasAnyPermission(permissions, ["orders.view", "customers.view"])) {
+  if (!hasPermission(permissions, "communications.view")) {
     return { customers: [], orders: [] };
   }
 
@@ -77,7 +77,7 @@ export async function logWhatsAppMessageAction(
 ): Promise<ActionResult> {
   const supabase = createServerClient();
   const permissions = await getServerCallerPermissions(supabase);
-  if (!hasAnyPermission(permissions, ["calendar.view", "orders.view", "customers.view"])) {
+  if (!hasPermission(permissions, "communications.view")) {
     return { success: false, error: "You don't have permission to log WhatsApp messages." };
   }
 
