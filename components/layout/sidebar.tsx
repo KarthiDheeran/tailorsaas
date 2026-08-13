@@ -37,26 +37,86 @@ import type { Permission } from "@/lib/permissions";
 
 type NavItem = {
   href: string;
-  labelKey: TranslationKey;
+  labelKey?: TranslationKey;
+  label?: string;
   icon: LucideIcon;
   shortcut?: string;
   permission?: Permission;
   anyOf?: Permission[];
   activePrefixes?: string[];
+  exact?: boolean;
+  children?: NavItem[];
 };
 
-const primaryNavItems: NavItem[] = [
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, shortcut: "Alt H", permission: "dashboard.view" },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, shortcut: "Alt O", permission: "orders.view" },
-  { href: "/job-cards/tally", labelKey: "nav.jobCards", icon: FileText, shortcut: "Alt J", anyOf: ["orders.view", "staff.view"] },
-  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "Alt D", permission: "orders.view" },
-  { href: "/customers", labelKey: "nav.customers", icon: Users, shortcut: "Alt C", permission: "customers.view" },
-  { href: "/payments", labelKey: "nav.payments", icon: Wallet, shortcut: "Alt F", anyOf: ["orders.viewPayments", "expenses.view"] },
-];
+type VisibleNavItem = Omit<NavItem, "children"> & {
+  label: string;
+  isActive: boolean;
+  children?: VisibleNavItem[];
+};
 
-const moreNavItems: NavItem[] = [
+const navItems: NavItem[] = [
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, shortcut: "Alt H", permission: "dashboard.view" },
+  {
+    href: "/orders",
+    labelKey: "nav.orders",
+    icon: ClipboardList,
+    shortcut: "Alt O",
+    anyOf: ["orders.view", "orders.create"],
+    children: [
+      { href: "/orders/new", label: "New Order", icon: ClipboardList, shortcut: "F2", permission: "orders.create" },
+      { href: "/orders", label: "View Orders", icon: ClipboardList, permission: "orders.view", exact: true },
+    ],
+  },
+  {
+    href: "/job-cards",
+    labelKey: "nav.jobCards",
+    icon: FileText,
+    shortcut: "Alt J",
+    anyOf: ["orders.view", "staff.view", "orders.printJobCard"],
+    activePrefixes: ["/job-cards"],
+    children: [
+      { href: "/job-cards/tally", label: "Tally Scans", icon: FileText, shortcut: "F4", anyOf: ["orders.view", "staff.view"] },
+      { href: "/job-cards", label: "Order Ready", icon: FileText, shortcut: "F7", anyOf: ["orders.view", "staff.view"], exact: true },
+      { href: "/job-cards/production-print", label: "Production Print", icon: FileText, shortcut: "F6", permission: "orders.printJobCard" },
+    ],
+  },
+  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "F3", permission: "orders.view" },
+  {
+    href: "/customers",
+    labelKey: "nav.customers",
+    icon: Users,
+    shortcut: "Alt C",
+    anyOf: ["customers.view", "customers.create"],
+    children: [
+      { href: "/customers/new", label: "Add Customer", icon: Users, permission: "customers.create" },
+      { href: "/customers", label: "View Customers", icon: Users, permission: "customers.view", exact: true },
+    ],
+  },
+  {
+    href: "/payments",
+    labelKey: "nav.payments",
+    icon: Wallet,
+    shortcut: "Alt F",
+    anyOf: ["orders.viewPayments", "expenses.view"],
+    children: [
+      { href: "/payments?tab=collections", label: "Income", icon: Wallet, permission: "orders.viewPayments" },
+      { href: "/payments?tab=pending-dues", label: "Pending Due", icon: Wallet, permission: "orders.viewPayments" },
+      { href: "/payments?tab=adjustments", label: "Adjustments", icon: Wallet, permission: "orders.viewPayments" },
+      { href: "/payments?tab=expenses", label: "Expenses", icon: Wallet, permission: "expenses.view" },
+    ],
+  },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, shortcut: "Alt I", permission: "inventory.view" },
-  { href: "/staff", labelKey: "nav.staff", icon: Users2, shortcut: "Alt W", permission: "staff.view" },
+  {
+    href: "/staff",
+    labelKey: "nav.staff",
+    icon: Users2,
+    shortcut: "Alt W",
+    anyOf: ["staff.view", "staff.manage"],
+    children: [
+      { href: "/staff/new", label: "Add Staff", icon: Users2, permission: "staff.manage" },
+      { href: "/staff", label: "View Staff", icon: Users2, permission: "staff.view", exact: true },
+    ],
+  },
   { href: "/reports", labelKey: "nav.reports", icon: BarChart3, shortcut: "Alt R", permission: "reports.view" },
   { href: "/communications", labelKey: "nav.communications", icon: MessageCircle, shortcut: "Alt M", permission: "communications.view" },
   {
@@ -68,8 +128,6 @@ const moreNavItems: NavItem[] = [
     activePrefixes: ["/settings", "/catalog", "/users-access"],
   },
 ];
-
-const navItems = [...primaryNavItems, ...moreNavItems];
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
@@ -105,7 +163,17 @@ function useCloseTransientOverlays(onClose: () => void) {
   }, []);
 }
 
-function useVisibleNavItems(items: NavItem[]) {
+function navPath(href: string) {
+  return href.split("?")[0];
+}
+
+function isNavPathActive(pathname: string, item: Pick<NavItem, "href" | "exact">) {
+  const path = navPath(item.href);
+  if (item.exact) return pathname === path;
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+function useVisibleNavItems(items: NavItem[]): VisibleNavItem[] {
   const pathname = usePathname();
   const { hasPermission, hasAnyPermission } = useCurrentUser();
   const { t } = useLanguage();
@@ -117,17 +185,29 @@ function useVisibleNavItems(items: NavItem[]) {
       return true;
     })
     .map((item) => {
-      const isActive =
-        pathname === item.href ||
-        pathname.startsWith(`${item.href}/`) ||
+      const visibleChildren = item.children
+        ?.filter((child) => {
+          if (child.permission) return hasPermission(child.permission);
+          if (child.anyOf) return hasAnyPermission(child.anyOf);
+          return true;
+        })
+        .map((child) => {
+          return {
+            ...child,
+            children: undefined,
+            isActive: isNavPathActive(pathname, child),
+            label: child.label ?? t(child.labelKey!),
+          };
+        });
+      const isActive = Boolean(
+        isNavPathActive(pathname, item) ||
         item.activePrefixes?.some(
           (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-        );
-      const label =
-        item.href === "/staff" && hasPermission("staff.view") && !hasPermission("staff.manage")
-          ? t("nav.myTasks")
-          : t(item.labelKey);
-      return { ...item, isActive, label };
+        ) ||
+        visibleChildren?.some((child) => child.isActive)
+      );
+      const label = item.label ?? t(item.labelKey!);
+      return { ...item, children: visibleChildren, isActive, label };
     });
 }
 
@@ -136,7 +216,7 @@ function NavLink({
   variant,
   onNavigate,
 }: {
-  item: ReturnType<typeof useVisibleNavItems>[number];
+  item: VisibleNavItem;
   variant: "vertical" | "horizontal" | "dropdown";
   onNavigate?: () => void;
 }) {
@@ -150,12 +230,15 @@ function NavLink({
       aria-label={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
       className={cn(
         "flex items-center gap-2.5 rounded-xl text-sm transition-colors",
-        variant === "horizontal" && "h-9 shrink-0 border px-2.5 2xl:px-3",
+        variant === "horizontal" && "h-9 shrink-0 border px-2.5 text-[13px] xl:px-3 2xl:text-sm",
         variant === "vertical" && "border-l-4 px-4 py-2.5",
         variant === "dropdown" && "px-3 py-2.5",
         item.isActive
           ? "border-primary bg-primary font-semibold text-white shadow-sm"
-          : "border-transparent font-medium text-ink-muted hover:bg-surface-muted hover:text-ink"
+          : cn(
+              "font-medium text-ink-muted hover:bg-surface-muted hover:text-ink",
+              variant === "horizontal" ? "border-border-soft bg-white" : "border-transparent"
+            )
       )}
     >
       <Icon className="h-[18px] w-[18px] shrink-0" />
@@ -184,25 +267,53 @@ function NavLinks({
 
   return (
     <>
-      {visibleNavItems.map((item) => (
-        <NavLink key={item.href} item={item} variant={variant} onNavigate={onNavigate} />
-      ))}
+      {visibleNavItems.map((item) => {
+        const children = item.children ?? [];
+        if (variant === "horizontal" && children.length > 0) {
+          return (
+            <NavDropdown
+              key={item.href}
+              label={item.label}
+              icon={item.icon}
+              items={children}
+              active={item.isActive}
+            />
+          );
+        }
+        if (variant === "vertical" && children.length > 0) {
+          return (
+            <div key={item.href} className="space-y-1">
+              <NavLink item={item} variant={variant} onNavigate={onNavigate} />
+              <div className="ml-4 space-y-1 border-l border-border-soft pl-2">
+                {children.map((child) => (
+                  <NavLink key={child.href} item={child} variant="dropdown" onNavigate={onNavigate} />
+                ))}
+              </div>
+            </div>
+          );
+        }
+        return <NavLink key={item.href} item={item} variant={variant} onNavigate={onNavigate} />;
+      })}
     </>
   );
 }
 
 function NavDropdown({
   label,
+  icon: Icon = Menu,
   items,
+  active: activeOverride,
   className,
 }: {
   label: string;
+  icon?: LucideIcon;
   items: NavItem[];
+  active?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const visibleItems = useVisibleNavItems(items);
-  const active = visibleItems.some((item) => item.isActive);
+  const active = activeOverride ?? visibleItems.some((item) => item.isActive);
   useCloseTransientOverlays(() => setOpen(false));
 
   if (visibleItems.length === 0) return null;
@@ -213,16 +324,16 @@ function NavDropdown({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors",
+          "flex h-9 shrink-0 items-center gap-2 rounded-xl border px-2.5 text-[13px] font-medium transition-colors xl:px-3 2xl:text-sm",
           active
-            ? "border-primary bg-primary-tint text-primary"
+            ? "border-primary bg-primary font-semibold text-white shadow-sm"
             : "border-border-soft bg-white text-ink-muted hover:bg-surface-muted hover:text-ink"
         )}
         aria-expanded={open}
       >
-        <Menu className="h-4 w-4 shrink-0" />
-        <span>{label}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="whitespace-nowrap">{label}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0", active ? "text-white/80" : "text-ink-faint")} />
       </button>
       {open && (
         <>
@@ -232,7 +343,7 @@ function NavDropdown({
             aria-label={`Close ${label} menu`}
             onClick={() => setOpen(false)}
           />
-          <div className="absolute left-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-lg border border-border-soft bg-white p-1.5 shadow-xl">
+          <div className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border-soft bg-white p-1.5 shadow-xl">
             {visibleItems.map((item) => (
               <NavLink
                 key={item.href}
@@ -417,22 +528,18 @@ function ProfileDropdown() {
 export function DesktopTopNav() {
   return (
     <header className="sticky top-0 z-50 hidden px-3 pt-3 print:hidden lg:block">
-      <div className="flex h-14 min-w-0 items-center gap-3 rounded-2xl border border-white/80 bg-white/85 px-4 shadow-[0_12px_32px_rgba(17,24,39,0.08)] backdrop-blur-xl">
+      <div className="flex min-h-14 min-w-0 items-center gap-2 rounded-2xl border border-white/80 bg-white/85 px-3 py-2 shadow-[0_12px_32px_rgba(17,24,39,0.08)] backdrop-blur-xl">
         <div className="shrink-0">
           <BrandMark />
         </div>
 
-        <nav className="hidden min-w-0 flex-1 items-center gap-1 min-[1400px]:flex">
-          <NavLinks items={primaryNavItems} variant="horizontal" />
-          <NavDropdown label="More" items={moreNavItems} />
-        </nav>
-        <nav className="flex min-w-0 flex-1 min-[1400px]:hidden">
-          <NavDropdown label="Menu" items={navItems} />
+        <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-visible py-1">
+          <NavLinks items={navItems} variant="horizontal" />
         </nav>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5">
           <ActiveOperatorControl />
-          <div className="w-10 min-[1536px]:w-[180px] 2xl:w-[280px]">
+          <div className="w-10 min-[1536px]:w-[150px] 2xl:w-[220px]">
             <GlobalSearchButton enableShortcut />
           </div>
           <ProfileDropdown />

@@ -8,6 +8,7 @@ export type NavigationShortcut = {
   key: string;
   href: string;
   enabled: boolean;
+  modifier?: "alt" | "none";
 };
 
 function isEditableTarget(target: EventTarget | null) {
@@ -36,11 +37,16 @@ export function useGlobalNavigationShortcuts(shortcuts: NavigationShortcut[]) {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (!event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+      if (event.ctrlKey || event.metaKey || event.defaultPrevented) return;
       if (isEditableTarget(event.target)) return;
 
       const shortcut = shortcutsRef.current.find(
-        (item) => item.enabled && item.key === event.key.toLowerCase()
+        (item) => {
+          if (!item.enabled || item.key.toLowerCase() !== event.key.toLowerCase()) return false;
+          const modifier = item.modifier ?? "alt";
+          if (modifier === "alt") return event.altKey;
+          return modifier === "none" && !event.altKey;
+        }
       );
       if (!shortcut) return;
 
