@@ -56,7 +56,7 @@ function localTime(value?: string) {
 
 function stageChipClass(stage: string) {
   const normalized = stage.toLowerCase();
-  if (normalized.includes("stitch")) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized.includes("stitch")) return "border-secondary-border bg-secondary-soft text-secondary";
   if (normalized.includes("cut")) return "border-warning/30 bg-warning-soft text-warning";
   if (normalized.includes("iron")) return "border-info/30 bg-info-soft text-info";
   if (normalized.includes("pack")) return "border-violet-200 bg-violet-50 text-violet-700";

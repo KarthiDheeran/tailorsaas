@@ -169,7 +169,7 @@ function CustomersPageContent() {
           {hasPermission("customers.create") && (
             <Link
               href="/customers/new"
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-secondary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
             >
               <UserPlus className="h-4 w-4" />
               {t("customers.addCustomer")}

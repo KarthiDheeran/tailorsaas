@@ -39,7 +39,7 @@ const STAGE_STYLES: Record<JobCardStage, string> = {
   Trial: "bg-chip-info text-chip-info-fg",
   Alteration: "bg-chip-red text-chip-red-fg",
   Delayed: "bg-chip-red text-chip-red-fg",
-  Ready: "bg-chip-mint text-chip-mint-fg",
+  Ready: "bg-secondary-soft text-secondary",
   Delivered: "bg-chip-mint text-chip-mint-fg",
   Cancelled: "bg-chip-info text-chip-info-fg",
 };

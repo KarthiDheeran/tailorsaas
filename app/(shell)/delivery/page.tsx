@@ -67,13 +67,14 @@ function DeliveryStatCard({
   icon: typeof Truck;
   label: string;
   value: string;
-  tone: "green" | "amber" | "red" | "blue";
+  tone: "green" | "amber" | "red" | "blue" | "teal";
 }) {
   const tones = {
     green: "bg-chip-mint text-chip-mint-fg",
     amber: "bg-chip-peach text-chip-peach-fg",
     red: "bg-chip-red text-chip-red-fg",
     blue: "bg-chip-blue text-chip-blue-fg",
+    teal: "bg-secondary-soft text-secondary",
   };
   return (
     <div className="rounded-lg border border-border-soft bg-white p-4 shadow-sm">
@@ -299,13 +300,13 @@ function DeliveryDeskContent() {
             </div>
             <label className="block text-xs font-semibold text-ink-muted">Collected amount<input type="number" min="0" max={quickOrder.order.balance} step="0.01" value={quickAmount} onChange={(event) => setQuickAmount(event.target.value)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-right text-sm font-semibold text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
             <label className="block text-xs font-semibold text-ink-muted">Payment mode<select value={quickPaymentMode} onChange={(event) => setQuickPaymentMode(event.target.value as PaymentMode)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{["Cash", "GPay", "UPI", "Card", "Bank Transfer", "Cheque"].map((mode) => <option key={mode}>{mode}</option>)}</select></label>
-            <button type="button" onClick={() => void collectAndDeliver()} disabled={quickBusy} className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Collect & Deliver</button>
+            <button type="button" onClick={() => void collectAndDeliver()} disabled={quickBusy} className="h-11 rounded-lg bg-secondary px-5 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">Collect & Deliver</button>
           </div>
         )}
       </section>
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DeliveryStatCard icon={Truck} label="Ready for handover" value={String(stats.ready)} tone="green" />
+        <DeliveryStatCard icon={Truck} label="Ready for handover" value={String(stats.ready)} tone="teal" />
         <DeliveryStatCard icon={ClipboardList} label="Due or overdue" value={String(stats.dueOrOverdue)} tone="amber" />
         <DeliveryStatCard icon={IndianRupee} label="Balance to collect" value={money(stats.balanceDue)} tone="red" />
         <DeliveryStatCard icon={CheckCircle2} label="Clear to deliver" value={String(stats.canDeliver)} tone="blue" />

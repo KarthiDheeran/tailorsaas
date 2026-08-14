@@ -470,18 +470,18 @@ export async function getNewOrderBootstrapAction(todayIso: string): Promise<NewO
       getSharedDesktopOperatorMode(),
       getTodayItemSummaryForNewOrder(supabase, permissions, todayIso),
     ]);
-    const garmentTypes = permissions.includes("catalog.manage")
-      ? allGarments
-      : allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
+    const garmentTypes = caller.allowedOrderSections.length
+      ? allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section))
+      : allGarments;
     const configurations = await getGarmentTypeConfigurations(
       supabase,
       garmentTypes.map((garment) => garment.id)
     );
-    const garmentConfigurations = permissions.includes("catalog.manage")
-      ? configurations
-      : configurations.filter((configuration) =>
+    const garmentConfigurations = caller.allowedOrderSections.length
+      ? configurations.filter((configuration) =>
           caller.allowedOrderSections.includes(configuration.garment.section)
-        );
+        )
+      : configurations;
 
     return {
       billingSettings,
@@ -593,7 +593,6 @@ export async function getEditOrderBootstrapAction(
       };
     }
 
-    const canManageCatalog = permissions.includes("catalog.manage");
     const canViewCatalog = hasPermission(permissions, "catalog.view");
     const [customer, attachments, allGarments, addOns, billingSettings] = await Promise.all([
       getCustomerById(supabase, order.customerId),
@@ -605,9 +604,9 @@ export async function getEditOrderBootstrapAction(
       getOrderPricingBillingSettingsForNewOrder(supabase, permissions),
     ]);
     const garmentTypes =
-      canManageCatalog || !caller
-        ? allGarments
-        : allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
+      caller?.allowedOrderSections.length
+        ? allGarments.filter((garment) => caller.allowedOrderSections.includes(garment.section))
+        : allGarments;
     const configurations = canViewCatalog
       ? await getGarmentTypeConfigurations(
           supabase,
@@ -615,11 +614,11 @@ export async function getEditOrderBootstrapAction(
         )
       : [];
     const garmentConfigurations =
-      canManageCatalog || !caller
-        ? configurations
-        : configurations.filter((configuration) =>
+      caller?.allowedOrderSections.length
+        ? configurations.filter((configuration) =>
             caller.allowedOrderSections.includes(configuration.garment.section)
-          );
+          )
+        : configurations;
 
     return {
       order,

@@ -73,7 +73,8 @@ export default function LoginPage() {
       <button
         type="submit"
         disabled={loading}
-        className="h-11 rounded-lg bg-primary text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
+        className="h-11 rounded-lg text-sm font-semibold text-white shadow-soft transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ backgroundColor: "rgb(var(--secondary))" }}
       >
         {loading ? "Signing in…" : "Sign in"}
       </button>

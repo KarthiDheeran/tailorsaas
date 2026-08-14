@@ -18,25 +18,38 @@ const config: Config = {
           DEFAULT: token("--primary"),
           dark: token("--primary-hover"),
           hover: token("--primary-hover"),
+          active: token("--primary-active"),
           tint: token("--primary-soft"),
+          soft: token("--primary-soft"),
+          border: token("--primary-border"),
+        },
+        secondary: {
+          DEFAULT: token("--secondary"),
+          hover: token("--secondary-hover"),
+          soft: token("--secondary-soft"),
+          border: token("--secondary-border"),
         },
         success: {
           DEFAULT: token("--success"),
           soft: token("--success-soft"),
+          border: token("--success-border"),
         },
         warning: {
           DEFAULT: token("--warning"),
           soft: token("--warning-soft"),
+          border: token("--warning-border"),
         },
         danger: {
           DEFAULT: token("--danger"),
           soft: token("--danger-soft"),
+          border: token("--danger-border"),
         },
         info: {
           DEFAULT: token("--info"),
           soft: token("--info-soft"),
         },
         "input-fill": token("--surface"),
+        "disabled-background": token("--disabled-background"),
         border: {
           DEFAULT: token("--border"),
           soft: token("--border"),

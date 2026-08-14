@@ -98,7 +98,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
           {canCreateOrder && (
             <Link
               href={`/orders/new?customerId=${customer.id}`}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              className="flex items-center gap-1.5 rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
             >
               <Plus className="h-4 w-4" />
               <span>{t("customers.newOrder")}</span>

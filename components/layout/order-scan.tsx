@@ -249,7 +249,7 @@ export function OrderScanProvider({ enabled }: { enabled: boolean }) {
             <button
               type="submit"
               disabled={isResolving}
-              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-secondary px-4 font-semibold text-white hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isResolving && <Loader2 className="h-4 w-4 animate-spin" />}
               Open Order

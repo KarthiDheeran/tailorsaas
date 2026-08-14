@@ -487,7 +487,7 @@ export function OrderDetailsDrawer({
                 href={`/orders/${order.id}`}
                 onClick={() => setOpeningFullOrder(true)}
                 aria-busy={openingFullOrder}
-                className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
               >
                 {openingFullOrder ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

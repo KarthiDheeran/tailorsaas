@@ -4,15 +4,15 @@
 
 alter table catalog_garment_types
   add column if not exists order_section text not null default 'Men'
-  check (order_section in ('Men', 'Chutti', 'Blouse'));
+  check (order_section in ('Men', 'Chudidar', 'Blouse'));
 
 -- Sensible starting groups for the current catalog. Managers can change any
 -- assignment later from Settings > Garment Types.
 update catalog_garment_types
 set order_section = case lower(trim(name))
-  when 'half pant' then 'Chutti'
-  when 'skirt' then 'Chutti'
-  when 'finoform' then 'Chutti'
+  when 'half pant' then 'Chudidar'
+  when 'skirt' then 'Chudidar'
+  when 'finoform' then 'Chudidar'
   else 'Men'
 end;
 

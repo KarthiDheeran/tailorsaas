@@ -3,6 +3,7 @@
 import {
   Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -409,12 +410,17 @@ function NewOrderPageContent() {
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
   const [garmentConfigurationsLoaded, setGarmentConfigurationsLoaded] = useState(false);
-  const allowedOrderSections = currentUser?.allowed_order_sections.length
-    ? currentUser.allowed_order_sections
-    : [...GARMENT_SECTIONS];
+  const allowedOrderSections = useMemo(
+    () =>
+      currentUser?.allowed_order_sections.length
+        ? currentUser.allowed_order_sections
+        : [...GARMENT_SECTIONS],
+    [currentUser?.allowed_order_sections]
+  );
   const orderSectionOptions = ORDER_SECTION_OPTIONS.filter((option) =>
     allowedOrderSections.includes(option.section)
   );
+  const allowedOrderSectionKey = allowedOrderSections.join("|");
   const visibleGarmentTypes = orderSection
     ? garmentTypes.filter((garment) => garment.section === orderSection)
     : garmentTypes.filter((garment) => allowedOrderSections.includes(garment.section));
@@ -428,15 +434,19 @@ function NewOrderPageContent() {
     const cachedCatalog = readNewOrderCatalogReference(currentUserId);
     const cachedStaff = readNewOrderOperatorStaff(currentUserId);
     const cachedTodaySummary = readNewOrderTodayItemSummary(currentUserId, today);
-
-    if (cachedBilling) setBillingSettings(cachedBilling);
-    if (cachedPreferences) setDefaultDeliveryLeadDays(cachedPreferences.defaultDeliveryLeadDays);
-    if (
+    const cachedCatalogUsable = Boolean(
       cachedCatalog &&
       Array.isArray(cachedCatalog.garmentTypes) &&
       Array.isArray(cachedCatalog.addOns) &&
-      Array.isArray(cachedCatalog.configurations)
-    ) {
+      Array.isArray(cachedCatalog.configurations) &&
+      cachedCatalog.garmentTypes.some((garment) =>
+        allowedOrderSections.includes(garment.section)
+      )
+    );
+
+    if (cachedBilling) setBillingSettings(cachedBilling);
+    if (cachedPreferences) setDefaultDeliveryLeadDays(cachedPreferences.defaultDeliveryLeadDays);
+    if (cachedCatalogUsable && cachedCatalog) {
       setGarmentTypes(cachedCatalog.garmentTypes);
       setAddOns(cachedCatalog.addOns);
       setGarmentConfigurations(cachedCatalog.configurations);
@@ -448,7 +458,7 @@ function NewOrderPageContent() {
     const cacheComplete = Boolean(
       cachedBilling &&
       cachedPreferences &&
-      cachedCatalog &&
+      cachedCatalogUsable &&
       cachedStaff &&
       (orderEntryView !== "classic" || cachedTodaySummary)
     );
@@ -492,7 +502,7 @@ function NewOrderPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [currentUserId, isCurrentUserLoading, orderEntryView]);
+  }, [allowedOrderSectionKey, allowedOrderSections, currentUserId, isCurrentUserLoading, orderEntryView]);
 
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
   const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
@@ -2192,7 +2202,7 @@ function NewOrderPageContent() {
               disabled={saving}
               aria-keyshortcuts="Alt+S Control+Enter"
               title="Save order (Alt+S or Ctrl+Enter)"
-              className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
+              className="h-12 min-w-[150px] rounded-lg bg-secondary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover disabled:opacity-60"
             >
               {saving ? "Saving…" : `${t("orders.saveOrder")} · Alt+S`}
             </button>
@@ -2222,7 +2232,7 @@ function NewOrderPageContent() {
               <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
               <label className="text-sm font-semibold text-ink sm:col-span-2">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3">{paymentModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
             </div>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-primary px-6 font-semibold text-white disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-secondary px-6 font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
           </div>
         </div>
       )}

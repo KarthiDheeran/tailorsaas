@@ -94,7 +94,7 @@ function OrderPreferencesContent() {
           </div>
           <span className="text-xs text-ink-muted">Example: entering 10 automatically sets a new order&apos;s delivery date to 10 days after its order date. Staff can still change an individual order&apos;s date.</span>
         </label>
-        <div className="mt-6 flex items-center justify-between border-t border-border-soft pt-4"><p className="text-sm text-ink-muted">{saved ? "Saved. New orders will use this promise window." : "This never changes existing orders."}</p><button type="submit" disabled={!enabled || !canManage || saving} className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving..." : "Save Delivery Default"}</button></div>
+        <div className="mt-6 flex items-center justify-between border-t border-border-soft pt-4"><p className="text-sm text-ink-muted">{saved ? "Saved. New orders will use this promise window." : "This never changes existing orders."}</p><button type="submit" disabled={!enabled || !canManage || saving} className="flex items-center gap-1.5 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving..." : "Save Delivery Default"}</button></div>
       </form>
     </div>
   );

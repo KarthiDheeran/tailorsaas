@@ -11,8 +11,6 @@ using catalog_fields fields
 where mappings.field_id = fields.id
   and fields.code = 'quick_addon';
 
-update catalog_fields
-set is_active = false,
-    updated_at = now()
-where code = 'quick_addon'
-  and is_active = true;
+-- quick_addon is a protected system field in newer schemas, so do not
+-- deactivate it directly. Removing garment mappings is enough to retire it
+-- from future forms while preserving historical snapshots and admin safety.

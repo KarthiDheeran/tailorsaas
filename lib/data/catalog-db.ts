@@ -82,6 +82,7 @@ function mapWorkStage(row: WorkStageRow): CatalogWorkStage {
 }
 
 function isMissingAddOnTamilNameColumn(error: unknown): boolean {
+  if (!error) return false;
   const candidate = error as { code?: string; message?: string; details?: string };
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
   return candidate.code === "42703" || message.includes("name_ta");

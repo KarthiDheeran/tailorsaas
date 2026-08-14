@@ -628,7 +628,7 @@ export async function previewQuickTallyJobCardStageSlipAction(
     }
 
     let basePerUnitWageAmount = slip.wageRate;
-    let labourPerUnitWageAmount = (slip.labourAddOnsSnapshot ?? []).reduce(
+    const labourPerUnitWageAmount = (slip.labourAddOnsSnapshot ?? []).reduce(
       (sum, addOn) => sum + Number(addOn.amount ?? 0),
       0
     );

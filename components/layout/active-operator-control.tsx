@@ -50,7 +50,7 @@ export function ActiveOperatorControl() {
         {staffLoadError && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{staffLoadError}</p>}
         <label className="mt-3 block text-sm font-semibold text-ink">PIN<input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} inputMode="numeric" type="password" className="mt-1.5 h-11 w-full rounded-lg border border-border px-3" /></label>
         {error && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold">Cancel</button><button type="button" disabled={saving || !staffId || !pin || Boolean(staffLoadError)} onClick={() => void submit()} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Starting…" : "Start operator"}</button></div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold">Cancel</button><button type="button" disabled={saving || !staffId || !pin || Boolean(staffLoadError)} onClick={() => void submit()} className="h-10 rounded-lg bg-secondary px-4 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-50">{saving ? "Starting…" : "Start operator"}</button></div>
       </div>
     </div>, document.body)}
   </>;

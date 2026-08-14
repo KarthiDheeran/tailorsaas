@@ -1263,7 +1263,7 @@ function ConfigureItemModal({
               <button
                 ref={saveItemButtonRef}
                 type="submit"
-                className="min-w-48 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+                className="min-w-48 rounded-lg bg-secondary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
               >
                 {mode === "add" ? "Save Item Details" : "Update Item Details"}
               </button>

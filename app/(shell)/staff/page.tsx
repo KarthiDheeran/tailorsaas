@@ -197,7 +197,7 @@ function StaffPageContent() {
         {tab === "list" && canManage && (
           <Link
             href="/staff/new"
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+            className="flex items-center gap-1.5 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
           >
             <UserPlus className="h-4 w-4" />
             {t("staff.addStaff")}

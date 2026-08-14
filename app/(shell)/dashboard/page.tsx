@@ -470,7 +470,7 @@ function DashboardContent() {
         {hasPermission("orders.create") && (
           <Link
             href="/orders/new"
-            className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-secondary px-5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2"
           >
             <Plus className="h-4 w-4" />
             <span>New Order</span>

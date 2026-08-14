@@ -5,52 +5,79 @@
 @layer base {
   :root,
   [data-theme="modern"] {
-    --app-bg: 245 247 246;
+    --app-bg: 241 245 249;
     --surface: 255 255 255;
-    --surface-muted: 245 247 246;
-    --primary: 31 107 87;
-    --primary-hover: 24 87 70;
-    --primary-soft: 234 244 240;
-    --text-primary: 17 24 39;
-    --text-secondary: 102 112 133;
-    --text-muted: 152 162 179;
-    --border: 226 231 229;
-    --border-strong: 174 183 179;
-    --success: 22 131 93;
-    --success-soft: 232 246 239;
-    --warning: 182 92 0;
-    --warning-soft: 255 241 221;
-    --danger: 201 54 43;
-    --danger-soft: 253 236 234;
-    --info: 37 99 168;
-    --info-soft: 234 242 251;
+    --surface-muted: 248 250 252;
+    --primary: 37 99 235;
+    --primary-hover: 29 78 216;
+    --primary-active: 30 64 175;
+    --primary-soft: 239 246 255;
+    --primary-border: 191 219 254;
+    --secondary: 15 118 110;
+    --secondary-hover: 17 94 89;
+    --secondary-soft: 240 253 250;
+    --secondary-border: 153 246 228;
+    --text-primary: 15 23 42;
+    --text-secondary: 71 85 105;
+    --text-muted: 100 116 139;
+    --border: 203 213 225;
+    --border-strong: 148 163 184;
+    --disabled-background: 226 232 240;
+    --success: 5 150 105;
+    --success-soft: 236 253 245;
+    --success-border: 167 243 208;
+    --warning: 245 158 11;
+    --warning-soft: 255 251 235;
+    --warning-border: 253 230 138;
+    --danger: 220 38 38;
+    --danger-soft: 254 242 242;
+    --danger-border: 254 202 202;
+    --info: 37 99 235;
+    --info-soft: 239 246 255;
+    --input-border: 203 213 225;
+    --input-disabled-bg: 226 232 240;
+    --table-header: 239 246 255;
+    --table-header-text: 15 23 42;
+    --row-hover: 239 246 255;
+    --selected-bg: 239 246 255;
   }
 
   [data-theme="classic"] {
-    --app-bg: 243 244 246;
+    --app-bg: 241 245 249;
     --surface: 255 255 255;
-    --surface-muted: 229 231 235;
-    --primary: 20 90 70;
-    --primary-hover: 15 71 56;
-    --primary-soft: 221 238 232;
-    --text-primary: 0 0 0;
-    --text-secondary: 55 65 81;
-    --text-muted: 75 85 99;
-    --border: 156 163 175;
-    --border-strong: 107 114 128;
-    --success: 15 107 70;
-    --success-soft: 221 242 232;
-    --warning: 154 74 0;
-    --warning-soft: 255 225 179;
-    --danger: 180 35 24;
-    --danger-soft: 250 219 216;
-    --info: 23 78 140;
-    --info-soft: 220 233 247;
-    --input-border: 107 114 128;
-    --table-header: 229 231 235;
-    --table-header-text: 17 24 39;
-    --row-hover: 243 244 246;
-    --selected-bg: 221 238 232;
+    --surface-muted: 248 250 252;
+    --primary: 37 99 235;
+    --primary-hover: 29 78 216;
+    --primary-active: 30 64 175;
+    --primary-soft: 239 246 255;
+    --primary-border: 191 219 254;
+    --secondary: 15 118 110;
+    --secondary-hover: 17 94 89;
+    --secondary-soft: 240 253 250;
+    --secondary-border: 153 246 228;
+    --text-primary: 15 23 42;
+    --text-secondary: 71 85 105;
+    --text-muted: 100 116 139;
+    --border: 203 213 225;
+    --border-strong: 148 163 184;
+    --disabled-background: 226 232 240;
+    --success: 5 150 105;
+    --success-soft: 236 253 245;
+    --success-border: 167 243 208;
+    --warning: 245 158 11;
+    --warning-soft: 255 251 235;
+    --warning-border: 253 230 138;
+    --danger: 220 38 38;
+    --danger-soft: 254 242 242;
+    --danger-border: 254 202 202;
+    --info: 37 99 235;
+    --info-soft: 239 246 255;
+    --input-border: 203 213 225;
+    --input-disabled-bg: 226 232 240;
+    --table-header: 239 246 255;
+    --table-header-text: 15 23 42;
+    --row-hover: 239 246 255;
+    --selected-bg: 239 246 255;
   }
 
   [data-theme="classic-dark"] {
@@ -64,9 +91,15 @@
     --work-text-secondary: 75 85 99;
     --work-border: 107 114 128;
     --work-border-strong: 75 85 99;
-    --primary: 42 157 120;
-    --primary-hover: 53 184 141;
-    --primary-soft: 23 60 50;
+    --primary: 96 165 250;
+    --primary-hover: 147 197 253;
+    --primary-active: 59 130 246;
+    --primary-soft: 29 53 83;
+    --primary-border: 96 165 250;
+    --secondary: 45 212 191;
+    --secondary-hover: 94 234 212;
+    --secondary-soft: 19 78 74;
+    --secondary-border: 45 212 191;
     --text-primary: 249 250 251;
     --text-secondary: 209 213 219;
     --text-muted: 156 163 175;
@@ -74,10 +107,13 @@
     --border-strong: 113 128 150;
     --success: 66 211 154;
     --success-soft: 23 61 49;
+    --success-border: 52 211 153;
     --warning: 245 184 75;
     --warning-soft: 73 54 23;
+    --warning-border: 251 191 36;
     --danger: 248 113 113;
     --danger-soft: 74 34 38;
+    --danger-border: 248 113 113;
     --info: 96 165 250;
     --info-soft: 29 53 83;
     --input-bg: 255 255 255;
@@ -104,6 +140,51 @@ body {
   font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   font-size: 14px;
+}
+
+@media screen {
+  :where(input, select, textarea) {
+    border-color: rgb(var(--input-border, var(--border)));
+    background-color: rgb(var(--surface));
+  }
+
+  :where(input, select, textarea):focus {
+    border-color: rgb(var(--primary));
+    box-shadow: 0 0 0 2px rgb(var(--primary) / 0.18);
+  }
+
+  :where(input, select, textarea):disabled {
+    border-color: rgb(var(--border));
+    background-color: rgb(var(--input-disabled-bg, var(--disabled-background)));
+    color: rgb(var(--text-muted));
+    opacity: 1;
+  }
+
+  :where(input[type="checkbox"], input[type="radio"]) {
+    accent-color: rgb(var(--secondary));
+  }
+
+  main :where(table thead) {
+    background-color: rgb(var(--table-header, var(--primary-soft)));
+    color: rgb(var(--table-header-text, var(--text-primary)));
+  }
+
+  [data-theme] main table thead {
+    background-color: rgb(var(--table-header, var(--primary-soft)));
+    color: rgb(var(--table-header-text, var(--text-primary)));
+  }
+
+  main :where(tbody tr) {
+    border-top-color: rgb(var(--border));
+  }
+
+  main :where(tbody tr:hover) {
+    background-color: rgb(var(--row-hover, var(--primary-soft)));
+  }
+
+  [data-theme] main table tbody tr:hover {
+    background-color: rgb(var(--row-hover, var(--primary-soft)));
+  }
 }
 
 [data-theme="classic-dark"] .shadow-soft,

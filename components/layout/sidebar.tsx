@@ -129,15 +129,15 @@ const navItems: NavItem[] = [
   },
 ];
 
-function BrandMark({ compact = false }: { compact?: boolean }) {
+function BrandMark({ compact = false, inverted = false }: { compact?: boolean; inverted?: boolean }) {
   return (
     <div className={cn("flex items-center gap-2 px-2", compact && "justify-center px-0")}>
-      <Shirt className="h-6 w-6 shrink-0 text-primary" />
+      <Shirt className={cn("h-6 w-6 shrink-0", inverted ? "text-white" : "text-primary")} />
       <div className={cn(compact && "hidden")}>
-        <div className="text-[18px] font-bold leading-tight tracking-tight text-ink">
+        <div className={cn("text-[18px] font-bold leading-tight tracking-tight", inverted ? "text-white" : "text-ink")}>
           NewLook
         </div>
-        <div className="text-[11px] leading-tight text-ink-faint">
+        <div className={cn("text-[11px] leading-tight", inverted ? "text-white/75" : "text-ink-faint")}>
           Tailoring. Simplified.
         </div>
       </div>
@@ -234,10 +234,17 @@ function NavLink({
         variant === "vertical" && "border-l-4 px-4 py-2.5",
         variant === "dropdown" && "px-3 py-2.5",
         item.isActive
-          ? "border-primary bg-primary font-semibold text-white shadow-sm"
+          ? cn(
+              "font-semibold shadow-sm",
+              variant === "horizontal"
+                ? "border-white/20 bg-primary-active text-white"
+                : "border-primary bg-primary text-white"
+            )
           : cn(
-              "font-medium text-ink-muted hover:bg-surface-muted hover:text-ink",
-              variant === "horizontal" ? "border-border-soft bg-white" : "border-transparent"
+              variant === "horizontal"
+                ? "border-white/20 bg-white/10 font-medium text-white hover:bg-white/20"
+                : "font-medium text-ink-muted hover:bg-surface-muted hover:text-ink",
+              variant === "horizontal" ? "" : "border-transparent"
             )
       )}
     >
@@ -326,14 +333,14 @@ function NavDropdown({
         className={cn(
           "flex h-9 shrink-0 items-center gap-2 rounded-xl border px-2.5 text-[13px] font-medium transition-colors xl:px-3 2xl:text-sm",
           active
-            ? "border-primary bg-primary font-semibold text-white shadow-sm"
-            : "border-border-soft bg-white text-ink-muted hover:bg-surface-muted hover:text-ink"
+            ? "border-white/20 bg-primary-active font-semibold text-white shadow-sm"
+            : "border-white/20 bg-white/10 text-white hover:bg-white/20"
         )}
         aria-expanded={open}
       >
         <Icon className="h-4 w-4 shrink-0" />
         <span className="whitespace-nowrap">{label}</span>
-        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0", active ? "text-white/80" : "text-ink-faint")} />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-white/80" />
       </button>
       {open && (
         <>
@@ -528,9 +535,9 @@ function ProfileDropdown() {
 export function DesktopTopNav() {
   return (
     <header className="sticky top-0 z-50 hidden px-3 pt-3 print:hidden lg:block">
-      <div className="flex min-h-14 min-w-0 items-center gap-2 rounded-2xl border border-white/80 bg-white/85 px-3 py-2 shadow-[0_12px_32px_rgba(17,24,39,0.08)] backdrop-blur-xl">
+      <div className="flex min-h-14 min-w-0 items-center gap-2 rounded-2xl border border-primary-active/30 bg-primary px-3 py-2 shadow-[0_12px_30px_rgba(37,99,235,0.22)]">
         <div className="shrink-0">
-          <BrandMark />
+          <BrandMark inverted />
         </div>
 
         <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-visible py-1">

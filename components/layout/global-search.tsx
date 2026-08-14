@@ -263,16 +263,16 @@ export function GlobalSearchButton({
         title={`Scan / Find (${shortcutLabel})`}
         className={cn(
           "flex items-center gap-2 rounded-lg border border-border-soft bg-white text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink",
-          compact ? "h-10 w-10 justify-center" : "w-full justify-between px-3 py-2.5"
+          compact ? "h-10 w-10 justify-center" : "h-10 justify-between px-3"
         )}
         aria-label={`Scan / Find (${shortcutLabel})`}
       >
         <span className="flex items-center gap-2">
           <Barcode className="h-4 w-4 shrink-0" />
-          {!compact && <span className="hidden min-[1536px]:inline">Scan / Find</span>}
+          {!compact && <span>Find</span>}
         </span>
         {!compact && (
-          <span className="hidden rounded-md border border-border-soft px-1.5 py-0.5 text-[11px] text-ink-faint 2xl:inline-flex">
+          <span className="rounded-md border border-border-soft px-1.5 py-0.5 text-[11px] text-ink-faint">
             {shortcutLabel}
           </span>
         )}

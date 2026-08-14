@@ -35,7 +35,7 @@ export function getAvailableOrderStatuses(
 
 export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; fg: string }> = {
   "In Progress": { bg: "bg-chip-blue", fg: "text-chip-blue-fg" },
-  Ready: { bg: "bg-chip-mint", fg: "text-chip-mint-fg" },
+  Ready: { bg: "bg-secondary-soft", fg: "text-secondary" },
   Delivered: { bg: "bg-chip-mint", fg: "text-chip-mint-fg" },
   Delayed: { bg: "bg-chip-red", fg: "text-chip-red-fg" },
   Cancelled: { bg: "bg-chip-info", fg: "text-chip-info-fg" },
@@ -387,7 +387,7 @@ export function OrdersTable({
               <tr
                 key={order.id}
                 onClick={() => onRowClick?.(order)}
-                className={`cursor-pointer border-t border-border-soft transition-colors hover:bg-emerald-50/50 ${compact ? "h-7 border-t-0" : ""}`}
+                className={`cursor-pointer border-t border-border-soft transition-colors hover:bg-primary-tint/60 ${compact ? "h-7 border-t-0" : ""}`}
               >
                 <td className={`whitespace-nowrap px-5 py-3 font-semibold text-primary ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {order.orderNumber}
