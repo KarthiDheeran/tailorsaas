@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Printer, X } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
 import { TodaysDeliveries } from "@/components/dashboard/todays-deliveries";
@@ -31,6 +31,15 @@ function displayStage(stage: string) {
 
 function isVisibleSummaryStage(stage: string) {
   return !HIDDEN_SUMMARY_STAGES.has(displayStage(stage));
+}
+
+function escapePrintHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function GarmentProductionSummary({
@@ -218,6 +227,182 @@ function GarmentProductionSummary({
   );
 }
 
+function StagePendingSummaryCard({
+  rows,
+}: {
+  rows: DashboardData["stagePendingSummary"];
+}) {
+  const [selectedStage, setSelectedStage] = useState<DashboardData["stagePendingSummary"][number] | null>(null);
+
+  function printPendingStage(stage: DashboardData["stagePendingSummary"][number]) {
+    const rowsHtml = stage.details.map((order) => `
+      <tr>
+        <td>${escapePrintHtml(order.orderNumber)}</td>
+        <td><strong>${escapePrintHtml(order.customerName)}</strong><br/><span>${escapePrintHtml(order.customerPhone)}</span></td>
+        <td>${escapePrintHtml(order.garments)}</td>
+        <td class="right">${order.pendingPieces}</td>
+        <td>${escapePrintHtml(order.deliveryDate)}${order.isDelayed ? "<br/><strong>Delayed</strong>" : ""}</td>
+        <td>${order.notes ? escapePrintHtml(order.notes).replace(/\n/g, "<br/>") : "-"}</td>
+      </tr>
+    `).join("");
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${stage.stage} Pending Orders</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0; font-size: 22px; }
+            p { margin: 4px 0 16px; color: #4b5563; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #9ca3af; padding: 8px; vertical-align: top; text-align: left; }
+            th { background: #f3f4f6; font-size: 11px; text-transform: uppercase; }
+            .right { text-align: right; font-weight: 700; }
+            @page { margin: 12mm; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapePrintHtml(stage.stage)} Pending Orders</h1>
+          <p>${stage.pendingOrders} orders · ${stage.pendingPieces} pcs pending</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Garments</th>
+                <th>Pending pcs</th>
+                <th>Delivery</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml || `<tr><td colspan="6">No pending orders.</td></tr>`}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border-soft bg-white shadow-soft">
+      <div className="border-b border-border-soft px-5 py-4">
+        <h2 className="text-[17px] font-semibold text-ink">Stage Pending Summary</h2>
+        <p className="text-[13px] text-ink-faint">Pending orders by production stage</p>
+      </div>
+      <div className="divide-y divide-border-soft">
+        {rows.map((row) => (
+          <button
+            key={row.stage}
+            type="button"
+            onClick={() => setSelectedStage(row)}
+            className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          >
+            <div>
+              <p className="font-semibold text-ink">{row.stage}</p>
+              <p className="text-xs text-ink-muted">{row.pendingPieces} pcs pending</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-primary">{row.pendingOrders}</p>
+              <p className="text-xs font-semibold text-ink-muted">orders</p>
+            </div>
+          </button>
+        ))}
+        {rows.length === 0 && (
+          <div className="px-5 py-8 text-center text-sm text-ink-muted">
+            Stage pending summary is not available.
+          </div>
+        )}
+      </div>
+
+      {selectedStage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <section className="max-h-[82vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <header className="flex items-start justify-between gap-4 border-b border-border-soft px-5 py-4">
+              <div>
+                <h3 className="text-xl font-semibold text-ink">{selectedStage.stage} Pending Orders</h3>
+                <p className="text-sm text-ink-muted">
+                  {selectedStage.pendingOrders} orders · {selectedStage.pendingPieces} pcs pending
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printPendingStage(selectedStage)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-muted"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStage(null)}
+                  className="rounded-lg p-2 text-ink-muted hover:bg-surface-muted"
+                  aria-label="Close pending order details"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </header>
+            <div className="max-h-[66vh] overflow-auto">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <thead className="sticky top-0 bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  <tr>
+                    <th className="px-4 py-3">Order</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Garments</th>
+                    <th className="px-4 py-3 text-right">Pending pcs</th>
+                    <th className="px-4 py-3">Delivery</th>
+                    <th className="px-4 py-3">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-soft">
+                  {selectedStage.details.map((order) => (
+                    <tr key={order.orderId} className="hover:bg-surface-muted">
+                      <td className="px-4 py-3">
+                        <Link href={`/orders?view=${order.orderId}`} className="font-semibold text-primary hover:underline">
+                          {order.orderNumber}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-ink">{order.customerName}</p>
+                        <p className="text-xs text-ink-muted">{order.customerPhone}</p>
+                      </td>
+                      <td className="px-4 py-3 text-ink-muted">{order.garments}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink">{order.pendingPieces}</td>
+                      <td className="px-4 py-3">
+                        <p className={order.isDelayed ? "font-semibold text-chip-red-fg" : "text-ink"}>
+                          {order.deliveryDate}
+                        </p>
+                        {order.isDelayed && <p className="text-xs font-semibold text-chip-red-fg">Delayed</p>}
+                      </td>
+                      <td className="max-w-[260px] whitespace-pre-wrap px-4 py-3 text-ink-muted">
+                        {order.notes || "-"}
+                      </td>
+                    </tr>
+                  ))}
+                  {selectedStage.details.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-sm text-ink-muted">
+                        No pending orders for {selectedStage.stage}.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Stat cards that surface money figures — hidden for anyone without
 // orders.viewPayments (Staff-like access), per the brief's "don't show
 // revenue/report money cards" rule.
@@ -303,18 +488,21 @@ function DashboardContent() {
       )}
 
       <div className="space-y-5">
-        <GarmentProductionSummary
-          rows={data.garmentSummary}
-          stages={data.garmentStages}
-          selectedStage={summaryStage}
-          selectedGarment={summaryGarment}
-          from={summaryFrom}
-          to={summaryTo}
-          onFromChange={setSummaryFrom}
-          onToChange={setSummaryTo}
-          onStageChange={setSummaryStage}
-          onGarmentChange={setSummaryGarment}
-        />
+        <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.55fr)]">
+          <GarmentProductionSummary
+            rows={data.garmentSummary}
+            stages={data.garmentStages}
+            selectedStage={summaryStage}
+            selectedGarment={summaryGarment}
+            from={summaryFrom}
+            to={summaryTo}
+            onFromChange={setSummaryFrom}
+            onToChange={setSummaryTo}
+            onStageChange={setSummaryStage}
+            onGarmentChange={setSummaryGarment}
+          />
+          <StagePendingSummaryCard rows={data.stagePendingSummary} />
+        </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           <TodaysDeliveries orders={data.todaysDeliveries} className="min-h-0 xl:h-full" />

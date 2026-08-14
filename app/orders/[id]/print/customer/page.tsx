@@ -106,9 +106,8 @@ function normalizedTableAddOnLabel(label: string): string {
 function receiptRows(order: Order): ReceiptRow[] {
   const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
   for (const item of order.items) {
-    const color = item.size?.trim() ?? "";
-    const displayParticular = color ? `${item.particular} · ${color}` : item.particular;
-    const groupKey = `${item.particular.trim().toLocaleLowerCase()}|${color.toLocaleLowerCase()}|${item.rate}`;
+    const displayParticular = item.particular.trim();
+    const groupKey = `${displayParticular.toLocaleLowerCase()}|${item.rate}`;
     let group = groups.get(groupKey);
     if (!group) {
       group = {
@@ -126,21 +125,20 @@ function receiptRows(order: Order): ReceiptRow[] {
       const isTableAddOn = addOn.key.startsWith("table:");
       const normalizedLabel = isTableAddOn ? normalizedTableAddOnLabel(addOn.label) : addOn.label.trim();
       const addOnKey = isTableAddOn
-        ? `${normalizedLabel.toLocaleLowerCase()}|${addOnQty}|${addOnRate}|${addOnTotal}`
+        ? `${normalizedLabel.toLocaleLowerCase()}|${addOnRate}`
         : `${addOn.label.trim().toLocaleLowerCase()}|${addOnRate}`;
-      const row = group.addOns.get(addOnKey) ?? { type: "addon" as const, key: `addon-${groupKey}-${addOnKey}`, label: addOn.label, qty: 0, rate: addOnRate, total: 0 };
-      if (isTableAddOn && !row.label.match(/\s+-\s+\d+$/) && addOn.label.match(/\s+-\s+\d+$/)) {
-        row.label = addOn.label;
-      }
-      if (isTableAddOn) {
-        if (row.qty === 0 && row.total === 0) {
-          row.qty = addOnQty;
-          row.total = addOnTotal;
-        }
-      } else {
-        row.qty += addOnQty;
-        row.total += addOnTotal;
-      }
+      const row =
+        group.addOns.get(addOnKey) ??
+        {
+          type: "addon" as const,
+          key: `addon-${groupKey}-${addOnKey}`,
+          label: isTableAddOn ? normalizedLabel : addOn.label,
+          qty: 0,
+          rate: addOnRate,
+          total: 0,
+        };
+      row.qty += addOnQty;
+      row.total += addOnTotal;
       group.addOns.set(addOnKey, row);
     }
   }

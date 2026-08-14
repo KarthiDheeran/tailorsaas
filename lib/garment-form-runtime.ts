@@ -107,7 +107,7 @@ function optionName(value: unknown): string {
 
 export function garmentTableOptionMetadata(
   value: unknown
-): { defaults: Record<string, number>; workerStage?: string } {
+): { defaults: Record<string, number>; workerStage?: string; labelTa?: string } {
   const object = asObject(value);
   const defaults = Object.fromEntries(
     ["tailorAmount", "itemPrice", "rate", "qty"].flatMap((key) => {
@@ -118,7 +118,15 @@ export function garmentTableOptionMetadata(
   const workerStage = typeof object.workerStage === "string" && object.workerStage.trim()
     ? object.workerStage.trim()
     : undefined;
-  return { defaults, workerStage };
+  const labelTa =
+    typeof object.labelTa === "string" && object.labelTa.trim()
+      ? object.labelTa.trim()
+      : typeof object.nameTa === "string" && object.nameTa.trim()
+        ? object.nameTa.trim()
+        : typeof object.tamil === "string" && object.tamil.trim()
+          ? object.tamil.trim()
+          : undefined;
+  return { defaults, workerStage, labelTa };
 }
 
 function optionList(value: unknown): unknown[] {
@@ -202,7 +210,7 @@ export function garmentTableSelectedOptionMetadata(
   column: GarmentTableColumn,
   rowConfig: GarmentTableRowConfig | undefined,
   selectedValue: string
-): { defaults: Record<string, number>; workerStage?: string } {
+): { defaults: Record<string, number>; workerStage?: string; labelTa?: string } {
   if (!column.optionsSource || !rowConfig || !selectedValue) return { defaults: {} };
   const sourceKey = column.optionsSource.replace(/^row\./, "");
   const option = optionList(rowConfig[sourceKey]).find((candidate) => optionName(candidate) === selectedValue);
@@ -240,7 +248,10 @@ function normalizeGarmentTableValue(
     const row = asObject(rawRow);
     const normalized: GarmentTableRow = {};
     let hasAnyValue = false;
-    const entries = columns.length > 0 ? columns.map((column) => column.key) : Object.keys(row);
+    const metadataKeys = ["workerStage", "itemTa", "labelTa", "nameTa"].filter((key) => key in row);
+    const entries = columns.length > 0
+      ? Array.from(new Set([...columns.map((column) => column.key), ...metadataKeys]))
+      : Object.keys(row);
     for (const key of entries) {
       const column = columns.find((item) => item.key === key);
       const rawCell = row[key];
@@ -474,6 +485,7 @@ export type HistoricalGarmentDisplayField = {
   fieldOrder: number;
   unit: string | null;
   options: unknown;
+  uiMetadata?: Record<string, unknown>;
 };
 
 function hasHistoricalValue(value: unknown): boolean {
@@ -505,6 +517,34 @@ export function historicalGarmentValueText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
+function optionTamilLabelsFromMetadata(metadata: unknown): Record<string, string> {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return {};
+  const labels = (metadata as { optionLabelsTa?: unknown; optionLabels?: unknown }).optionLabelsTa ??
+    (metadata as { optionLabelsTa?: unknown; optionLabels?: unknown }).optionLabels;
+  if (!labels || typeof labels !== "object" || Array.isArray(labels)) return {};
+  return Object.fromEntries(
+    Object.entries(labels as Record<string, unknown>).flatMap(([key, value]) => {
+      if (typeof value !== "string" || !value.trim()) return [];
+      return [[key, value.trim()]];
+    })
+  );
+}
+
+export function historicalGarmentValueTextForPrint(
+  value: unknown,
+  uiMetadata: unknown,
+  language: "en" | "ta"
+): string {
+  if (language !== "ta") return historicalGarmentValueText(value);
+  const labels = optionTamilLabelsFromMetadata(uiMetadata);
+  if (Object.keys(labels).length === 0) return historicalGarmentValueText(value);
+  if (typeof value === "string") return labels[value] ?? value;
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.map((item) => labels[item] ?? item).join(", ");
+  }
+  return historicalGarmentValueText(value);
+}
+
 export function resolveHistoricalGarmentDisplayFields(args: {
   measurements: Record<string, unknown>;
   fieldSchemaSnapshot?: FieldSchemaSnapshot | Record<string, unknown> | null;
@@ -531,6 +571,7 @@ export function resolveHistoricalGarmentDisplayFields(args: {
         fieldOrder: field.fieldDisplayOrder ?? Number.MAX_SAFE_INTEGER,
         unit: field.unit ?? null,
         options: field.options ?? [],
+        uiMetadata: field.uiMetadata,
       }] : [];
     });
     if (hasValidSnapshotField) {
@@ -551,6 +592,7 @@ export function resolveHistoricalGarmentDisplayFields(args: {
         fieldOrder: field.displayOrder,
         unit: field.unit,
         options: field.options,
+        uiMetadata: field.uiMetadata,
       }] : [];
     });
   }

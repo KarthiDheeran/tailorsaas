@@ -31,7 +31,8 @@ import type {
 // each function maps explicitly at the boundary.
 // ---------------------------------------------------------------------------
 
-const ADDON_COLUMNS = "id, name, default_price, worker_stage_rates, is_active";
+const ADDON_COLUMNS = "id, name, name_ta, default_price, worker_stage_rates, is_active";
+const LEGACY_ADDON_COLUMNS = "id, name, default_price, worker_stage_rates, is_active";
 const WORK_STAGE_COLUMNS =
   "id, name, stage_key, display_order, is_active, is_final_stage";
 const LEGACY_WORK_STAGE_COLUMNS = "id, name, stage_key, display_order, is_active";
@@ -39,6 +40,7 @@ const LEGACY_WORK_STAGE_COLUMNS = "id, name, stage_key, display_order, is_active
 interface AddOnRow {
   id: string;
   name: string;
+  name_ta?: string | null;
   default_price: number;
   worker_stage_rates: Record<string, number> | null;
   is_active: boolean;
@@ -48,6 +50,7 @@ function mapAddOn(row: AddOnRow): CatalogAddOn {
   return {
     id: row.id,
     name: row.name,
+    nameTa: row.name_ta?.trim() || undefined,
     defaultPrice: row.default_price,
     workerStageRates: row.worker_stage_rates ?? undefined,
     isActive: row.is_active,
@@ -76,6 +79,12 @@ function mapWorkStage(row: WorkStageRow): CatalogWorkStage {
     isActive: row.is_active,
     isFinalStage: row.is_final_stage,
   };
+}
+
+function isMissingAddOnTamilNameColumn(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string; details?: string };
+  const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
+  return candidate.code === "42703" || message.includes("name_ta");
 }
 
 function mapLegacyWorkStage(row: Omit<WorkStageRow, "is_final_stage">): CatalogWorkStage {
@@ -225,20 +234,34 @@ export async function setWorkStageActive(
 }
 
 export async function getAllAddOns(supabase: SupabaseClient): Promise<CatalogAddOn[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("catalog_addons")
     .select(ADDON_COLUMNS)
     .order("name");
+  if (isMissingAddOnTamilNameColumn(error)) {
+    const fallback = await supabase.from("catalog_addons").select(LEGACY_ADDON_COLUMNS).order("name");
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as AddOnRow[]) ?? []).map(mapAddOn);
 }
 
 export async function getActiveAddOns(supabase: SupabaseClient): Promise<CatalogAddOn[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("catalog_addons")
     .select(ADDON_COLUMNS)
     .eq("is_active", true)
     .order("name");
+  if (isMissingAddOnTamilNameColumn(error)) {
+    const fallback = await supabase
+      .from("catalog_addons")
+      .select(LEGACY_ADDON_COLUMNS)
+      .eq("is_active", true)
+      .order("name");
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return ((data as AddOnRow[]) ?? []).map(mapAddOn);
 }
@@ -247,11 +270,20 @@ export async function getAddOnById(
   supabase: SupabaseClient,
   id: string
 ): Promise<CatalogAddOn | undefined> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("catalog_addons")
     .select(ADDON_COLUMNS)
     .eq("id", id)
     .maybeSingle();
+  if (isMissingAddOnTamilNameColumn(error)) {
+    const fallback = await supabase
+      .from("catalog_addons")
+      .select(LEGACY_ADDON_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    data = fallback.data as unknown as typeof data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return data ? mapAddOn(data as AddOnRow) : undefined;
 }
@@ -264,6 +296,7 @@ export async function createAddOn(
     .from("catalog_addons")
     .insert({
       name: data.name,
+      name_ta: data.nameTa?.trim() || null,
       default_price: data.defaultPrice,
       worker_stage_rates: data.workerStageRates ?? {},
       is_active: data.isActive,
@@ -283,6 +316,7 @@ export async function updateAddOn(
     .from("catalog_addons")
     .update({
       name: data.name,
+      name_ta: data.nameTa?.trim() || null,
       default_price: data.defaultPrice,
       worker_stage_rates: data.workerStageRates ?? {},
       is_active: data.isActive,

@@ -104,6 +104,7 @@ export interface OrderAttachment {
   fileName: string;
   mimeType: string;
   fileSize: number;
+  storageProvider?: "supabase" | "local";
   storagePath: string;
   notes?: string;
   createdAt: string;
@@ -123,6 +124,7 @@ export interface CustomerSnapshot {
 export interface OrderItemAddOn {
   key: string;
   label: string;
+  labelTa?: string;
   amount: number;
   qty?: number;
   rate?: number;
@@ -533,6 +535,7 @@ export interface Order {
   trialDate: string;
   deliveryDate: string;
   deliveryPromiseNote?: string;
+  orderNotes?: string;
   deliveryBin?: string;
   createdByOperatorName?: string;
   measurementTakenByOperatorName?: string;

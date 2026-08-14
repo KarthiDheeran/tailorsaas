@@ -52,7 +52,12 @@ export function AddOnTable({
               className="border-t border-border-soft transition-colors hover:bg-surface-muted"
             >
               <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink">
-                {addOn.name}
+                <span>{addOn.name}</span>
+                {addOn.nameTa && (
+                  <span className="mt-0.5 block text-xs font-medium text-ink-muted">
+                    {addOn.nameTa}
+                  </span>
+                )}
               </td>
               <td className="whitespace-nowrap px-5 py-3 text-right text-ink">
                 {formatCurrency(addOn.defaultPrice)}

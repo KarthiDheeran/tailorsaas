@@ -91,7 +91,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 
 const ORDER_COLUMNS = `
   id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-  delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+  delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
 `;
@@ -118,6 +118,7 @@ interface OrderRow {
   trial_date: string | null;
   delivery_date: string;
   delivery_promise_note?: string | null;
+  order_notes?: string | null;
   delivery_bin?: string | null;
   created_by_operator_name?: string | null;
   measurement_taken_by_operator_name?: string | null;
@@ -152,6 +153,7 @@ function mapOrder(row: OrderRow): Order {
     deliveryPromiseNote: row.delivery_promise_note?.trim()
       ? row.delivery_promise_note
       : undefined,
+    orderNotes: row.order_notes?.trim() ? row.order_notes : undefined,
     deliveryBin: row.delivery_bin?.trim() ? row.delivery_bin : undefined,
     createdByOperatorName: row.created_by_operator_name?.trim() ? row.created_by_operator_name : undefined,
     measurementTakenByOperatorName: row.measurement_taken_by_operator_name?.trim() ? row.measurement_taken_by_operator_name : undefined,
@@ -179,6 +181,7 @@ function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
     message.includes("scan_token") ||
     message.includes("invoice_number") ||
     message.includes("delivery_promise_note") ||
+    message.includes("order_notes") ||
     message.includes("delivery_bin") ||
     message.includes("created_by_operator_name") ||
     message.includes("measurement_taken_by_operator_name") ||
@@ -297,7 +300,7 @@ export async function getOrdersForCustomer(
 export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -353,7 +356,7 @@ export async function getOrderListPageRows(
 ): Promise<OrderListPageResult> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -443,7 +446,7 @@ export async function getOrderListRowsInDateRange(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -490,7 +493,7 @@ export async function getOrderListRowsInTrialDateRange(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -541,7 +544,7 @@ export async function getOrderListRowsByIds(
   if (uniqueIds.length === 0) return [];
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -584,7 +587,7 @@ export async function getProductionPrintOrderRows(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -616,7 +619,7 @@ export async function getReceivableOrderRows(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at
   `;
   let { data, error } = await supabase
@@ -649,7 +652,7 @@ export async function getReceivableOrderListRows(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -702,7 +705,7 @@ export async function getDeliveryDeskOrderRows(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -737,7 +740,7 @@ export async function getOrderListRowsForCustomer(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -771,7 +774,7 @@ export async function getRepeatableOrdersForCustomer(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_REPEAT_COLUMNS} )
   `;
@@ -892,6 +895,22 @@ export async function updateOrderStatus(
   const { error } = await supabase
     .from("orders")
     .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  return getOrderById(supabase, id);
+}
+
+export async function updateOrderNotes(
+  supabase: SupabaseClient,
+  id: string,
+  orderNotes: string
+): Promise<Order | undefined> {
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      order_notes: orderNotes.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id);
   if (error) throw error;
   return getOrderById(supabase, id);

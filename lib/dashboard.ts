@@ -8,6 +8,7 @@ import {
   getJobCardReportRows,
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
+import { getJobCardStageSlipsForOrders } from "@/lib/data/job-card-stage-slips-db";
 import {
   getOrderListRowsByIds,
   getOrderListRowsInDateRange,
@@ -16,6 +17,8 @@ import {
 import { formatCurrency } from "@/lib/currency";
 import { isActiveOrder, isReceivableOrder } from "@/lib/order-finance";
 import type { ProductionQueueStage } from "@/components/dashboard/production-queue";
+import type { JobCard } from "@/lib/job-cards";
+import type { TaskType } from "@/lib/types";
 
 // Phase 6E: real, Supabase-backed selector over Order data — the customer
 // names/phones the leaf components (todays-deliveries.tsx etc.) show come
@@ -56,6 +59,26 @@ export interface DashboardData {
   productionQueue: ProductionQueueStage[];
   garmentSummary: { garment: string; stage: string; quantity: number }[];
   garmentStages: string[];
+  stagePendingSummary: StagePendingSummary[];
+}
+
+export interface StagePendingOrderDetail {
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  garments: string;
+  pendingPieces: number;
+  deliveryDate: string;
+  notes: string;
+  isDelayed: boolean;
+}
+
+export interface StagePendingSummary {
+  stage: "Cutting" | "Stitching" | "Delivery";
+  pendingOrders: number;
+  pendingPieces: number;
+  details: StagePendingOrderDetail[];
 }
 
 export async function getDashboardData(
@@ -111,6 +134,9 @@ export async function getDashboardData(
   const jobCardStats = dashboardCards
     ? getDashboardJobCardStats(dashboardCards)
     : null;
+  const stagePendingSummary = dashboardCards
+    ? await getStagePendingSummary(supabase, dashboardCards, todayIso)
+    : [];
   const summaryFrom = filters?.from || todayIso;
   const summaryTo = filters?.to || todayIso;
   let garmentSummary: DashboardData["garmentSummary"] = [];
@@ -218,7 +244,99 @@ export async function getDashboardData(
     productionQueue: jobCardStats?.productionQueue ?? [],
     garmentSummary,
     garmentStages,
+    stagePendingSummary,
   };
+}
+
+function slipTalliedCoversUnit(
+  slip: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>[number],
+  card: JobCard,
+  stage: TaskType
+) {
+  if (slip.orderId !== card.orderId) return false;
+  if (slip.orderItemSerialNo !== card.item.serialNo) return false;
+  if (slip.stage !== stage) return false;
+  const talliedQuantity = Math.max(0, Number(slip.talliedQuantity) || 0);
+  if (talliedQuantity <= 0) return false;
+  return card.unitNo >= slip.unitNo && card.unitNo < slip.unitNo + talliedQuantity;
+}
+
+function aggregateStagePendingDetails(
+  stage: StagePendingSummary["stage"],
+  cards: JobCard[],
+  todayIso: string,
+  ordersById: Map<string, Order>
+): StagePendingSummary {
+  const byOrder = new Map<string, StagePendingOrderDetail & { garmentCounts: Map<string, number> }>();
+  for (const card of cards) {
+    const order = ordersById.get(card.orderId);
+    const current = byOrder.get(card.orderId) ?? {
+      orderId: card.orderId,
+      orderNumber: card.orderNumber,
+      customerName: card.customer?.name ?? "Customer",
+      customerPhone: card.customer?.phone ?? "",
+      garments: "",
+      pendingPieces: 0,
+      deliveryDate: card.deliveryDate,
+      notes: order?.orderNotes ?? "",
+      isDelayed: card.deliveryDate < todayIso,
+      garmentCounts: new Map<string, number>(),
+    };
+    current.pendingPieces += 1;
+    current.isDelayed = current.isDelayed || card.deliveryDate < todayIso;
+    current.garmentCounts.set(card.garment, (current.garmentCounts.get(card.garment) ?? 0) + 1);
+    byOrder.set(card.orderId, current);
+  }
+  const details = Array.from(byOrder.values())
+    .map(({ garmentCounts, ...detail }) => ({
+      ...detail,
+      garments: Array.from(garmentCounts.entries())
+        .map(([garment, count]) => `${garment} x${count}`)
+        .join(", "),
+    }))
+    .sort((a, b) => Number(b.isDelayed) - Number(a.isDelayed) || a.deliveryDate.localeCompare(b.deliveryDate) || Number(b.orderNumber) - Number(a.orderNumber));
+  return {
+    stage,
+    pendingOrders: details.length,
+    pendingPieces: cards.length,
+    details,
+  };
+}
+
+async function getStagePendingSummary(
+  supabase: SupabaseClient,
+  cards: JobCard[],
+  todayIso: string
+): Promise<StagePendingSummary[]> {
+  const activeCards = cards.filter(
+    (card) => card.stage !== "Cancelled" && card.orderStatus !== "Cancelled"
+  );
+  const slips = await getJobCardStageSlipsForOrders(
+    supabase,
+    activeCards.map((card) => card.orderId)
+  );
+  const orders = await getOrderListRowsByIds(
+    supabase,
+    activeCards.map((card) => card.orderId)
+  );
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const cuttingPending = activeCards.filter(
+    (card) =>
+      card.orderStatus !== "Delivered" &&
+      !slips.some((slip) => slipTalliedCoversUnit(slip, card, "Cutting"))
+  );
+  const stitchingPending = activeCards.filter(
+    (card) =>
+      card.orderStatus !== "Delivered" &&
+      !slips.some((slip) => slipTalliedCoversUnit(slip, card, "Stitching"))
+  );
+  const deliveryPending = activeCards.filter((card) => card.orderStatus !== "Delivered");
+
+  return [
+    aggregateStagePendingDetails("Cutting", cuttingPending, todayIso, ordersById),
+    aggregateStagePendingDetails("Stitching", stitchingPending, todayIso, ordersById),
+    aggregateStagePendingDetails("Delivery", deliveryPending, todayIso, ordersById),
+  ];
 }
 
 async function getDashboardJobCards(

@@ -16,6 +16,7 @@ import {
   getOrderByIdAction,
   getOrderDetailsBootstrapAction,
   deleteUntouchedOrderAction,
+  updateOrderNotesAction,
 } from "@/app/(shell)/orders/actions";
 import { getJobCardsForOrderAction } from "@/app/(shell)/job-cards/actions";
 import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
@@ -372,6 +373,9 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [orderNotesDraft, setOrderNotesDraft] = useState("");
+  const [savingOrderNotes, setSavingOrderNotes] = useState(false);
+  const [orderNotesMessage, setOrderNotesMessage] = useState<string | null>(null);
 
   async function refreshOrder() {
     const refreshed = await getOrderByIdAction(params.id);
@@ -439,6 +443,11 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
     };
   }, [params.id]);
 
+  useEffect(() => {
+    setOrderNotesDraft(order?.orderNotes ?? "");
+    setOrderNotesMessage(null);
+  }, [order?.id, order?.orderNotes]);
+
   const inventoryItemsById = useMemo(
     () => new Map(inventoryItems.map((item) => [item.id, item])),
     [inventoryItems]
@@ -481,6 +490,20 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
     setOrder(result.order);
     setPayments(result.payments);
     setAdjustments(result.adjustments);
+  }
+
+  async function handleSaveOrderNotes() {
+    if (!order || savingOrderNotes) return;
+    setSavingOrderNotes(true);
+    setOrderNotesMessage(null);
+    const result = await updateOrderNotesAction(order.id, orderNotesDraft);
+    setSavingOrderNotes(false);
+    if (!result.success) {
+      setOrderNotesMessage(result.error);
+      return;
+    }
+    setOrder(result.data);
+    setOrderNotesMessage("Order notes saved.");
   }
 
   return (
@@ -628,6 +651,37 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 </p>
               </div>
             )}
+          </Section>
+
+          <Section title="Order Notes">
+            <div className="space-y-3">
+              <p className="text-sm text-ink-muted">
+                Use this for planning notes like not urgent, start in free time, special follow-up, or delivery priority.
+              </p>
+              <textarea
+                value={orderNotesDraft}
+                onChange={(event) => setOrderNotesDraft(event.target.value)}
+                disabled={!canEdit || savingOrderNotes}
+                rows={4}
+                placeholder="Example: Not urgent. Start cutting during non-session time."
+                className="w-full resize-none rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint disabled:bg-surface-muted"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className={`text-sm ${orderNotesMessage === "Order notes saved." ? "text-primary" : "text-chip-red-fg"}`}>
+                  {orderNotesMessage}
+                </p>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={handleSaveOrderNotes}
+                    disabled={savingOrderNotes || orderNotesDraft.trim() === (order.orderNotes ?? "").trim()}
+                    className="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingOrderNotes ? "Saving..." : "Save Notes"}
+                  </button>
+                )}
+              </div>
+            </div>
           </Section>
 
           <Section title={t("orders.items")}>

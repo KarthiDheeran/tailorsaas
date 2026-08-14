@@ -27,6 +27,7 @@ export function AddOnDrawer({
   const { t } = useLanguage();
   const isEdit = addOn !== null;
   const [name, setName] = useState(addOn?.name ?? "");
+  const [nameTa, setNameTa] = useState(addOn?.nameTa ?? "");
   const [defaultPrice, setDefaultPrice] = useState<number>(
     addOn?.defaultPrice ?? 0
   );
@@ -58,6 +59,7 @@ export function AddOnDrawer({
     setSubmitting(true);
     const result = await onSaved({
       name: trimmedName,
+      nameTa: nameTa.trim() || undefined,
       defaultPrice,
       workerStageRates: cleanedWorkerStageRates,
       isActive,
@@ -118,6 +120,17 @@ export function AddOnDrawer({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Extra Pocket"
+                    className={inputClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Tamil Name <span className="font-normal">(for production print)</span>
+                  </span>
+                  <input
+                    value={nameTa}
+                    onChange={(e) => setNameTa(e.target.value)}
+                    placeholder="e.g. உள் பாக்கெட்"
                     className={inputClass}
                   />
                 </label>

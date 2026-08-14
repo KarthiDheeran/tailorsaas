@@ -1,5 +1,7 @@
 "use server";
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { createClient as createServerClient } from "@/lib/supabase/server";
@@ -17,6 +19,7 @@ import {
   getOrderListRowsForCustomer,
   peekNextOrderNumber,
   updateOrder,
+  updateOrderNotes,
   updateOrderStatus,
 } from "@/lib/data/orders-db";
 import { recomputeOrderTotals } from "@/lib/data/order-totals-db";
@@ -221,13 +224,50 @@ function sanitizeStorageSegment(value: string) {
     .slice(0, 80);
 }
 
+function resolveLocalAttachmentPath(rootPath: string, relativePath: string) {
+  const root = path.resolve(rootPath.trim());
+  const resolved = path.resolve(root, relativePath);
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Attachment path is outside the configured storage folder.");
+  }
+  return resolved;
+}
+
+async function localAttachmentExists(rootPath: string | undefined, relativePath: string) {
+  if (!rootPath?.trim()) return false;
+  try {
+    await fs.access(resolveLocalAttachmentPath(rootPath, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function withOrderAttachmentSignedUrls(
   attachments: OrderAttachment[]
 ): Promise<OrderAttachment[]> {
   if (attachments.length === 0) return attachments;
   const admin = createAdminClient();
+  const settings = await getShopBillingSettings(admin).catch(
+    () => DEFAULT_SHOP_BILLING_SETTINGS
+  );
   return Promise.all(
     attachments.map(async (attachment) => {
+      const shouldUseLocal =
+        attachment.storageProvider === "local" ||
+        (settings.attachmentStorageProvider === "local" &&
+          (await localAttachmentExists(
+            settings.attachmentLocalRootPath,
+            attachment.storagePath
+          )));
+      if (shouldUseLocal) {
+        const hasPath = Boolean(settings.attachmentLocalRootPath?.trim());
+        return {
+          ...attachment,
+          signedUrl: hasPath ? `/api/order-attachments/${attachment.id}` : undefined,
+        };
+      }
       const { data } = await admin.storage
         .from(ORDER_ATTACHMENTS_BUCKET)
         .createSignedUrl(attachment.storagePath, 60 * 60);
@@ -1195,6 +1235,27 @@ export async function updateOrderStatusAction(
   return { success: true, data: order };
 }
 
+export async function updateOrderNotesAction(
+  id: string,
+  orderNotes: string
+): Promise<ActionResult<Order>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!id) return { success: false, error: "Order is required." };
+
+  try {
+    const order = await updateOrderNotes(supabase, id, orderNotes);
+    if (!order) return { success: false, error: "Order not found." };
+    return { success: true, data: order };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to save order notes.",
+    };
+  }
+}
+
 export async function deleteUntouchedOrderAction(id: string): Promise<ActionResult> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "orders.edit");
@@ -1202,18 +1263,51 @@ export async function deleteUntouchedOrderAction(id: string): Promise<ActionResu
   if (!id) return { success: false, error: "Order is required." };
 
   const admin = createAdminClient();
-  const { data: attachments } = await admin
+  let { data: attachments, error: attachmentsError } = await admin
     .from("order_attachments")
-    .select("storage_path")
+    .select("storage_path, storage_provider")
     .eq("order_id", id);
+  if (attachmentsError) {
+    const fallback = await admin
+      .from("order_attachments")
+      .select("storage_path")
+      .eq("order_id", id);
+    attachments = fallback.data as unknown as typeof attachments;
+    attachmentsError = fallback.error;
+  }
+  if (attachmentsError) return { success: false, error: attachmentsError.message };
   const { error } = await supabase.rpc("delete_untouched_order", { p_order_id: id });
   if (error) return { success: false, error: error.message };
 
-  const storagePaths = (attachments ?? [])
+  const supabaseStoragePaths = (attachments ?? [])
+    .filter((entry) => String(entry.storage_provider ?? "supabase") !== "local")
     .map((entry) => String(entry.storage_path ?? ""))
     .filter(Boolean);
-  if (storagePaths.length > 0) {
-    await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove(storagePaths);
+  if (supabaseStoragePaths.length > 0) {
+    await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove(supabaseStoragePaths);
+  }
+  const localStoragePaths = (attachments ?? [])
+    .filter((entry) => String(entry.storage_provider ?? "supabase") === "local")
+    .map((entry) => String(entry.storage_path ?? ""))
+    .filter(Boolean);
+  if (localStoragePaths.length > 0) {
+    const settings = await getShopBillingSettings(admin).catch(
+      () => DEFAULT_SHOP_BILLING_SETTINGS
+    );
+    if (settings.attachmentLocalRootPath?.trim()) {
+      await Promise.all(
+        localStoragePaths.map(async (storagePath) => {
+          try {
+            await fs.rm(
+              resolveLocalAttachmentPath(settings.attachmentLocalRootPath ?? "", storagePath),
+              { force: true }
+            );
+          } catch {
+            // Best-effort cleanup after order deletion.
+          }
+        })
+      );
+    }
   }
   return { success: true, data: undefined };
 }
@@ -1300,15 +1394,40 @@ export async function uploadOrderAttachmentAction(
   }
 
   const admin = createAdminClient();
+  const billingSettings = await getShopBillingSettings(admin).catch(
+    () => DEFAULT_SHOP_BILLING_SETTINGS
+  );
   const safeName = sanitizeStorageSegment(file.name) || "attachment";
-  const path = `${orderId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
-  const { error: uploadError } = await admin.storage
-    .from(ORDER_ATTACHMENTS_BUCKET)
-    .upload(path, file, {
-      contentType: file.type,
-      upsert: false,
-    });
-  if (uploadError) return { success: false, error: uploadError.message };
+  const storagePath = `${orderId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+  const storageProvider = billingSettings.attachmentStorageProvider;
+  if (storageProvider === "local" && !billingSettings.attachmentLocalRootPath?.trim()) {
+    return { success: false, error: "Local attachment folder is not configured in settings." };
+  }
+  if (storageProvider === "local") {
+    try {
+      const absolutePath = resolveLocalAttachmentPath(
+        billingSettings.attachmentLocalRootPath ?? "",
+        storagePath
+      );
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, Buffer.from(await file.arrayBuffer()), {
+        flag: "wx",
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save attachment file.",
+      };
+    }
+  } else {
+    const { error: uploadError } = await admin.storage
+      .from(ORDER_ATTACHMENTS_BUCKET)
+      .upload(storagePath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+    if (uploadError) return { success: false, error: uploadError.message };
+  }
 
   try {
     const attachment = await createOrderAttachment(admin, {
@@ -1319,14 +1438,27 @@ export async function uploadOrderAttachmentAction(
       fileName: file.name,
       mimeType: file.type,
       fileSize: file.size,
-      storagePath: path,
+      storageProvider,
+      storagePath,
       notes,
       createdBy: guard.userId,
     });
     const [withUrl] = await withOrderAttachmentSignedUrls([attachment]);
     return { success: true, data: withUrl };
   } catch (error) {
-    await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove([path]);
+    if (storageProvider === "local") {
+      try {
+        const absolutePath = resolveLocalAttachmentPath(
+          billingSettings.attachmentLocalRootPath ?? "",
+          storagePath
+        );
+        await fs.rm(absolutePath, { force: true });
+      } catch {
+        // Metadata save failed; leave cleanup best-effort.
+      }
+    } else {
+      await admin.storage.from(ORDER_ATTACHMENTS_BUCKET).remove([storagePath]);
+    }
     return {
       success: false,
       error:
@@ -1387,10 +1519,39 @@ export async function deleteOrderAttachmentAction(
   const attachment = await getOrderAttachmentById(admin, id);
   if (!attachment) return { success: false, error: "Attachment not found." };
 
-  const { error: storageError } = await admin.storage
-    .from(ORDER_ATTACHMENTS_BUCKET)
-    .remove([attachment.storagePath]);
-  if (storageError) return { success: false, error: storageError.message };
+  const settings = await getShopBillingSettings(admin).catch(
+    () => DEFAULT_SHOP_BILLING_SETTINGS
+  );
+  const shouldDeleteLocal =
+    attachment.storageProvider === "local" ||
+    (settings.attachmentStorageProvider === "local" &&
+      (await localAttachmentExists(
+        settings.attachmentLocalRootPath,
+        attachment.storagePath
+      )));
+  if (shouldDeleteLocal) {
+    if (settings.attachmentLocalRootPath?.trim()) {
+      try {
+        await fs.rm(
+          resolveLocalAttachmentPath(
+            settings.attachmentLocalRootPath,
+            attachment.storagePath
+          ),
+          { force: true }
+        );
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to delete attachment file.",
+        };
+      }
+    }
+  } else {
+    const { error: storageError } = await admin.storage
+      .from(ORDER_ATTACHMENTS_BUCKET)
+      .remove([attachment.storagePath]);
+    if (storageError) return { success: false, error: storageError.message };
+  }
 
   await deleteOrderAttachment(admin, id);
   return { success: true, data: undefined };

@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="ta">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TailorSaaS User Guide</title>
+  <style>
+    @page { size: A4; margin: 14mm 13mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #111827;
+      background: #ffffff;
+      font-family: "Nirmala UI", "Latha", "Segoe UI", Arial, sans-serif;
+      line-height: 1.48;
+    }
+    .page {
+      min-height: 267mm;
+      page-break-after: always;
+      position: relative;
+      padding-bottom: 16mm;
+    }
+    .page:last-child { page-break-after: auto; }
+    .cover {
+      display: flex;
+      min-height: 267mm;
+      flex-direction: column;
+      justify-content: center;
+      border: 1.2mm solid #176b57;
+      padding: 24mm 18mm;
+      background: linear-gradient(135deg, #f1fbf7 0%, #ffffff 52%, #eef6ff 100%);
+    }
+    .brand-mark {
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      color: #176b57;
+      background: #dff4ec;
+      border: 1px solid #b9e1d4;
+      font-size: 30px;
+      font-weight: 800;
+      margin-bottom: 20px;
+    }
+    h1, h2, h3 { margin: 0; }
+    h1 {
+      font-size: 38px;
+      letter-spacing: -0.04em;
+      color: #08111f;
+    }
+    .subtitle {
+      margin-top: 8px;
+      font-size: 22px;
+      font-weight: 700;
+      color: #176b57;
+    }
+    .cover-note {
+      margin-top: 20px;
+      max-width: 620px;
+      font-size: 15px;
+      color: #475569;
+    }
+    .company-card {
+      margin-top: 42px;
+      max-width: 610px;
+      border-radius: 18px;
+      border: 1px solid #cbd5e1;
+      background: rgba(255,255,255,0.76);
+      padding: 18px 20px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    }
+    .company-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+      color: #0f172a;
+    }
+    .company-card p { margin: 4px 0; color: #334155; }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 8px;
+      margin-bottom: 14px;
+    }
+    .header .title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #176b57;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .header .company {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 6px;
+      font-size: 10px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+    h2 {
+      font-size: 24px;
+      color: #08111f;
+      letter-spacing: -0.02em;
+      margin-bottom: 5px;
+    }
+    .intro {
+      color: #475569;
+      font-size: 13px;
+      margin: 0 0 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.04fr 0.96fr;
+      gap: 13px;
+      align-items: start;
+    }
+    .steps, .tips {
+      border: 1px solid #d7dee8;
+      border-radius: 14px;
+      padding: 13px 15px;
+      background: #ffffff;
+    }
+    .steps h3, .tips h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+    ol { margin: 0; padding-left: 22px; }
+    li { margin: 6px 0; font-size: 12.6px; }
+    .tips {
+      margin-top: 10px;
+      background: #f8fafc;
+      color: #334155;
+    }
+    .tips p { margin: 0; font-size: 12.4px; }
+    .screen {
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      background: #f8fafc;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+    }
+    .browser {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      height: 25px;
+      padding: 0 10px;
+      border-bottom: 1px solid #dbe3ee;
+      background: #e9eef5;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: #94a3b8; }
+    .screen-body { padding: 12px; background: #f6f8fb; }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 38px;
+      border-radius: 12px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+    }
+    .logo {
+      margin-right: auto;
+      font-size: 12px;
+      font-weight: 900;
+      color: #0f172a;
+    }
+    .pill {
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 5px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #334155;
+      background: #ffffff;
+    }
+    .pill.active { color: #ffffff; background: #176b57; border-color: #176b57; }
+    .hero-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 9px 0 10px;
+    }
+    .hero-row h4 {
+      margin: 0;
+      font-size: 18px;
+      color: #06111f;
+      letter-spacing: -0.03em;
+    }
+    .button {
+      border-radius: 10px;
+      padding: 7px 11px;
+      background: #176b57;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .card {
+      border: 1px solid #d7dee8;
+      background: #ffffff;
+      border-radius: 13px;
+      padding: 10px;
+      margin-bottom: 9px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+    .muted { color: #64748b; }
+    .input {
+      height: 26px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 5px 7px;
+      font-size: 10px;
+      color: #64748b;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      margin-bottom: 9px;
+    }
+    .stat {
+      background: #ffffff;
+      border: 1px solid #dbe3ee;
+      border-radius: 12px;
+      padding: 9px;
+    }
+    .stat small {
+      display: block;
+      font-size: 8px;
+      color: #64748b;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .stat b { display: block; margin-top: 5px; font-size: 18px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5px;
+      background: #fff;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+    th, td {
+      border: 1px solid #d7dee8;
+      padding: 6px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th { background: #eef2f7; color: #475569; font-weight: 900; }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 7px;
+      background: #dff4ec;
+      color: #176b57;
+      font-weight: 900;
+      font-size: 9px;
+    }
+    .tag.warn { background: #fff3d8; color: #9a5a00; }
+    .tag.blue { background: #e5efff; color: #1d4f91; }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .toc div {
+      border: 1px solid #d7dee8;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .toc span { display: block; margin-top: 4px; font-size: 11px; color: #64748b; font-weight: 500; }
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .shortcut {
+      border: 1px solid #d7dee8;
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    kbd {
+      border: 1px solid #94a3b8;
+      border-bottom-width: 2px;
+      border-radius: 7px;
+      padding: 2px 7px;
+      font-family: inherit;
+      font-weight: 900;
+      background: #f8fafc;
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <div class="brand-mark">TS</div>
+    <h1>TailorSaaS User Guide</h1>
+    <div class="subtitle">தையல் கடை பயன்பாட்டு வழிகாட்டி</div>
+    <p class="cover-note">
+      This guide explains the daily shop workflow: customer creation,
+      order entry, measurements, production, delivery, payments, and settings.
+    </p>
+    <div class="company-card">
+      <strong>Dheeran Infotech Solutions Pvt Ltd</strong>
+      <p>Simple digital solutions for real business problems.</p>
+      <p>Websites | Web Applications | Mobile Apps | Custom Software</p>
+      <p><b>Phone:</b> 8110007172</p>
+    </div>
+    <div class="footer">
+      <span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span>
+      <span>For training purpose only</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">TailorSaaS User Guide</span><span class="company">Dheeran Infotech Solutions Pvt Ltd</span></div>
+    <h2>Contents / உள்ளடக்கம்</h2>
+    <p class="intro">Daily shop workflow-க்கு தேவையான முக்கிய பகுதிகள்.</p>
+    <div class="toc">
+      <div>1. Login & Menu Overview<span>App open செய்து login செய்வது</span></div>
+      <div>2. Dashboard<span>Production, delivery, payment summary பார்க்க</span></div>
+      <div>3. Customer Management<span>Customer add/search/profile</span></div>
+      <div>4. New Order Creation<span>Order, garment, measurement, payment</span></div>
+      <div>5. Edit Order & Attachments<span>Qty, measurements, photos update</span></div>
+      <div>6. Customer Receipt Print<span>Bill/receipt print செய்வது</span></div>
+      <div>7. Production / Job Cards<span>Production print, tally scan, order ready</span></div>
+      <div>8. Delivery & Payments<span>Balance collect, partial payment, delivered</span></div>
+      <div>9. Finance & Reports<span>Income, pending due, expenses, reports</span></div>
+      <div>10. Settings & Shortcuts<span>Catalog, permissions, storage, F keys</span></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 2</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Login & Menu</span><span class="company">TailorSaaS Training</span></div>
+    <h2>1. Login செய்வது எப்படி?</h2>
+    <p class="intro">Shop user account கொண்டு app-ல் login செய்யவும்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps">
+          <h3>Steps</h3>
+          <ol>
+            <li>Browser-ல் application URL open செய்யவும்.</li>
+            <li><b>Email</b> மற்றும் <b>Password</b> type செய்யவும்.</li>
+            <li><b>Sign in</b> button click செய்யவும்.</li>
+            <li>Login success ஆனதும் Dashboard page open ஆகும்.</li>
+          </ol>
+        </div>
+        <div class="tips"><h3>கவனிக்க</h3><p>User permission அடிப்படையில் menu items show/hide ஆகும்.</p></div>
+      </div>
+      <div class="screen">
+        <div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="screen-body">
+          <div class="card" style="max-width:260px;margin:18px auto;">
+            <div class="card-title">TailorSaaS</div>
+            <div class="muted" style="font-size:10px;margin-bottom:14px;">Tailoring. Simplified.</div>
+            <h4 style="margin:0 0 4px;font-size:18px;">Sign in</h4>
+            <div class="muted" style="font-size:10px;margin-bottom:12px;">Use your shop account to continue.</div>
+            <div class="input" style="margin-bottom:8px;">Email</div>
+            <div class="input" style="margin-bottom:10px;">Password</div>
+            <div class="button" style="text-align:center;">Sign in</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 3</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Dashboard</span><span class="company">TailorSaaS Training</span></div>
+    <h2>2. Dashboard-ல் என்ன பார்க்கலாம்?</h2>
+    <p class="intro">Shop daily status-ஐ ஒரே இடத்தில் பார்க்க Dashboard உதவும்.</p>
+    <div class="grid">
+      <div class="screen">
+        <div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="screen-body">
+          <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Dashboard</span><span class="pill">Orders</span><span class="pill">Delivery</span><span class="pill">Settings</span></div>
+          <div class="hero-row"><h4>Dashboard</h4><span class="button">+ New Order</span></div>
+          <div class="stats">
+            <div class="stat"><small>Ready</small><b>12</b></div>
+            <div class="stat"><small>Due</small><b>8</b></div>
+            <div class="stat"><small>Balance</small><b>₹9,300</b></div>
+            <div class="stat"><small>Delivered</small><b>5</b></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Garment Production Summary</div>
+            <table><tr><th>Garment</th><th>Cutting</th><th>Stitching</th><th>Ready</th><th>Delivered</th><th>Total</th></tr><tr><td>Half Shirt</td><td>0</td><td>2</td><td>6</td><td>3</td><td>11</td></tr><tr><td>Pant</td><td>1</td><td>5</td><td>2</td><td>4</td><td>12</td></tr></table>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="steps">
+          <h3>Dashboard Information</h3>
+          <ol>
+            <li><b>Garment Production Summary</b>: item status count காட்டும்.</li>
+            <li><b>Ready</b>: delivery-க்கு தயாராக உள்ள orders.</li>
+            <li><b>Delivered</b>: customer-க்கு கொடுத்த items count.</li>
+            <li><b>Pending Due / Balance</b>: collect செய்ய வேண்டிய amount.</li>
+            <li><b>New Order</b> button மூலம் உடனே புதிய order create செய்யலாம்.</li>
+          </ol>
+        </div>
+        <div class="tips"><h3>Tip</h3><p>Date filter use செய்து today / selected date summary பார்க்கலாம்.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 4</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Customers</span><span class="company">TailorSaaS Training</span></div>
+    <h2>3. Customer Add / Search செய்வது</h2>
+    <p class="intro">Customer details ஒருமுறை save செய்தால், next order-ல் search செய்து select செய்யலாம்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps">
+          <h3>New Customer Steps</h3>
+          <ol>
+            <li>Menu-ல் <b>Customers → Add Customer</b> click செய்யவும்.</li>
+            <li>Name, Mobile, Area போன்ற details enter செய்யவும்.</li>
+            <li><b>Save Customer</b> click செய்யவும்.</li>
+            <li>Order page-ல் phone/name மூலம் customer search செய்யலாம்.</li>
+          </ol>
+        </div>
+        <div class="tips"><h3>கவனிக்க</h3><p>Mobile number சரியாக இருந்தால் customer search, receipt, WhatsApp communication எல்லாம் easy ஆகும்.</p></div>
+      </div>
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill">Orders</span><span class="pill active">Customers</span><span class="pill">Finance</span></div>
+        <div class="hero-row"><h4>Add Customer</h4><span class="button">Save Customer</span></div>
+        <div class="card"><div class="card-title">Customer Details</div><div class="form-grid"><div class="input">Name</div><div class="input">Mobile</div><div class="input">Area</div><div class="input">Address</div><div class="input">Notes</div><div class="input">Status</div></div></div>
+        <div class="card"><div class="card-title">Customer List</div><table><tr><th>Name</th><th>Mobile</th><th>Area</th><th>Action</th></tr><tr><td>Sample Customer</td><td>9XXXXXXXXX</td><td>Area</td><td>View</td></tr></table></div>
+      </div></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 5</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">New Order</span><span class="company">TailorSaaS Training</span></div>
+    <h2>4. New Order Create செய்வது</h2>
+    <p class="intro">Customer select செய்து garment, measurement, payment enter செய்து order save செய்யவும்.</p>
+    <div class="grid">
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Orders</span><span class="pill">Job Cards</span><span class="pill">Delivery</span></div>
+        <div class="hero-row"><h4>Classic Order Entry</h4><span class="button">Save Order</span></div>
+        <div class="card"><div class="card-title">Order Information</div><div class="form-grid"><div class="input">Search customer</div><div class="input">Order section</div><div class="input">Garment Type</div></div></div>
+        <div class="card"><div class="card-title">Order Items</div><table><tr><th>S.No</th><th>Garment</th><th>Add-ons</th><th>Qty</th><th>Amount</th></tr><tr><td>1</td><td>Half Shirt</td><td>Inner Pocket</td><td>2</td><td>₹600</td></tr></table></div>
+        <div class="stats"><div class="stat"><small>Total</small><b>₹600</b></div><div class="stat"><small>Paid</small><b>₹200</b></div><div class="stat"><small>Balance</small><b>₹400</b></div><div class="stat"><small>Mode</small><b>Cash</b></div></div>
+      </div></div>
+      <div>
+        <div class="steps"><h3>Order Steps</h3><ol>
+          <li><b>Orders → New Order</b> click செய்யவும்.</li>
+          <li>Customer phone/name search செய்து select செய்யவும்.</li>
+          <li>Customer இல்லை என்றால் <b>Create New Customer</b> use செய்யவும்.</li>
+          <li><b>Order section</b> மற்றும் <b>Garment Type</b> select செய்யவும்.</li>
+          <li>Measurement details enter செய்து <b>Save Item Details</b> click செய்யவும்.</li>
+          <li>Item list-ல் garment, qty, amount சரியா check செய்யவும்.</li>
+          <li>Advance amount / payment mode enter செய்யவும்.</li>
+          <li>Final total, paid, balance சரியா பார்த்து <b>Save Order</b> click செய்யவும்.</li>
+          <li>Order saved ஆன பிறகு receipt print செய்யலாம்.</li>
+        </ol></div>
+        <div class="tips"><h3>Shortcut</h3><p><b>F2</b> press செய்தால் New Order page உடனே open ஆகும்.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 6</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Order Creation Detailed Flow</span><span class="company">TailorSaaS Training</span></div>
+    <h2>4A. Order Creation — Detailed Walkthrough</h2>
+    <p class="intro">புதிய order create செய்யும் போது இந்த sequence follow செய்தால் mistakes குறையும்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps">
+          <h3>Full Order Entry Flow</h3>
+          <ol>
+            <li><b>Customer Select</b>: முதலில் customer phone/name search செய்யவும்.</li>
+            <li>Customer கிடைக்கவில்லை என்றால் <b>Create New Customer</b> மூலம் உடனே add செய்யவும்.</li>
+            <li><b>Order Details</b>: Men/Women/section அல்லது type code சரியா இருக்கிறதா check செய்யவும்.</li>
+            <li><b>Garment Type</b>: Half Shirt, Pant, Chudidar போன்ற garment select செய்யவும்.</li>
+            <li><b>Measurement Window</b>: garment select செய்ததும் measurement entry screen open ஆகும்.</li>
+            <li><b>Body Measurements</b>: tailor-க்கு தேவையான அளவுகள் enter செய்யவும்.</li>
+            <li><b>Work Details / Add-ons</b>: lining, shawl, pocket, button போன்ற extra work இருந்தால் select செய்யவும்.</li>
+            <li><b>Quantity</b>: கீழே உள்ள Quantity field-ல் required qty enter செய்யவும்.</li>
+            <li><b>Save Item Details</b>: இந்த button click செய்தால் item order list-க்கு add ஆகும்.</li>
+            <li>More garments இருந்தால் மீண்டும் Garment Type select செய்து same steps repeat செய்யவும்.</li>
+            <li><b>Payment</b>: Advance amount மற்றும் payment mode select செய்யவும்.</li>
+            <li><b>Save Order</b>: final save செய்த பிறகு தான் order number confirm ஆகும்.</li>
+          </ol>
+        </div>
+      </div>
+      <div>
+        <div class="steps">
+          <h3>Before Save Checklist</h3>
+          <ol>
+            <li>Customer name/mobile correct-aa?</li>
+            <li>Delivery date correct-aa?</li>
+            <li>All garments added-aa?</li>
+            <li>Qty correct-aa?</li>
+            <li>Measurements entered-aa?</li>
+            <li>Add-ons / Work Details amount correct-aa?</li>
+            <li>Total, Paid, Balance correct-aa?</li>
+          </ol>
+        </div>
+        <div class="tips">
+          <h3>Customer Training Note</h3>
+          <p>
+            “Save Item Details” என்பது single garment save செய்யும் button.
+            “Save Order” என்பது முழு order-ஐ final save செய்யும் button.
+            இதை customer-க்கு clearly explain செய்யவும்.
+          </p>
+        </div>
+        <div class="tips">
+          <h3>Common Mistakes</h3>
+          <p>
+            Garment select செய்துவிட்டு measurement save செய்யாமல் order save செய்தால் item list empty ஆகலாம்.
+            அதனால் முதலில் item list-ல் garment visible இருக்கிறதா check செய்ய வேண்டும்.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 7</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Measurements</span><span class="company">TailorSaaS Training</span></div>
+    <h2>5. Measurements & Work Details</h2>
+    <p class="intro">Garment type அடிப்படையில் measurement fields, add-ons, work details மாறும்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps"><h3>Measurement Steps</h3><ol>
+          <li>Order page-ல் garment select செய்தவுடன் measurement modal open ஆகும்.</li>
+          <li><b>Body Measurements</b> values enter செய்யவும்.</li>
+          <li><b>Work Details</b> இருக்கும் garment-களில் item name + qty select செய்யவும்.</li>
+          <li><b>Add-ons / Extras</b> தேவையானால் select செய்யவும்.</li>
+          <li><b>Save Item Details</b> click செய்யவும்.</li>
+        </ol></div>
+        <div class="tips"><h3>கவனிக்க</h3><p>Work Details amount order total-ல் add ஆகும். Tailor amount staff salary calculation-க்கு உதவும்.</p></div>
+      </div>
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="hero-row"><h4>Configure Garment</h4><span class="pill">Code 9</span></div>
+        <div class="card"><div class="card-title">Body Measurements</div><div class="form-grid"><div class="input">Height</div><div class="input">Shoulder</div><div class="input">Arm</div><div class="input">Sleeve</div><div class="input">Neck</div><div class="input">Waist</div></div></div>
+        <div class="card"><div class="card-title">Work Details</div><table><tr><th>Item Name</th><th>Qty</th><th>Price</th><th>Total</th><th>Display</th></tr><tr><td>LINING EDU</td><td>1</td><td>₹120</td><td>₹120</td><td>LINING EDU - 1</td></tr><tr><td>SHAWL</td><td>2</td><td>₹80</td><td>₹160</td><td>SHAWL - 2</td></tr></table></div>
+        <div class="button" style="text-align:center;">Save Item Details</div>
+      </div></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 8</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Edit Order & Attachments</span><span class="company">TailorSaaS Training</span></div>
+    <h2>6. Edit Order & Photos</h2>
+    <p class="intro">Saved order-ல் qty, measurements, payment, photos update செய்யலாம்.</p>
+    <div class="grid">
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="hero-row"><h4>Edit Order</h4><span class="button">Save Changes</span></div>
+        <div class="card"><div class="card-title">Photo / Attachments</div><div class="input">1 file &nbsp;&nbsp; Manage</div></div>
+        <div class="card"><div class="card-title">Photos</div><table><tr><td>Design Reference</td><td>sample-image.jpeg</td><td>193 KB</td><td><span class="tag">Open</span></td></tr></table></div>
+        <div class="card"><div class="card-title">Order Items</div><table><tr><th>Garment</th><th>Qty</th><th>Rate</th><th>Action</th></tr><tr><td>Half Shirt</td><td>2</td><td>₹300</td><td>Edit</td></tr></table></div>
+      </div></div>
+      <div>
+        <div class="steps"><h3>Edit Steps</h3><ol>
+          <li>Order Details page-ல் <b>Edit</b> click செய்யவும்.</li>
+          <li>Qty / Rate / Measurement update செய்யலாம்.</li>
+          <li><b>Photo / Attachments → Manage</b> click செய்து files add செய்யலாம்.</li>
+          <li>All changes முடிந்ததும் <b>Save Changes</b> click செய்யவும்.</li>
+        </ol></div>
+        <div class="tips"><h3>Attachment Storage</h3><p>Settings அடிப்படையில் photos Supabase அல்லது local folder-ல் save ஆகும். DB-ல் file metadata/path இருக்கும்.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 9</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Receipt Print</span><span class="company">TailorSaaS Training</span></div>
+    <h2>7. Customer Receipt Print</h2>
+    <p class="intro">Order save ஆன பிறகு customer receipt print செய்யலாம்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps"><h3>Print Steps</h3><ol>
+          <li>Order Details page open செய்யவும்.</li>
+          <li><b>Print Customer Receipt</b> click செய்யவும்.</li>
+          <li>Receipt preview/check செய்து browser print dialog மூலம் print செய்யவும்.</li>
+          <li>Receipt barcode/order number delivery-ல் scan செய்ய பயன்படும்.</li>
+        </ol></div>
+        <div class="tips"><h3>கவனிக்க</h3><p>Customer receipt-ல் garment, qty, add-ons/work details amount, paid/balance details show ஆகும்.</p></div>
+      </div>
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="card" style="background:white;border-color:#94a3b8;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div><b>TailorSaaS</b><br><span class="muted" style="font-size:9px;">Tailoring. Simplified.</span></div><div style="font-size:9px;">Name: Customer<br>Mobile: 9XXXXXXXXX</div></div>
+          <table><tr><th>Particular</th><th>Qty</th><th>Rate</th><th>Total</th></tr><tr><td>Half Shirt</td><td>2</td><td>₹300</td><td>₹600</td></tr><tr><td>+ LINING EDU - 1</td><td>1</td><td>₹120</td><td>₹120</td></tr></table>
+          <div style="margin-top:28px;text-align:right;font-size:11px;"><b>Bill Amount ₹720</b><br>Paid ₹200<br><b>Balance ₹520</b></div>
+          <div style="height:40px;width:130px;margin:10px auto;background:repeating-linear-gradient(90deg,#111 0 3px,#fff 3px 6px);"></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 10</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Production & Job Cards</span><span class="company">TailorSaaS Training</span></div>
+    <h2>8. Production Print / Tally Scan / Order Ready</h2>
+    <p class="intro">Production team மற்றும் tailor salary tracking-க்கு Job Cards பயன்படும்.</p>
+    <div class="grid">
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Job Cards</span><span class="pill">Delivery</span></div>
+        <div class="hero-row"><h4>Production Print</h4><span class="button">Print Bundle</span></div>
+        <table><tr><th>Order</th><th>Customer</th><th>Delivery</th><th>Garments</th></tr><tr><td>41</td><td>Customer</td><td>15 Aug</td><td>Half Shirt x2</td></tr><tr><td>40</td><td>Customer</td><td>16 Aug</td><td>Chudidar x1</td></tr></table>
+        <div class="card"><div class="card-title">Tally Scans</div><div class="input">Scan barcode / slip code</div></div>
+        <div class="card"><div class="card-title">Order Ready</div><table><tr><td>Order 41</td><td><span class="tag warn">Not Ready</span></td><td>Mark Order Ready</td></tr></table></div>
+      </div></div>
+      <div>
+        <div class="steps"><h3>Production Flow</h3><ol>
+          <li><b>Production Print</b>: selected orders-க்கு cutting/stitching slips print செய்யவும்.</li>
+          <li>Printed slips garment உடன் production team/tailor-க்கு கொடுக்கவும்.</li>
+          <li><b>Tally Scans</b>: tailor completed work slips scan செய்யவும்.</li>
+          <li>Tally scan mainly staff salary/payable record-க்கு பயன்படும்.</li>
+          <li><b>Order Ready</b>: customer delivery-க்கு items ready ஆனதும் full order ready mark செய்யவும்.</li>
+          <li>ஒரு order-ல் multiple items இருந்தாலும் list-ல் one row ஆக show ஆகும்.</li>
+        </ol></div>
+        <div class="tips"><h3>Shortcuts</h3><p><b>F4</b> Tally Scan, <b>F6</b> Production Print, <b>F7</b> Order Ready.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 11</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Job Cards Detailed Flow</span><span class="company">TailorSaaS Training</span></div>
+    <h2>8A. Job Cards — Detailed Walkthrough</h2>
+    <p class="intro">Production tracking மற்றும் staff salary calculation புரிய இந்த flow customer-க்கு முக்கியம்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps">
+          <h3>1) Production Print</h3>
+          <ol>
+            <li><b>Job Cards → Production Print</b> open செய்யவும்.</li>
+            <li>Order section / from no / to no / date filter மூலம் print செய்ய வேண்டிய orders select செய்யவும்.</li>
+            <li><b>Select filtered</b> click செய்தால் matching orders select ஆகும்.</li>
+            <li><b>Print Production Bundle</b> click செய்து slips print செய்யவும்.</li>
+            <li>Each garment qty அடிப்படையில் Cutting/Stitching slip generate ஆகும்.</li>
+          </ol>
+        </div>
+        <div class="steps" style="margin-top:10px;">
+          <h3>2) Tally Scan</h3>
+          <ol>
+            <li><b>Job Cards → Tally Scans</b> open செய்யவும்.</li>
+            <li>Staff member select செய்து lock செய்யவும்.</li>
+            <li>Tailor completed slip barcode scan செய்யவும்.</li>
+            <li>Scan success ஆனதும் staff payable/salary record update ஆகும்.</li>
+            <li>Tally scan delivery flow-ஐ stop செய்யாது; இது mainly salary tracking.</li>
+          </ol>
+        </div>
+      </div>
+      <div>
+        <div class="steps">
+          <h3>3) Order Ready</h3>
+          <ol>
+            <li><b>Job Cards → Order Ready</b> open செய்யவும்.</li>
+            <li>Order list-ல் each order one row ஆக show ஆகும்.</li>
+            <li>Customer physically delivery-க்கு ready என்றால் <b>Mark Order Ready</b> click செய்யவும்.</li>
+            <li>Cover/Bin location optional-aa enter செய்யலாம்.</li>
+            <li>Ready mark ஆன order Delivery page-ல் show ஆகும்.</li>
+          </ol>
+        </div>
+        <div class="tips">
+          <h3>Important Explanation</h3>
+          <p>
+            Customer shop workflow-ல் tailor slips daily/night/weekly scan செய்யலாம்.
+            ஆனால் item physically ready என்றால் Order Ready mark செய்யலாம்.
+            Ready status என்பது customer delivery-க்கு தயாராக உள்ளது என்பதைக் குறிக்கும்.
+          </p>
+        </div>
+        <div class="tips">
+          <h3>Status Meaning</h3>
+          <p>
+            <b>Not Ready</b>: இன்னும் customer delivery-க்கு தயாராக இல்லை.
+            <br><b>Ready</b>: delivery desk-ல் handover செய்ய தயாராக உள்ளது.
+            <br><b>Delivered</b>: customer-க்கு கொடுக்கப்பட்டது.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 12</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Delivery & Payment</span><span class="company">TailorSaaS Training</span></div>
+    <h2>9. Delivery செய்வது</h2>
+    <p class="intro">Ready orders மட்டும் delivery page-ல் show ஆகும். Balance amount collect செய்யலாம்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps"><h3>Delivery Steps</h3><ol>
+          <li><b>Delivery</b> menu open செய்யவும்.</li>
+          <li>Receipt barcode / order number scan or type செய்யவும்.</li>
+          <li>Customer order details மற்றும் balance amount check செய்யவும்.</li>
+          <li>Collected amount enter செய்யவும். Partial amount இருந்தாலும் save செய்யலாம்.</li>
+          <li><b>Collect & Deliver</b> click செய்யவும்.</li>
+        </ol></div>
+        <div class="tips"><h3>கவனிக்க</h3><p>Delivered ஆன பிறகும் balance pending இருந்தால் Pending Due/Finance-ல் follow-up செய்யலாம்.</p></div>
+      </div>
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Delivery</span><span class="pill">Finance</span></div>
+        <div class="hero-row"><h4>Delivery Desk</h4></div>
+        <div class="card"><div class="card-title">Quick Delivery Scan</div><div class="input">Scan receipt barcode or enter order number</div></div>
+        <div class="card"><table><tr><th>Order</th><th>Customer</th><th>Status</th><th>Balance</th><th>Action</th></tr><tr><td>41</td><td>Customer</td><td><span class="tag">Ready</span></td><td>₹520</td><td>Collect & Deliver</td></tr></table></div>
+        <div class="stats"><div class="stat"><small>Ready</small><b>7</b></div><div class="stat"><small>Due</small><b>4</b></div><div class="stat"><small>Balance</small><b>₹8,700</b></div><div class="stat"><small>Clear</small><b>2</b></div></div>
+      </div></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 13</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Finance & Reports</span><span class="company">TailorSaaS Training</span></div>
+    <h2>10. Finance & Reports</h2>
+    <p class="intro">Income, Pending Due, Expense, Reports ஆகியவை shop accounts tracking-க்கு உதவும்.</p>
+    <div class="grid">
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Finance</span><span class="pill">Reports</span></div>
+        <div class="stats"><div class="stat"><small>Income</small><b>₹12,500</b></div><div class="stat"><small>Pending Due</small><b>₹8,700</b></div><div class="stat"><small>Expenses</small><b>₹2,100</b></div><div class="stat"><small>Orders</small><b>18</b></div></div>
+        <div class="card"><div class="card-title">Reports</div><table><tr><th>Report</th><th>Use</th></tr><tr><td>Sales</td><td>Order income summary</td></tr><tr><td>Payments</td><td>Cash/UPI/Card collection</td></tr><tr><td>Staff</td><td>Tailor payable</td></tr></table></div>
+      </div></div>
+      <div>
+        <div class="steps"><h3>Finance Usage</h3><ol>
+          <li><b>Finance → Income</b>: collection details பார்க்க.</li>
+          <li><b>Finance → Pending Due</b>: balance pending customers follow-up செய்ய.</li>
+          <li><b>Finance → Expenses</b>: shop expenses enter செய்ய.</li>
+          <li><b>Reports</b>: Sales, Payments, Production, Staff reports export செய்ய.</li>
+        </ol></div>
+        <div class="tips"><h3>Tip</h3><p>Date filter use செய்து daily/monthly report பார்க்கலாம்.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 14</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Settings</span><span class="company">TailorSaaS Training</span></div>
+    <h2>11. Settings & Permissions</h2>
+    <p class="intro">Shop setup, catalog, garment fields, users, roles, storage options manage செய்யலாம்.</p>
+    <div class="grid">
+      <div>
+        <div class="steps"><h3>Important Settings</h3><ol>
+          <li><b>Catalog</b>: Garment type, Add-ons, Work stages setup.</li>
+          <li><b>Garment Type Configuration</b>: measurement fields, work details, add-ons visibility.</li>
+          <li><b>Users & Permissions</b>: staff user access control.</li>
+          <li><b>Billing / Receipt</b>: shop name, invoice prefix, tax, attachment storage.</li>
+          <li><b>Attachment Storage</b>: Supabase Storage அல்லது Local Folder select செய்யலாம்.</li>
+        </ol></div>
+        <div class="tips"><h3>கவனிக்க</h3><p>Permissions change செய்தால் user logout/login அல்லது refresh செய்தால் menu access update ஆகும்.</p></div>
+      </div>
+      <div class="screen"><div class="browser"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="screen-body">
+        <div class="nav"><span class="logo">TailorSaaS</span><span class="pill active">Settings</span></div>
+        <div class="card"><div class="card-title">Settings</div><table><tr><td>Billing / Receipt</td><td>Shop print details</td></tr><tr><td>Order Preferences</td><td>Order screen defaults</td></tr><tr><td>Users Access</td><td>Roles & Permissions</td></tr><tr><td>Communication Templates</td><td>WhatsApp message format</td></tr></table></div>
+        <div class="card"><div class="card-title">Attachment Storage</div><div class="form-grid"><div class="input">Supabase Storage</div><div class="input">Local Folder</div><div class="input">Folder Path</div></div></div>
+      </div></div>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 15</span></div>
+  </section>
+
+  <section class="page">
+    <div class="header"><span class="title">Shortcut Keys</span><span class="company">TailorSaaS Training</span></div>
+    <h2>12. Shortcut Keys</h2>
+    <p class="intro">Mouse use செய்யாமல் frequent pages open செய்ய shortcuts உதவும்.</p>
+    <div class="shortcut-grid">
+      <div class="shortcut"><span>New Order</span><kbd>F2</kbd></div>
+      <div class="shortcut"><span>Delivery Desk</span><kbd>F3</kbd></div>
+      <div class="shortcut"><span>Tally Scan</span><kbd>F4</kbd></div>
+      <div class="shortcut"><span>Production Print</span><kbd>F6</kbd></div>
+      <div class="shortcut"><span>Order Ready</span><kbd>F7</kbd></div>
+      <div class="shortcut"><span>Scan / Find</span><kbd>Ctrl K</kbd></div>
+    </div>
+    <div class="tips" style="margin-top:18px;"><h3>Common Tips</h3><p>
+      Browser refresh தேவைப்பட்டால் <b>Ctrl + Shift + R</b> use செய்யலாம்.
+      Print page open ஆகும்போது printer selection சரியாக உள்ளதா check செய்யவும்.
+      Backup/DB maintenance-க்கு admin/developer support பயன்படுத்தவும்.
+    </p></div>
+    <div class="company-card" style="margin-top:28px;">
+      <strong>Need a custom software solution?</strong>
+      <p>Simple digital solutions for real business problems.</p>
+      <p>Websites | Web Applications | Mobile Apps | Custom Software</p>
+      <p><b>Dheeran Infotech Solutions Pvt Ltd</b> — 8110007172</p>
+    </div>
+    <div class="footer"><span>Dheeran Infotech Solutions Pvt Ltd | 8110007172</span><span>Page 16</span></div>
+  </section>
+</body>
+</html>

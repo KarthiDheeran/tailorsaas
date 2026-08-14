@@ -7,7 +7,7 @@ import { getProductionPrintBundleAction } from "@/app/(shell)/job-cards/actions"
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { barcodeSvgDataUri, barcodeSvgMetrics, toBarcodeValue } from "@/lib/barcode-code128";
 import {
-  historicalGarmentValueText,
+  historicalGarmentValueTextForPrint,
   resolveHistoricalGarmentDisplayFields,
   shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
@@ -36,7 +36,8 @@ function tableWorkDetailLines(value: unknown): string[] {
   return value.flatMap((row) => {
     if (!row || typeof row !== "object" || Array.isArray(row)) return [];
     const record = row as Record<string, unknown>;
-    const item = typeof record.item === "string" ? record.item.trim() : "";
+    const itemTa = typeof record.itemTa === "string" ? record.itemTa.trim() : "";
+    const item = itemTa || (typeof record.item === "string" ? record.item.trim() : "");
     if (!item) return [];
     const qty = typeof record.qty === "number" ? record.qty : Number(record.qty);
     if (!Number.isFinite(qty) || qty <= 0) return [item];
@@ -44,10 +45,10 @@ function tableWorkDetailLines(value: unknown): string[] {
   });
 }
 
-function productionFieldText(value: unknown) {
+function productionFieldText(value: unknown, uiMetadata?: Record<string, unknown>) {
   const tableLines = tableWorkDetailLines(value);
   if (tableLines.length > 0) return tableLines.join("\n");
-  return historicalGarmentValueText(value);
+  return historicalGarmentValueTextForPrint(value, uiMetadata, "ta");
 }
 
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
@@ -124,7 +125,7 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         {visible.length ? (
           visible.map((field) => (
             <div key={field.code} title={field.label} aria-label={field.label}>
-              <strong>{productionFieldText(field.value)}</strong>
+              <strong>{productionFieldText(field.value, field.uiMetadata)}</strong>
             </div>
           ))
         ) : (

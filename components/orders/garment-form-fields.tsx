@@ -140,6 +140,7 @@ function TableFieldControl({
                           updateCell(rowIndex, column.key, nextValue, {
                             ...metadata.defaults,
                             ...(metadata.workerStage ? { workerStage: metadata.workerStage } : {}),
+                            ...(metadata.labelTa && column.key === "item" ? { itemTa: metadata.labelTa } : {}),
                           });
                         }}
                         className={focusableCellClass(rowIndex, column.key)}

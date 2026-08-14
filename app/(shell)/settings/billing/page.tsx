@@ -315,6 +315,50 @@ function BillingSettingsContent() {
         </div>
 
         <div className="mb-5 mt-8 border-b border-border-soft pb-2">
+          <h2 className="text-base font-semibold text-ink">Attachment Storage</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Choose where order photos and files are saved. Existing files keep using their original storage.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Save attachments in</span>
+            <select
+              value={settings.attachmentStorageProvider}
+              onChange={(e) =>
+                patch(
+                  "attachmentStorageProvider",
+                  e.target.value === "local" ? "local" : "supabase"
+                )
+              }
+              disabled={!enabled || !canManage}
+              className={inputClass}
+            >
+              <option value="supabase">Supabase Storage</option>
+              <option value="local">Local folder on this server</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Local folder path</span>
+            <input
+              value={settings.attachmentLocalRootPath ?? ""}
+              onChange={(e) => patch("attachmentLocalRootPath", e.target.value)}
+              disabled={
+                !enabled ||
+                !canManage ||
+                settings.attachmentStorageProvider !== "local"
+              }
+              placeholder="Example: D:\NewLook\order-attachments"
+              className={inputClass}
+            />
+          </label>
+          <p className="rounded-lg border border-chip-peach bg-chip-peach px-3.5 py-2.5 text-sm text-chip-peach-fg md:col-span-2">
+            Local folder works only when the app server runs on the shop computer/NAS and
+            that folder is always available. For Vercel/cloud deployment, use Supabase Storage.
+          </p>
+        </div>
+
+        <div className="mb-5 mt-8 border-b border-border-soft pb-2">
           <h2 className="text-base font-semibold text-ink">Print Footer</h2>
         </div>
         <div className="grid grid-cols-1 gap-4">

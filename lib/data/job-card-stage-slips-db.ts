@@ -23,6 +23,11 @@ export interface JobCardStageSlip {
   staffName: string;
   wageRate: number;
   wageAmount: number;
+  tallyWageAmount: number;
+  talliedQuantity: number;
+  pendingQuantity: number;
+  tallyExtraAmount: number;
+  tallyNotes?: string;
   measurementsSnapshot?: Record<string, unknown>;
   fieldSchemaSnapshot?: Record<string, unknown>;
   addOnsSnapshot?: OrderItemAddOn[];
@@ -48,7 +53,8 @@ export interface CreateJobCardStageSlipInput {
 const JOB_CARD_STAGE_SLIP_COLUMNS = `
   id, scan_token, slip_code, order_id, order_item_serial_no, unit_no, order_number, customer_id,
   customer_snapshot, garment_type, quantity, delivery_date, stage, staff_id, staff_name, wage_rate,
-  wage_amount, measurements_snapshot, field_schema_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
+  wage_amount, tallied_quantity, tally_wage_amount, tally_extra_amount, tally_notes, last_tallied_at,
+  measurements_snapshot, field_schema_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
   printed_at, tallied_at, created_at
 `;
 
@@ -70,6 +76,11 @@ interface JobCardStageSlipRow {
   staff_name: string;
   wage_rate: number;
   wage_amount: number;
+  tallied_quantity?: number | null;
+  tally_wage_amount?: number | null;
+  tally_extra_amount?: number | null;
+  tally_notes?: string | null;
+  last_tallied_at?: string | null;
   measurements_snapshot: Record<string, unknown> | null;
   field_schema_snapshot: Record<string, unknown> | null;
   add_ons_snapshot: OrderItemAddOn[] | null;
@@ -81,6 +92,9 @@ interface JobCardStageSlipRow {
 }
 
 function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
+  const quantity = Number(row.quantity);
+  const talliedQuantity = Number(row.tallied_quantity ?? (row.tallied_at ? quantity : 0));
+  const tallyWageAmount = Number(row.tally_wage_amount ?? 0);
   return {
     id: row.id,
     scanToken: row.scan_token,
@@ -92,20 +106,25 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
     customerId: row.customer_id,
     customerSnapshot: row.customer_snapshot ?? undefined,
     garmentType: row.garment_type,
-    quantity: Number(row.quantity),
+    quantity,
     deliveryDate: row.delivery_date ?? undefined,
     stage: row.stage,
     staffId: row.staff_id ?? undefined,
     staffName: row.staff_name,
     wageRate: Number(row.wage_rate),
     wageAmount: Number(row.wage_amount),
+    tallyWageAmount,
+    talliedQuantity,
+    pendingQuantity: Math.max(0, quantity - talliedQuantity),
+    tallyExtraAmount: Number(row.tally_extra_amount ?? 0),
+    tallyNotes: row.tally_notes?.trim() ? row.tally_notes : undefined,
     measurementsSnapshot: row.measurements_snapshot ?? undefined,
     fieldSchemaSnapshot: row.field_schema_snapshot ?? undefined,
     addOnsSnapshot: row.add_ons_snapshot ?? undefined,
     labourAddOnsSnapshot: row.labour_add_ons_snapshot ?? undefined,
     notes: row.notes?.trim() ? row.notes : undefined,
     printedAt: row.printed_at,
-    talliedAt: row.tallied_at ?? undefined,
+    talliedAt: row.last_tallied_at ?? row.tallied_at ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -114,7 +133,16 @@ export function isMissingJobCardStageSlipsSchemaError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const code = candidate.code ?? "";
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
-  return code === "42P01" || code === "PGRST205" || message.includes("job_card_stage_slips");
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    message.includes("job_card_stage_slips") ||
+    message.includes("tallied_quantity") ||
+    message.includes("tally_wage_amount") ||
+    message.includes("tally_extra_amount") ||
+    message.includes("last_tallied_at")
+  );
 }
 
 function meaningfulMeasurements(value: unknown): Record<string, unknown> | null {
@@ -126,13 +154,16 @@ function meaningfulMeasurements(value: unknown): Record<string, unknown> | null 
 
 function labourAddOnsForStage(addOns: OrderItemAddOn[] | undefined, stage: TaskType): OrderItemAddOn[] {
   return (addOns ?? [])
-    .map((addOn) => {
+    .flatMap((addOn): OrderItemAddOn[] => {
       const amount = Number(addOn.workerStageRates?.[stage] ?? 0);
-      return Number.isFinite(amount) && amount > 0
-        ? { key: addOn.key, label: addOn.label, amount }
-        : null;
-    })
-    .filter((addOn): addOn is OrderItemAddOn => addOn !== null);
+      if (!Number.isFinite(amount) || amount <= 0) return [];
+      return [{
+        key: addOn.key,
+        label: addOn.label,
+        ...(addOn.labelTa ? { labelTa: addOn.labelTa } : {}),
+        amount,
+      }];
+    });
 }
 
 export async function createJobCardStageSlip(
@@ -193,6 +224,11 @@ async function insertJobCardStageSlip(
       staff_name: staff?.name ?? "Unassigned",
       wage_rate: wageRate,
       wage_amount: (wageRate + labourAddOnsTotal) * quantity,
+      tallied_quantity: 0,
+      tally_wage_amount: 0,
+      tally_extra_amount: 0,
+      tally_notes: null,
+      last_tallied_at: null,
       measurements_snapshot: meaningfulMeasurements(item.measurements),
       field_schema_snapshot: item.fieldSchemaSnapshot ?? null,
       add_ons_snapshot: item.addOns ?? null,
@@ -263,10 +299,57 @@ export async function markJobCardStageSlipTallied(
   supabase: SupabaseClient,
   id: string
 ): Promise<JobCardStageSlip | undefined> {
+  const current = await getJobCardStageSlipById(supabase, id);
+  if (!current) return undefined;
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("job_card_stage_slips")
-    .update({ tallied_at: new Date().toISOString() })
+    .update({
+      tallied_quantity: current.quantity,
+      tally_wage_amount: current.tallyWageAmount > 0 ? current.tallyWageAmount : current.wageAmount,
+      tallied_at: now,
+      last_tallied_at: now,
+    })
     .eq("id", id)
+    .select(JOB_CARD_STAGE_SLIP_COLUMNS)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapSlip(data as unknown as JobCardStageSlipRow) : undefined;
+}
+
+export async function markJobCardStageSlipPartiallyTallied(
+  supabase: SupabaseClient,
+  input: {
+    id: string;
+    completedQuantity: number;
+    wageAmount: number;
+    extraAmount: number;
+    notes?: string;
+  }
+): Promise<JobCardStageSlip | undefined> {
+  const current = await getJobCardStageSlipById(supabase, input.id);
+  if (!current) return undefined;
+  const completedQuantity = Math.max(1, Math.floor(input.completedQuantity));
+  const nextTalliedQuantity = Math.min(
+    current.quantity,
+    current.talliedQuantity + completedQuantity
+  );
+  const isComplete = nextTalliedQuantity >= current.quantity;
+  const now = new Date().toISOString();
+  const note = input.notes?.trim();
+  const nextNotes = [current.tallyNotes, note].filter(Boolean).join("\n");
+  const nextTallyWageAmount = current.tallyWageAmount + Math.max(0, Number(input.wageAmount) || 0);
+  const { data, error } = await supabase
+    .from("job_card_stage_slips")
+    .update({
+      tallied_quantity: nextTalliedQuantity,
+      tally_wage_amount: nextTallyWageAmount,
+      tally_extra_amount: current.tallyExtraAmount + Math.max(0, Number(input.extraAmount) || 0),
+      tally_notes: nextNotes || null,
+      last_tallied_at: now,
+      tallied_at: isComplete ? now : null,
+    })
+    .eq("id", input.id)
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
     .maybeSingle();
   if (error) throw error;
@@ -280,10 +363,10 @@ export async function getTalliedJobCardStageSlips(
   let query = supabase
     .from("job_card_stage_slips")
     .select(JOB_CARD_STAGE_SLIP_COLUMNS)
-    .not("tallied_at", "is", null)
-    .order("tallied_at", { ascending: false });
-  if (options.fromIso) query = query.gte("tallied_at", `${options.fromIso}T00:00:00`);
-  if (options.toIso) query = query.lt("tallied_at", `${options.toIso}T23:59:59.999`);
+    .or("tallied_at.not.is.null,tallied_quantity.gt.0")
+    .order("last_tallied_at", { ascending: false });
+  if (options.fromIso) query = query.gte("last_tallied_at", `${options.fromIso}T00:00:00`);
+  if (options.toIso) query = query.lt("last_tallied_at", `${options.toIso}T23:59:59.999`);
   const { data, error } = await query;
   if (error) {
     if (isMissingJobCardStageSlipsSchemaError(error)) return [];

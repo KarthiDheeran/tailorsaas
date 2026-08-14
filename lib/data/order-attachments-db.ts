@@ -7,7 +7,7 @@ import type {
 export const ORDER_ATTACHMENTS_BUCKET = "order-attachments";
 
 const ATTACHMENT_COLUMNS =
-  "id, order_id, order_item_id, order_item_serial_no, attachment_type, file_name, mime_type, file_size, storage_path, notes, created_at";
+  "id, order_id, order_item_id, order_item_serial_no, attachment_type, file_name, mime_type, file_size, storage_provider, storage_path, notes, created_at";
 
 const LEGACY_ATTACHMENT_COLUMNS =
   "id, order_id, order_item_serial_no, attachment_type, file_name, mime_type, file_size, storage_path, notes, created_at";
@@ -21,6 +21,7 @@ interface OrderAttachmentRow {
   file_name: string;
   mime_type: string;
   file_size: number;
+  storage_provider?: "supabase" | "local" | null;
   storage_path: string;
   notes: string | null;
   created_at: string;
@@ -36,6 +37,7 @@ function mapAttachment(row: OrderAttachmentRow): OrderAttachment {
     fileName: row.file_name,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),
+    storageProvider: row.storage_provider ?? "supabase",
     storagePath: row.storage_path,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
@@ -84,6 +86,7 @@ export async function createOrderAttachment(
     fileName: string;
     mimeType: string;
     fileSize: number;
+    storageProvider?: "supabase" | "local";
     storagePath: string;
     notes?: string;
     createdBy?: string;
@@ -115,6 +118,7 @@ export async function createOrderAttachment(
         file_name: data.fileName,
         mime_type: data.mimeType,
         file_size: data.fileSize,
+        storage_provider: data.storageProvider ?? "supabase",
         storage_path: data.storagePath,
         notes: data.notes?.trim() || null,
         created_by: data.createdBy ?? null,

@@ -17,6 +17,8 @@ export interface ShopBillingSettings {
   pricesIncludeTax: boolean;
   requireActiveOperator: boolean;
   operatorIdleMinutes: number;
+  attachmentStorageProvider: "supabase" | "local";
+  attachmentLocalRootPath?: string;
   footerNote: string;
 }
 
@@ -37,11 +39,13 @@ interface ShopBillingSettingsRow {
   prices_include_tax?: boolean | null;
   require_active_operator?: boolean | null;
   operator_idle_minutes?: number | null;
+  attachment_storage_provider?: string | null;
+  attachment_local_root_path?: string | null;
   footer_note: string;
 }
 
 const SETTINGS_COLUMNS =
-  "shop_name,tagline,phone,email,address,gstin,receipt_prefix,invoice_prefix,next_invoice_sequence,invoice_sequence_year,tax_enabled,tax_label,tax_rate_percent,prices_include_tax,require_active_operator,operator_idle_minutes,footer_note";
+  "shop_name,tagline,phone,email,address,gstin,receipt_prefix,invoice_prefix,next_invoice_sequence,invoice_sequence_year,tax_enabled,tax_label,tax_rate_percent,prices_include_tax,require_active_operator,operator_idle_minutes,attachment_storage_provider,attachment_local_root_path,footer_note";
 
 const LEGACY_SETTINGS_COLUMNS =
   "shop_name,tagline,phone,email,address,gstin,receipt_prefix,footer_note";
@@ -59,6 +63,7 @@ export const DEFAULT_SHOP_BILLING_SETTINGS: ShopBillingSettings = {
   pricesIncludeTax: false,
   requireActiveOperator: false,
   operatorIdleMinutes: 30,
+  attachmentStorageProvider: "supabase",
   footerNote: "Please bring this receipt during pickup.",
 };
 
@@ -82,6 +87,8 @@ function isMissingInvoiceBillingSchemaError(error: unknown): boolean {
     message.includes("invoice_prefix") ||
     message.includes("require_active_operator") ||
     message.includes("operator_idle_minutes") ||
+    message.includes("attachment_storage_provider") ||
+    message.includes("attachment_local_root_path") ||
     message.includes("tax_enabled") ||
     message.includes("tax_rate_percent")
   );
@@ -137,6 +144,11 @@ export async function upsertShopBillingSettings(
       prices_include_tax: settings.pricesIncludeTax,
       require_active_operator: settings.requireActiveOperator,
       operator_idle_minutes: settings.operatorIdleMinutes,
+      attachment_storage_provider: settings.attachmentStorageProvider,
+      attachment_local_root_path:
+        settings.attachmentStorageProvider === "local"
+          ? settings.attachmentLocalRootPath?.trim() || null
+          : null,
       footer_note: settings.footerNote.trim(),
       updated_at: new Date().toISOString(),
     })
@@ -168,6 +180,9 @@ function mapSettings(row: ShopBillingSettingsRow): ShopBillingSettings {
       row.prices_include_tax ?? DEFAULT_SHOP_BILLING_SETTINGS.pricesIncludeTax,
     requireActiveOperator: row.require_active_operator ?? false,
     operatorIdleMinutes: row.operator_idle_minutes ?? 30,
+    attachmentStorageProvider:
+      row.attachment_storage_provider === "local" ? "local" : "supabase",
+    attachmentLocalRootPath: row.attachment_local_root_path ?? undefined,
     footerNote: row.footer_note,
   };
 }

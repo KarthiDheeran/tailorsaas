@@ -139,6 +139,15 @@ function validateBillingSettings(input: ShopBillingSettings): string | null {
   if (!Number.isInteger(input.operatorIdleMinutes) || input.operatorIdleMinutes < 5 || input.operatorIdleMinutes > 240) {
     return "Operator idle lock must be between 5 and 240 minutes.";
   }
+  if (!["supabase", "local"].includes(input.attachmentStorageProvider)) {
+    return "Select a valid attachment storage option.";
+  }
+  if (
+    input.attachmentStorageProvider === "local" &&
+    !input.attachmentLocalRootPath?.trim()
+  ) {
+    return "Local attachment folder path is required.";
+  }
   if (!input.footerNote.trim()) return "Footer note is required.";
   if (input.email?.trim() && !input.email.includes("@")) return "Enter a valid email address.";
   return null;

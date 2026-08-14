@@ -184,6 +184,7 @@ export const DEFAULT_WORK_STAGES: CatalogWorkStage[] = DEFAULT_WORK_STAGE_NAMES.
 export interface CatalogAddOn {
   id: string;
   name: string;
+  nameTa?: string;
   defaultPrice: number;
   workerStageRates?: WorkerStageRates;
   isActive: boolean;
@@ -431,6 +432,7 @@ export type GarmentTypeInput = {
 
 export type AddOnInput = {
   name: string;
+  nameTa?: string;
   defaultPrice: number;
   workerStageRates?: WorkerStageRates;
   isActive: boolean;

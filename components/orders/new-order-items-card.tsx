@@ -226,6 +226,7 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
       if (!row || typeof row !== "object" || Array.isArray(row)) return [];
       const record = row as Record<string, unknown>;
       const item = typeof record.item === "string" ? record.item.trim() : "";
+      const itemTa = typeof record.itemTa === "string" ? record.itemTa.trim() : "";
       if (!item) return [];
       const qty = numberFromUnknown(record.qty);
       const itemPrice = numberFromUnknown(record.itemPrice);
@@ -239,9 +240,15 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
           : qty > 0
             ? `${item} - ${qty}`
             : item;
+      const displayTa = itemTa
+        ? qty > 0
+          ? `${itemTa} - ${qty}`
+          : itemTa
+        : undefined;
       return [{
         key: `table:${fieldCode}:${index}`,
         label: display,
+        labelTa: displayTa,
         amount: total,
         qty,
         rate: itemPrice,
@@ -1688,6 +1695,7 @@ export function computeOrderItems(
     const itemAddOns: OrderItemAddOn[] = selectedAddOns(it, garmentTypes, addOns).map((a) => ({
       key: a.id,
       label: a.name,
+      labelTa: a.nameTa,
       amount: a.defaultPrice,
       workerStageRates: a.workerStageRates,
     }));

@@ -15,9 +15,11 @@ import {
   X,
 } from "lucide-react";
 import {
+  confirmQuickTallyJobCardStageSlipAction,
   getJobCardTallyPageDataAction,
   getTalliedJobCardStageSlipsForRangeAction,
-  quickTallyJobCardStageSlipAction,
+  previewQuickTallyJobCardStageSlipAction,
+  type QuickTallyPreview,
 } from "@/app/(shell)/job-cards/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
@@ -68,6 +70,10 @@ function slipGarmentLabel(slip: JobCardStageSlip) {
     : `${slip.garmentType} - Unit ${slip.unitNo}`;
 }
 
+function slipPayableAmount(slip: JobCardStageSlip) {
+  return slip.tallyWageAmount > 0 ? slip.tallyWageAmount : slip.wageAmount;
+}
+
 function TallyContent() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const automaticallyOpenedSlipRef = useRef<string | null>(null);
@@ -86,6 +92,11 @@ function TallyContent() {
   const [sessionPayable, setSessionPayable] = useState(0);
   const [scanState, setScanState] = useState<"idle" | "success" | "error" | "duplicate">("idle");
   const [loadingTallies, setLoadingTallies] = useState(true);
+  const [pendingPreview, setPendingPreview] = useState<QuickTallyPreview | null>(null);
+  const [pendingCode, setPendingCode] = useState("");
+  const [completedQty, setCompletedQty] = useState(1);
+  const [extraAmount, setExtraAmount] = useState(0);
+  const [extraNotes, setExtraNotes] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -124,13 +135,14 @@ function TallyContent() {
       { staffName: string; count: number; amount: number; stages: Map<string, number> }
     >();
     for (const slip of visibleSlips) {
+      const talliedUnits = Math.max(1, Number(slip.talliedQuantity) || 1);
       const staffKey = slip.staffId ?? "unassigned";
       const current =
         grouped.get(staffKey) ??
         { staffName: slip.staffName, count: 0, amount: 0, stages: new Map<string, number>() };
-      current.count += 1;
-      current.amount += slip.wageAmount;
-      current.stages.set(slip.stage, (current.stages.get(slip.stage) ?? 0) + 1);
+      current.count += talliedUnits;
+      current.amount += slipPayableAmount(slip);
+      current.stages.set(slip.stage, (current.stages.get(slip.stage) ?? 0) + talliedUnits);
       grouped.set(staffKey, current);
     }
     return Array.from(grouped.entries()).map(([staffId, row]) => ({ staffId, ...row }));
@@ -140,6 +152,10 @@ function TallyContent() {
     [totals]
   );
   const latestLiveSlip = visibleSlips[0];
+  const visibleTalliedUnits = useMemo(
+    () => visibleSlips.reduce((sum, slip) => sum + Math.max(1, Number(slip.talliedQuantity) || 1), 0),
+    [visibleSlips]
+  );
   const hasLiveScanFailure = scanState === "error" || scanState === "duplicate";
 
   const focusScanField = useCallback(function focusScanField() {
@@ -148,7 +164,7 @@ function TallyContent() {
 
   const scan = useCallback(async function scan(rawCode = code) {
     const trimmed = rawCode.trim();
-    if (!trimmed || isScanning) {
+    if (!trimmed || isScanning || pendingPreview) {
       focusScanField();
       return;
     }
@@ -162,7 +178,7 @@ function TallyContent() {
     setMessage("");
     setScanState("idle");
     try {
-      const result = await quickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
+      const result = await previewQuickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
 
     if (!result.success) {
       setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
@@ -170,17 +186,17 @@ function TallyContent() {
       return;
     }
 
-    setScanned((current) => {
-      if (current.some((slip) => slip.id === result.data.id)) return current;
-      return [result.data, ...current];
-    });
-    if (result.data.talliedAt) setTallyDate(localDateKey(result.data.talliedAt));
-    setSessionCount((count) => count + 1);
-    setSessionPayable((amount) => amount + result.data.wageAmount);
-    setScanState("success");
-    setMessage(
+    setPendingPreview(result.data);
+    setPendingCode(trimmed);
+    setCompletedQty(Math.max(1, result.data.completedQuantity));
+    setExtraAmount(0);
+    setExtraNotes("");
+    setScanState("idle");
+    setMessage(`${result.data.slip.slipCode}: ${result.data.pendingQuantity} item(s) pending. Confirm completed quantity.`);
+    /*
       `${result.data.slipCode} completed — ${formatCurrency(result.data.wageAmount)} added to ${result.data.staffName}.`
     );
+    */
     } catch {
       setScanState("error");
       setMessage(`Scanned ${trimmed}: The scan could not be recorded. Please try the same barcode again.`);
@@ -190,7 +206,7 @@ function TallyContent() {
       if (inputRef.current) inputRef.current.value = "";
       focusScanField();
     }
-  }, [code, focusScanField, isScanning, selectedStaffId, sessionActive]);
+  }, [code, focusScanField, isScanning, pendingPreview, selectedStaffId, sessionActive]);
 
   useEffect(() => {
     const incomingCode = searchParams.get("scan")?.trim();
@@ -222,6 +238,62 @@ function TallyContent() {
     setMessage("");
   }
 
+  async function confirmPendingTally() {
+    if (!pendingPreview || !pendingCode || isScanning) return;
+    const quantity = Math.max(1, Math.min(pendingPreview.pendingQuantity, Math.floor(Number(completedQty) || 1)));
+    setIsScanning(true);
+    setMessage("");
+    setScanState("idle");
+    try {
+      const result = await confirmQuickTallyJobCardStageSlipAction({
+        code: pendingCode,
+        staffId: selectedStaffId,
+        completedQuantity: quantity,
+        extraAmount,
+        notes: extraNotes,
+      });
+      if (!result.success) {
+        setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
+        setMessage(`Scanned ${pendingCode}: ${result.error}`);
+        return;
+      }
+      setScanned((current) => [result.data, ...current.filter((slip) => slip.id !== result.data.id)]);
+      if (result.data.talliedAt) {
+        const talliedDate = localDateKey(result.data.talliedAt);
+        setTallyDate(talliedDate);
+        setTallyToDate((current) => (current < talliedDate ? talliedDate : current));
+      }
+      setSessionCount((count) => count + quantity);
+      setSessionPayable((amount) => amount + result.data.wageAmount);
+      setScanState("success");
+      setMessage(
+        `${result.data.slipCode}: ${quantity} item(s) tallied. ${formatCurrency(result.data.wageAmount)} added to ${result.data.staffName}.`
+      );
+      setPendingPreview(null);
+      setPendingCode("");
+      setExtraAmount(0);
+      setExtraNotes("");
+    } catch {
+      setScanState("error");
+      setMessage(`Scanned ${pendingCode}: The scan could not be recorded. Please try the same barcode again.`);
+    } finally {
+      setIsScanning(false);
+      setCode("");
+      if (inputRef.current) inputRef.current.value = "";
+      focusScanField();
+    }
+  }
+
+  function cancelPendingTally() {
+    setPendingPreview(null);
+    setPendingCode("");
+    setExtraAmount(0);
+    setExtraNotes("");
+    setScanState("idle");
+    setMessage("");
+    focusScanField();
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-5 lg:p-5">
       <div className="mb-3">
@@ -233,7 +305,7 @@ function TallyContent() {
             <h1 className="text-2xl font-semibold text-ink">Job Card Tally</h1>
             {visibleSlips.length > 0 && (
               <p className="inline-flex h-8 items-center rounded-full bg-chip-mint px-3 text-sm font-medium text-chip-mint-fg">
-                {visibleSlips.length} Scanned Today
+                {visibleTalliedUnits} Scanned Today
               </p>
             )}
           </div>
@@ -316,11 +388,118 @@ function TallyContent() {
               ? `Scanning for ${staff.find((member) => member.id === selectedStaffId)?.name ?? "selected staff"}. Staff is locked until you choose Change Staff.`
               : "Select a staff member, then start scanning. Each barcode is recorded immediately."}
           </p>
-          {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} slips · {formatCurrency(sessionPayable)}</p>}
+          {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} items · {formatCurrency(sessionPayable)}</p>}
         </div>
         {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-success" : scanState === "duplicate" ? "text-warning" : "text-danger"}`}>{message}</p>}
         {loadingTallies && <p className="mt-3 text-sm text-ink-muted">Loading saved scans...</p>}
       </section>
+
+      {pendingPreview && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm tally scan"
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-soft bg-white shadow-xl">
+            <div className="border-b border-border-soft px-6 py-4">
+              <h2 className="text-xl font-bold text-ink">Confirm Tally Scan</h2>
+              <p className="mt-1 text-sm text-ink-muted">
+                {pendingPreview.slip.slipCode} · Order {pendingPreview.slip.orderNumber} · {pendingPreview.slip.stage}
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="grid gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-3">
+                <div>
+                  <p className="text-ink-muted">Total Qty</p>
+                  <p className="mt-1 text-lg font-bold text-ink">{pendingPreview.slip.quantity}</p>
+                </div>
+                <div>
+                  <p className="text-ink-muted">Already Tallied</p>
+                  <p className="mt-1 text-lg font-bold text-ink">{pendingPreview.slip.talliedQuantity}</p>
+                </div>
+                <div>
+                  <p className="text-ink-muted">Pending</p>
+                  <p className="mt-1 text-lg font-bold text-primary">{pendingPreview.pendingQuantity}</p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm font-semibold text-ink-muted">
+                  Completed Qty
+                  <input
+                    type="number"
+                    min={1}
+                    max={pendingPreview.pendingQuantity}
+                    value={completedQty}
+                    onChange={(event) => setCompletedQty(Math.max(1, Math.min(pendingPreview.pendingQuantity, Number(event.target.value) || 1)))}
+                    className="h-12 rounded-[10px] border border-border px-3 text-base font-semibold text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    autoFocus
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-semibold text-ink-muted">
+                  Extra Amount
+                  <input
+                    type="number"
+                    min={0}
+                    value={extraAmount}
+                    onChange={(event) => setExtraAmount(Math.max(0, Number(event.target.value) || 0))}
+                    className="h-12 rounded-[10px] border border-border px-3 text-base font-semibold text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1 text-sm font-semibold text-ink-muted">
+                Extra Notes
+                <textarea
+                  value={extraNotes}
+                  onChange={(event) => setExtraNotes(event.target.value)}
+                  className="min-h-[78px] rounded-[10px] border border-border px-3 py-2 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  placeholder="Optional notes for extra work"
+                />
+              </label>
+              <div className="grid gap-2 rounded-xl border border-border-soft bg-white px-3 py-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-ink-muted">Base rate</span>
+                  <span className="font-semibold text-ink">{formatCurrency(pendingPreview.basePerUnitWageAmount)} × {Number(completedQty) || 0}</span>
+                </div>
+                {pendingPreview.labourPerUnitWageAmount > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-muted">Work details / add-on labour</span>
+                    <span className="font-semibold text-ink">{formatCurrency(pendingPreview.labourPerUnitWageAmount)} × {Number(completedQty) || 0}</span>
+                  </div>
+                )}
+                {extraAmount > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-muted">Extra amount</span>
+                    <span className="font-semibold text-ink">{formatCurrency(extraAmount)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-primary/20 bg-primary-tint px-3 py-2 text-sm font-semibold text-primary">
+                Payable now: {formatCurrency((Number(completedQty) || 0) * pendingPreview.perUnitWageAmount + extraAmount)}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-border-soft px-6 py-4">
+              <button
+                type="button"
+                onClick={cancelPendingTally}
+                disabled={isScanning}
+                className="h-12 rounded-[10px] border border-border px-5 text-sm font-semibold text-ink transition hover:bg-surface-muted disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmPendingTally()}
+                disabled={isScanning}
+                className="h-12 rounded-[10px] bg-primary px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:opacity-60"
+              >
+                Confirm Tally
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isScanning && (
         <div
@@ -399,7 +578,7 @@ function TallyContent() {
         <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-surface-muted px-4 shadow-sm">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-chip-mint text-primary"><QrCode className="h-5 w-5" /></span>
-            <div><p className="text-sm font-medium text-ink-muted">Today&apos;s Scans</p><p className="text-[22px] font-bold text-ink">{visibleSlips.length}</p></div>
+            <div><p className="text-sm font-medium text-ink-muted">Today&apos;s Scans</p><p className="text-[22px] font-bold text-ink">{visibleTalliedUnits}</p></div>
           </div>
           <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-white px-4 shadow-sm">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-tint text-primary"><Users className="h-5 w-5" /></span>
@@ -428,7 +607,7 @@ function TallyContent() {
                     <p className="min-w-0 truncate font-semibold text-ink">{row.staffName}</p>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
-                    <div><p className="text-xs font-medium text-ink-muted">Slips</p><p className="mt-0.5 text-lg font-bold text-ink">{row.count}</p></div>
+                    <div><p className="text-xs font-medium text-ink-muted">Items</p><p className="mt-0.5 text-lg font-bold text-ink">{row.count}</p></div>
                     <div><p className="text-xs font-medium text-ink-muted">Payable</p><p className="mt-0.5 text-lg font-bold text-primary">{formatCurrency(row.amount)}</p></div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-ink-muted">
@@ -477,7 +656,7 @@ function TallyContent() {
                       <td className="px-3 py-2 text-ink"><span className="flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{slip.staffName}</span></td>
                       <td className="px-3 py-2 text-sm text-ink-muted"><span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />{localTime(slip.talliedAt)}</span></td>
                       <td className="px-3 py-2 text-right text-[18px] font-bold text-primary">
-                        {formatCurrency(slip.wageAmount)}
+                        {formatCurrency(slipPayableAmount(slip))}
                       </td>
                     </tr>
                   ))

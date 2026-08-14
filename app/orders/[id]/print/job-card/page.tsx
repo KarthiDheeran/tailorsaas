@@ -19,6 +19,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { measurementFieldLabel, measurementFields } from "@/lib/catalog";
 import {
   historicalGarmentValueText,
+  historicalGarmentValueTextForPrint,
   resolveHistoricalGarmentDisplayFields,
   shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
@@ -121,7 +122,8 @@ function firstValue(value: string | string[] | undefined) {
 
 function measurementEntries(
   measurements?: Record<string, unknown>,
-  fieldSchemaSnapshot?: Record<string, unknown>
+  fieldSchemaSnapshot?: Record<string, unknown>,
+  locale: "en" | "ta" = "en"
 ) {
   if (!measurements) return [];
   if (fieldSchemaSnapshot) {
@@ -130,7 +132,7 @@ function measurementEntries(
       .map((field) => ({
         key: field.code,
         label: field.unit ? `${field.label} (${field.unit})` : field.label,
-        value: historicalGarmentValueText(field.value),
+        value: historicalGarmentValueTextForPrint(field.value, field.uiMetadata, locale),
       }));
   }
   const keys = [
@@ -400,7 +402,7 @@ function StageSlipPrintV2({
 }) {
   const { locale } = useLanguage();
   const labels = SLIP_LABELS[locale];
-  const measurements = measurementEntries(slip.measurementsSnapshot, slip.fieldSchemaSnapshot);
+  const measurements = measurementEntries(slip.measurementsSnapshot, slip.fieldSchemaSnapshot, locale);
   const measurementRows = chunkEntries(measurements, 4);
   const barcodeValue = toBarcodeValue(slip.slipCode);
   const barcodeMetrics = barcodeSvgMetrics(barcodeValue);
@@ -408,8 +410,8 @@ function StageSlipPrintV2({
   const customerPhone = customer?.phone ?? slip.customerSnapshot?.phone ?? "-";
   const assignedWorker = slip.staffId ? slip.staffName : "";
   const addOns =
-    slip.labourAddOnsSnapshot?.map((addOn) => addOn.label).filter(Boolean) ??
-    slip.addOnsSnapshot?.map((addOn) => addOn.label).filter(Boolean) ??
+    slip.labourAddOnsSnapshot?.map((addOn) => addOn.labelTa || addOn.label).filter(Boolean) ??
+    slip.addOnsSnapshot?.map((addOn) => addOn.labelTa || addOn.label).filter(Boolean) ??
     [];
 
   return (
