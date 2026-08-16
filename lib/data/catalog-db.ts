@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_WORK_STAGES,
   defaultGarmentSectionForName,
+  defaultProductionPrintGroupForName,
   initialShortcutCodeForGarmentName,
   isBodyMeasurementLayout,
+  isProductionPrintGroup,
 } from "@/lib/catalog";
 import type {
   AddOnInput,
@@ -346,7 +348,7 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
-  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, is_active";
+  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, is_active";
 const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
@@ -360,6 +362,8 @@ interface GarmentRow {
   addon_ids: string[];
   show_order_addons?: boolean | null;
   body_measurement_layout?: BodyMeasurementLayout | null;
+  production_print_group?: string | null;
+  customer_print_name?: string | null;
   is_active: boolean;
 }
 
@@ -387,6 +391,10 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
     bodyMeasurementLayout: isBodyMeasurementLayout(row.body_measurement_layout)
       ? row.body_measurement_layout
       : "columns",
+    productionPrintGroup: isProductionPrintGroup(row.production_print_group)
+      ? row.production_print_group
+      : defaultProductionPrintGroupForName(row.name),
+    customerPrintName: row.customer_print_name?.trim() || null,
     isActive: row.is_active,
   };
 }
@@ -476,6 +484,8 @@ export async function createGarmentType(
       addon_ids: data.addOnIds,
       show_order_addons: data.showOrderAddOns,
       body_measurement_layout: data.bodyMeasurementLayout,
+      production_print_group: data.productionPrintGroup,
+      customer_print_name: data.customerPrintName?.trim() || null,
       is_active: data.isActive,
     })
     .select(GARMENT_COLUMNS)
@@ -500,6 +510,8 @@ export async function updateGarmentType(
       addon_ids: data.addOnIds,
       show_order_addons: data.showOrderAddOns,
       body_measurement_layout: data.bodyMeasurementLayout,
+      production_print_group: data.productionPrintGroup,
+      customer_print_name: data.customerPrintName?.trim() || null,
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     })

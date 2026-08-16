@@ -12,9 +12,11 @@ import type {
   GarmentTypeInput,
 } from "@/lib/catalog";
 import {
+  defaultProductionPrintGroupForName,
   defaultGarmentSectionForName,
   initialShortcutCodeForGarmentName,
   isBodyMeasurementLayout,
+  isProductionPrintGroup,
   type BodyMeasurementLayout,
   type CatalogGarmentType,
   type GarmentSection,
@@ -174,7 +176,7 @@ const GARMENT_FIELD_SELECT = `
 `;
 
 const GARMENT_CONFIGURATION_SELECT = `
-  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, is_active,
+  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, is_active,
   garment_type_fields(${GARMENT_FIELD_SELECT})
 `;
 
@@ -188,6 +190,8 @@ type GarmentConfigurationRow = {
   addon_ids: string[] | null;
   show_order_addons?: boolean | null;
   body_measurement_layout?: BodyMeasurementLayout | null;
+  production_print_group?: string | null;
+  customer_print_name?: string | null;
   is_active: boolean;
   garment_type_fields: GarmentFieldRow[] | null;
 };
@@ -205,6 +209,10 @@ function mapConfigurationGarment(row: GarmentConfigurationRow): CatalogGarmentTy
     bodyMeasurementLayout: isBodyMeasurementLayout(row.body_measurement_layout)
       ? row.body_measurement_layout
       : "columns",
+    productionPrintGroup: isProductionPrintGroup(row.production_print_group)
+      ? row.production_print_group
+      : defaultProductionPrintGroupForName(row.name),
+    customerPrintName: row.customer_print_name?.trim() || null,
     isActive: row.is_active,
   };
 }
@@ -368,6 +376,8 @@ export async function saveGarmentTypeConfiguration(
     p_addon_ids: garment.addOnIds,
     p_show_order_addons: garment.showOrderAddOns,
     p_body_measurement_layout: garment.bodyMeasurementLayout,
+    p_production_print_group: garment.productionPrintGroup,
+    p_customer_print_name: garment.customerPrintName?.trim() || null,
     p_is_active: garment.isActive,
     p_legacy_measurement_field_ids: legacyMeasurementFieldIds,
     p_field_assignments: assignments.map((assignment) => ({

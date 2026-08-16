@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import {
   getOrderByIdAction,
   getPaymentsForOrderAction,
+  getPrintableGarmentTypesAction,
 } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/data/shop-billing-settings-db";
 import { barcodeSvgDataUri, barcodeSvgMetrics } from "@/lib/barcode-code128";
 import { formatCurrency } from "@/lib/currency";
+import type { CatalogGarmentType } from "@/lib/catalog";
 import type { Customer, Order, OrderItemAddOn, Payment } from "@/lib/types";
 
 type PaymentModeSummary =
@@ -33,7 +35,7 @@ type ReceiptRow =
       key: string;
       particular: string;
       qty: number;
-      rate: number;
+      rate: number | "Mixed";
       total: number;
     }
   | {
@@ -103,21 +105,31 @@ function normalizedTableAddOnLabel(label: string): string {
   return label.replace(/\s+-\s+\d+$/, "").trim();
 }
 
-function receiptRows(order: Order): ReceiptRow[] {
-  const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
+function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptRow[] {
+  const garmentsById = new Map(garmentTypes.map((garment) => [garment.id, garment]));
+  const garmentsByName = new Map(
+    garmentTypes.map((garment) => [garment.name.trim().toLowerCase(), garment])
+  );
+  const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; rates: Set<number>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
   for (const item of order.items) {
-    const displayParticular = item.particular.trim();
-    const groupKey = `${displayParticular.toLocaleLowerCase()}|${item.rate}`;
+    const garment =
+      (item.garmentTypeId ? garmentsById.get(item.garmentTypeId) : undefined) ??
+      garmentsByName.get(item.particular.trim().toLowerCase());
+    const displayParticular = garment?.customerPrintName?.trim() || item.particular.trim();
+    const groupKey = displayParticular.toLocaleLowerCase();
     let group = groups.get(groupKey);
     if (!group) {
       group = {
         item: { type: "item", key: `item-${groupKey}`, particular: displayParticular, qty: 0, rate: item.rate, total: 0 },
+        rates: new Set(),
         addOns: new Map(),
       };
       groups.set(groupKey, group);
     }
     group.item.qty += item.qty;
     group.item.total += item.qty * item.rate;
+    group.rates.add(item.rate);
+    group.item.rate = group.rates.size === 1 ? item.rate : "Mixed";
     for (const addOn of item.addOns ?? []) {
       const addOnQty = addOnReceiptQuantity(addOn, item.qty);
       const addOnRate = addOnReceiptRate(addOn);
@@ -239,7 +251,7 @@ function ReceiptPage({
                   <tr key={row.key}>
                     <td>{row.particular}</td>
                     <td className="num">{row.qty}</td>
-                    <td className="num">{formatCurrency(row.rate)}</td>
+                    <td className="num">{row.rate === "Mixed" ? "Mixed" : formatCurrency(row.rate)}</td>
                     <td className="num">{formatCurrency(row.total)}</td>
                   </tr>
                 ) : (
@@ -312,6 +324,7 @@ function CustomerReceiptPrintPageContent({
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [customer, setCustomer] = useState<Customer | undefined>(undefined);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [garmentTypes, setGarmentTypes] = useState<CatalogGarmentType[]>([]);
   const [billingSettings, setBillingSettings] = useState<ShopBillingSettings>(
     DEFAULT_SHOP_BILLING_SETTINGS
   );
@@ -320,6 +333,9 @@ function CustomerReceiptPrintPageContent({
     let cancelled = false;
     getPrintableBillingSettingsAction().then((settings) => {
       if (!cancelled) setBillingSettings(settings);
+    });
+    getPrintableGarmentTypesAction().then((result) => {
+      if (!cancelled) setGarmentTypes(result);
     });
     getOrderByIdAction(params.id).then((result) => {
       if (cancelled) return;
@@ -351,8 +367,8 @@ function CustomerReceiptPrintPageContent({
 
   const pages = useMemo(() => {
     if (!order) return [[]] as ReceiptRow[][];
-    return paginateRows(receiptRows(order));
-  }, [order]);
+    return paginateRows(receiptRows(order, garmentTypes));
+  }, [order, garmentTypes]);
 
   if (order === undefined) return null;
   if (order === null) notFound();

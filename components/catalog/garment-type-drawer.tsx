@@ -6,8 +6,10 @@ import {
   BODY_MEASUREMENT_LAYOUTS,
   GARMENT_SECTIONS,
   MEASUREMENT_FIELD_GROUPS,
+  PRODUCTION_PRINT_GROUPS,
   customMeasurementFieldId,
   customMeasurementFieldLabel,
+  defaultProductionPrintGroupForName,
   isCustomMeasurementFieldId,
   measurementFieldLabel,
   type CatalogAddOn,
@@ -15,6 +17,7 @@ import {
   type CatalogGarmentType,
   type GarmentSection,
   type GarmentTypeInput,
+  type ProductionPrintGroup,
 } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
@@ -50,6 +53,10 @@ export function GarmentTypeDrawer({
   const [showOrderAddOns] = useState(garment?.showOrderAddOns ?? true);
   const [bodyMeasurementLayout, setBodyMeasurementLayout] =
     useState<BodyMeasurementLayout>(garment?.bodyMeasurementLayout ?? "columns");
+  const [productionPrintGroup, setProductionPrintGroup] = useState<ProductionPrintGroup>(
+    garment?.productionPrintGroup ?? defaultProductionPrintGroupForName(garment?.name ?? "")
+  );
+  const [customerPrintName, setCustomerPrintName] = useState(garment?.customerPrintName ?? "");
   const [isActive, setIsActive] = useState(garment?.isActive ?? true);
   const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>(
     garment?.measurementFieldIds ?? []
@@ -146,6 +153,8 @@ export function GarmentTypeDrawer({
       addOnIds: selectedAddOnIds,
       showOrderAddOns,
       bodyMeasurementLayout,
+      productionPrintGroup,
+      customerPrintName: customerPrintName.trim() || null,
       isActive,
     });
     setSubmitting(false);
@@ -288,6 +297,35 @@ export function GarmentTypeDrawer({
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Production Print Group
+                  </span>
+                  <select
+                    value={productionPrintGroup}
+                    onChange={(e) =>
+                      setProductionPrintGroup(e.target.value as ProductionPrintGroup)
+                    }
+                    className={inputClass}
+                  >
+                    {PRODUCTION_PRINT_GROUPS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-ink-muted">
+                    Customer Print Name
+                  </span>
+                  <input
+                    value={customerPrintName}
+                    onChange={(e) => setCustomerPrintName(e.target.value)}
+                    placeholder={name || "Same as garment name"}
+                    className={inputClass}
+                  />
                 </label>
               </div>
             </div>

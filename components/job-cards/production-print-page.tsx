@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Printer, Search } from "lucide-react";
 import {
   createProductionPrintBundleAction,
+  getProductionPrintGarmentsAction,
   getProductionPrintOrdersAction,
 } from "@/app/(shell)/job-cards/actions";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
-import { GARMENT_SECTIONS, type GarmentSection } from "@/lib/catalog";
+import {
+  GARMENT_SECTIONS,
+  PRODUCTION_PRINT_GROUPS,
+  type CatalogGarmentType,
+  type GarmentSection,
+  type ProductionPrintGroup,
+} from "@/lib/catalog";
 import type { Order } from "@/lib/types";
+
+type ProductionGroupFilter = ProductionPrintGroup | "All";
 
 function sequenceFor(order: Order) {
   if (typeof order.orderSequence === "number") return order.orderSequence;
@@ -18,8 +27,10 @@ function sequenceFor(order: Order) {
 
 export function ProductionPrintPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [garments, setGarments] = useState<CatalogGarmentType[]>([]);
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<GarmentSection>("Men");
+  const [productionGroup, setProductionGroup] = useState<ProductionGroupFilter>("All");
   const [fromSequence, setFromSequence] = useState("");
   const [toSequence, setToSequence] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -33,10 +44,29 @@ export function ProductionPrintPage() {
     getProductionPrintOrdersAction()
       .then((result) => !cancelled && setOrders(result))
       .catch(() => !cancelled && setOrders([]));
+    getProductionPrintGarmentsAction()
+      .then((result) => !cancelled && setGarments(result))
+      .catch(() => !cancelled && setGarments([]));
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const garmentsById = useMemo(() => new Map(garments.map((garment) => [garment.id, garment])), [garments]);
+  const garmentsByName = useMemo(
+    () => new Map(garments.map((garment) => [garment.name.trim().toLowerCase(), garment])),
+    [garments]
+  );
+
+  const matchingProductionItems = useCallback((order: Order) => {
+    if (productionGroup === "All") return order.items;
+    return order.items.filter((item) => {
+      const garment =
+        (item.garmentTypeId ? garmentsById.get(item.garmentTypeId) : undefined) ??
+        garmentsByName.get(item.particular.trim().toLowerCase());
+      return garment?.productionPrintGroup === productionGroup;
+    });
+  }, [garmentsById, garmentsByName, productionGroup]);
 
   const printableOrders = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -50,6 +80,7 @@ export function ProductionPrintPage() {
         if (sequence === null || (from !== null && sequence < from) || (to !== null && sequence > to)) return false;
         if (fromDate && order.orderDate < fromDate) return false;
         if (toDate && order.orderDate > toDate) return false;
+        if (productionGroup !== "All" && matchingProductionItems(order).length === 0) return false;
         if (!normalized) return true;
         return [order.orderNumber, order.customerSnapshot?.name, order.customerSnapshot?.phone]
           .filter(Boolean)
@@ -65,7 +96,11 @@ export function ProductionPrintPage() {
         if (leftSequence === null && rightSequence !== null) return 1;
         return right.orderDate.localeCompare(left.orderDate) || right.orderNumber.localeCompare(left.orderNumber);
       });
-  }, [fromSequence, fromDate, toDate, orders, query, section, toSequence]);
+  }, [fromSequence, fromDate, toDate, orders, query, section, toSequence, productionGroup, matchingProductionItems]);
+
+  const ordersToPrint = selected.size > 0
+    ? printableOrders.filter((order) => selected.has(order.id))
+    : printableOrders;
 
   function selectFiltered() {
     setSelected(new Set(printableOrders.map((order) => order.id)));
@@ -81,12 +116,12 @@ export function ProductionPrintPage() {
   }
 
   async function printBundle() {
-    if (selected.size === 0) return;
+    if (ordersToPrint.length === 0) return;
     const previewWindow = window.open("", "_blank");
     if (previewWindow) previewWindow.opener = null;
     setPrinting(true);
     setError("");
-    const result = await createProductionPrintBundleAction(Array.from(selected));
+    const result = await createProductionPrintBundleAction(ordersToPrint.map((order) => order.id), productionGroup);
     setPrinting(false);
     if (!result.success) {
       previewWindow?.close();
@@ -109,13 +144,14 @@ export function ProductionPrintPage() {
       </div>
       <JobCardTabs active="production-print" />
       <section className="mt-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
-        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_140px_105px_105px_145px_145px_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_140px_120px_105px_105px_145px_145px_auto] lg:items-end">
           <label className="relative block min-w-0 flex-1 sm:max-w-xl">
             <span className="mb-1.5 block text-xs font-semibold text-ink-muted">Search</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by order number, customer, or phone" className="h-11 w-full rounded-xl border border-border bg-white pl-10 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Order section</span><select value={section} onChange={(event) => { setSection(event.target.value as GarmentSection); setSelected(new Set()); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{GARMENT_SECTIONS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">Print group</span><select value={productionGroup} onChange={(event) => { setProductionGroup(event.target.value as ProductionGroupFilter); setSelected(new Set()); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"><option value="All">All</option>{PRODUCTION_PRINT_GROUPS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">From no.</span><input type="number" min="1" inputMode="numeric" value={fromSequence} onChange={(event) => setFromSequence(event.target.value)} placeholder="1" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">To no.</span><input type="number" min="1" inputMode="numeric" value={toSequence} onChange={(event) => setToSequence(event.target.value)} placeholder="20" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
           <label><span className="mb-1.5 block text-xs font-semibold text-ink-muted">From date</span><input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
@@ -124,14 +160,14 @@ export function ProductionPrintPage() {
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-ink-muted">
-            Range: {fromSequence || "1"} to {toSequence || "..."}. Each item prints one quantity-based Cutting card, then one Stitching card.
+            Range: {fromSequence || "1"} to {toSequence || "..."}. {productionGroup === "All" ? "All garment groups" : `${productionGroup} group only`}. Each item prints one quantity-based Cutting card, then one Stitching card.
           </p>
-          <button type="button" onClick={() => void printBundle()} disabled={printing || selected.size === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({selected.size})</button>
+          <button type="button" onClick={() => void printBundle()} disabled={printing || ordersToPrint.length === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({ordersToPrint.length})</button>
         </div>
         {error && <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">{error}</p>}
         {orders === null ? <p className="py-12 text-center text-sm text-ink-muted">Loading orders...</p> : (
           <div className="mt-4 overflow-x-auto rounded-xl border border-border-soft">
-            <table className="min-w-full text-left text-sm"><thead className="bg-surface-muted text-ink-muted"><tr><th className="w-12 px-4 py-3"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Delivery</th><th className="px-4 py-3 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => <tr key={order.id} className="border-t border-border-soft hover:bg-primary-tint/30"><td className="px-4 py-3"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="px-4 py-3 font-semibold text-primary">{order.orderNumber}</td><td className="px-4 py-3"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="px-4 py-3 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="px-4 py-3 text-right text-ink">{order.items.map((item) => `${item.particular} x${item.qty}`).join(", ")}</td></tr>)}</tbody></table>
+            <table className="min-w-full text-left text-sm"><thead className="bg-surface-muted text-ink-muted"><tr><th className="w-12 px-4 py-3"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Delivery</th><th className="px-4 py-3 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => { const items = matchingProductionItems(order); return <tr key={order.id} className="border-t border-border-soft hover:bg-primary-tint/30"><td className="px-4 py-3"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="px-4 py-3 font-semibold text-primary">{order.orderNumber}</td><td className="px-4 py-3"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="px-4 py-3 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="px-4 py-3 text-right text-ink">{items.map((item) => `${item.particular} x${item.qty}`).join(", ")}</td></tr>; })}</tbody></table>
             {printableOrders.length === 0 && <p className="p-10 text-center text-sm text-ink-muted">No printable orders found.</p>}
           </div>
         )}

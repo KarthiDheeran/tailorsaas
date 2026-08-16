@@ -19,6 +19,7 @@ import {
   getJobCardTallyPageDataAction,
   getTalliedJobCardStageSlipsForRangeAction,
   previewQuickTallyJobCardStageSlipAction,
+  quickTallyJobCardStageSlipAction,
   type QuickTallyPreview,
 } from "@/app/(shell)/job-cards/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -90,7 +91,8 @@ function TallyContent() {
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [sessionPayable, setSessionPayable] = useState(0);
-  const [scanState, setScanState] = useState<"idle" | "success" | "error" | "duplicate">("idle");
+  const [scanMode, setScanMode] = useState<"quick" | "partial">("quick");
+  const [scanState, setScanState] = useState<"idle" | "processing" | "success" | "error" | "duplicate">("idle");
   const [loadingTallies, setLoadingTallies] = useState(true);
   const [pendingPreview, setPendingPreview] = useState<QuickTallyPreview | null>(null);
   const [pendingCode, setPendingCode] = useState("");
@@ -157,6 +159,7 @@ function TallyContent() {
     [visibleSlips]
   );
   const hasLiveScanFailure = scanState === "error" || scanState === "duplicate";
+  const isProcessingScan = scanState === "processing";
 
   const focusScanField = useCallback(function focusScanField() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -175,9 +178,35 @@ function TallyContent() {
       return;
     }
     setIsScanning(true);
-    setMessage("");
-    setScanState("idle");
+    setMessage(`Scanned ${trimmed}: Recording worker payable...`);
+    setScanState("processing");
+    setCode("");
+    if (inputRef.current) inputRef.current.value = "";
     try {
+      if (scanMode === "quick") {
+        const result = await quickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
+        if (!result.success) {
+          setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
+          setMessage(`Scanned ${trimmed}: ${result.error}`);
+          return;
+        }
+        const talliedUnits = Math.max(1, Number(result.data.talliedQuantity) || Number(result.data.quantity) || 1);
+        const payable = slipPayableAmount(result.data);
+        setScanned((current) => [result.data, ...current.filter((slip) => slip.id !== result.data.id)]);
+        if (result.data.talliedAt) {
+          const talliedDate = localDateKey(result.data.talliedAt);
+          setTallyDate(talliedDate);
+          setTallyToDate((current) => (current < talliedDate ? talliedDate : current));
+        }
+        setSessionCount((count) => count + talliedUnits);
+        setSessionPayable((amount) => amount + payable);
+        setScanState("success");
+        setMessage(
+          `${result.data.slipCode}: ${talliedUnits} item(s) tallied. ${formatCurrency(payable)} added to ${result.data.staffName}.`
+        );
+        return;
+      }
+
       const result = await previewQuickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
 
     if (!result.success) {
@@ -202,11 +231,9 @@ function TallyContent() {
       setMessage(`Scanned ${trimmed}: The scan could not be recorded. Please try the same barcode again.`);
     } finally {
       setIsScanning(false);
-      setCode("");
-      if (inputRef.current) inputRef.current.value = "";
       focusScanField();
     }
-  }, [code, focusScanField, isScanning, pendingPreview, selectedStaffId, sessionActive]);
+  }, [code, focusScanField, isScanning, pendingPreview, scanMode, selectedStaffId, sessionActive]);
 
   useEffect(() => {
     const incomingCode = searchParams.get("scan")?.trim();
@@ -390,7 +417,39 @@ function TallyContent() {
           </p>
           {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} items · {formatCurrency(sessionPayable)}</p>}
         </div>
-        {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-success" : scanState === "duplicate" ? "text-warning" : "text-danger"}`}>{message}</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Scan mode</span>
+          <button
+            type="button"
+            onClick={() => setScanMode("quick")}
+            disabled={isScanning || Boolean(pendingPreview)}
+            className={`h-9 rounded-lg border px-3 text-sm font-semibold transition ${
+              scanMode === "quick"
+                ? "border-primary bg-primary text-white"
+                : "border-border bg-white text-ink hover:bg-primary-tint"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            Quick Scan
+          </button>
+          <button
+            type="button"
+            onClick={() => setScanMode("partial")}
+            disabled={isScanning || Boolean(pendingPreview)}
+            className={`h-9 rounded-lg border px-3 text-sm font-semibold transition ${
+              scanMode === "partial"
+                ? "border-primary bg-primary text-white"
+                : "border-border bg-white text-ink hover:bg-primary-tint"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            Partial / Extra
+          </button>
+          <span className="text-xs text-ink-muted">
+            {scanMode === "quick"
+              ? "Daily scanning: records the full pending slip immediately."
+              : "Monthly/special use: asks quantity and extra amount before saving."}
+          </span>
+        </div>
+        {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-success" : scanState === "duplicate" ? "text-warning" : scanState === "processing" ? "text-primary" : "text-danger"}`}>{message}</p>}
         {loadingTallies && <p className="mt-3 text-sm text-ink-muted">Loading saved scans...</p>}
       </section>
 
@@ -501,7 +560,7 @@ function TallyContent() {
         </div>
       )}
 
-      {isScanning && (
+      {isScanning && pendingPreview && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 px-4"
           role="status"
@@ -530,6 +589,8 @@ function TallyContent() {
             ? scanState === "duplicate"
               ? "border-warning/30 bg-warning-soft"
               : "border-danger/30 bg-danger-soft"
+            : isProcessingScan
+              ? "border-primary/30 bg-primary-tint"
             : latestLiveSlip
               ? "border-success/30 bg-primary-tint shadow-[0_4px_14px_rgba(22,163,74,0.10)]"
               : "border-border-soft bg-surface-muted"
@@ -545,6 +606,19 @@ function TallyContent() {
               <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${scanState === "duplicate" ? "bg-warning-soft text-warning" : "bg-danger-soft text-danger"}`}>{scanState === "duplicate" ? "ALREADY TALLIED" : "FAILED"}</span>
             </div>
             <p className={`text-sm font-medium ${scanState === "duplicate" ? "text-warning" : "text-danger"}`}>{message}</p>
+          </div>
+        ) : isProcessingScan ? (
+          <div className="flex min-h-[74px] flex-col justify-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-primary">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                </span>
+                <h2 className="text-lg font-bold text-ink">Live Scan Status</h2>
+              </div>
+              <span className="inline-flex rounded-full bg-white px-3 py-1 text-sm font-semibold text-primary">RECORDING</span>
+            </div>
+            <p className="text-sm font-medium text-primary">{message || "Recording scan..."}</p>
           </div>
         ) : latestLiveSlip ? (
           <div className="animate-[pulse_200ms_ease-out]">

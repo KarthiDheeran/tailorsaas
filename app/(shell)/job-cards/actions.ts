@@ -69,7 +69,7 @@ import {
   type CustomerFabricInput,
   type StockAdjustmentInput,
 } from "@/lib/data/inventory-db";
-import { getActiveWorkStages, getFinalWorkStage } from "@/lib/data/catalog-db";
+import { getActiveGarmentTypes, getActiveWorkStages, getFinalWorkStage } from "@/lib/data/catalog-db";
 import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import type {
@@ -85,7 +85,7 @@ import type {
   WorkAssignment,
 } from "@/lib/types";
 import { inventoryUnits } from "@/lib/constants";
-import { GARMENT_SECTIONS } from "@/lib/catalog";
+import { GARMENT_SECTIONS, type CatalogGarmentType, type ProductionPrintGroup } from "@/lib/catalog";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
@@ -482,6 +482,13 @@ export async function previewJobCardStageSlipAction(
   return slip ? { success: true, data: slip } : { success: false, error: "Job card not found." };
 }
 
+export async function getProductionPrintGarmentsAction(): Promise<CatalogGarmentType[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return [];
+  return getActiveGarmentTypes(supabase);
+}
+
 export interface QuickTallyPreview {
   slip: JobCardStageSlip;
   pendingQuantity: number;
@@ -519,81 +526,11 @@ export async function quickTallyJobCardStageSlipAction(
   if (!normalizedCode) return { success: false, error: "Scan a job card barcode." };
   if (!normalizedStaffId) return { success: false, error: "Select a staff member before scanning." };
 
-  const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "staff.manage");
-  if (!guard.ok) return { success: false, error: guard.error };
-
-  try {
-    const admin = createAdminClient();
-    const [slip, staff] = await Promise.all([
-      getJobCardStageSlipByScanCode(admin, normalizedCode),
-      getStaffById(admin, normalizedStaffId),
-    ]);
-    if (!slip) return { success: false, error: "Job card not found." };
-    if (slip.talliedAt) return { success: false, error: `Already tallied for ${slip.staffName}. No payroll was added.` };
-    if (!staff || staff.status !== "Active") {
-      return { success: false, error: "Choose an active staff member." };
-    }
-    const shopError = await requireStaffSameShopForOrder(slip.orderId, staff.id);
-    if (shopError) return { success: false, error: shopError };
-    if (slip.staffId && slip.staffId !== staff.id) {
-      return { success: false, error: `This printed slip is assigned to ${slip.staffName}. Use that staff member or transfer the job card first.` };
-    }
-
-    let tallySlip = slip;
-    if (!slip.staffId) {
-      const order = await getOrderById(admin, slip.orderId);
-      const item = order?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
-      if (!order || !item) return { success: false, error: "Order item for this job card was not found." };
-      const wageRate = staffGarmentStageRate(staff, item.garmentTypeId, slip.stage);
-      const labourAddOnsTotal = (slip.labourAddOnsSnapshot ?? []).reduce(
-        (sum, addOn) => sum + Number(addOn.amount ?? 0),
-        0
-      );
-      const perUnitWageAmount = wageRate + labourAddOnsTotal;
-      // Assign every internal garment unit first. The operation is idempotent
-      // for the same worker/stage, so an interrupted batch can be retried
-      // while the still-unassigned slip remains safely unpayable.
-      for (let offset = 0; offset < slip.quantity; offset += 1) {
-        await assignJobCardForStageSlip(admin, {
-          orderId: slip.orderId,
-          orderItemSerialNo: slip.orderItemSerialNo,
-          unitNo: slip.unitNo + offset,
-          taskType: slip.stage,
-          staffId: staff.id,
-          wageRate,
-          wageAmount: perUnitWageAmount,
-          notes: slip.notes,
-          allowReadyBackfill: true,
-        });
-      }
-
-      const assignedSlip = await assignJobCardStageSlipForTally(admin, {
-        id: slip.id,
-        staffId: staff.id,
-        staffName: staff.name,
-        wageRate,
-        wageAmount: perUnitWageAmount * slip.quantity,
-      });
-      if (!assignedSlip) {
-        const latest = await getJobCardStageSlipById(admin, slip.id);
-        return latest?.talliedAt
-          ? { success: false, error: `Already tallied for ${latest.staffName}. No payroll was added.` }
-          : { success: false, error: "This job card is no longer available for tally." };
-      }
-      tallySlip = assignedSlip;
-    }
-
-    const result = await confirmStageSlipTally(tallySlip, guard.userId);
-    if (result.success) return result;
-    const latest = await getJobCardStageSlipById(admin, slip.id);
-    if (latest?.talliedAt) {
-      return { success: false, error: `Already tallied for ${latest.staffName}. No payroll was added.` };
-    }
-    return result;
-  } catch (error) {
-    return { success: false, error: errorMessage(error, "Failed to tally the scanned job card.") };
-  }
+  return confirmQuickTallyJobCardStageSlipAction({
+    code: normalizedCode,
+    staffId: normalizedStaffId,
+    completedQuantity: 0,
+  });
 }
 
 export async function previewQuickTallyJobCardStageSlipAction(
@@ -667,11 +604,11 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
 }): Promise<ActionResult<JobCardStageSlip>> {
   const normalizedCode = input.code.trim();
   const normalizedStaffId = input.staffId.trim();
-  const completedQuantity = Math.floor(Number(input.completedQuantity));
+  const requestedCompletedQuantity = Math.floor(Number(input.completedQuantity));
   const extraAmount = Math.max(0, Number(input.extraAmount ?? 0) || 0);
   if (!normalizedCode) return { success: false, error: "Scan a job card barcode." };
   if (!normalizedStaffId) return { success: false, error: "Select a staff member before scanning." };
-  if (!Number.isInteger(completedQuantity) || completedQuantity < 1) {
+  if (!Number.isInteger(requestedCompletedQuantity)) {
     return { success: false, error: "Completed quantity must be at least 1." };
   }
 
@@ -690,6 +627,10 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
     const pendingQuantity = Math.max(0, slip.pendingQuantity);
     if (pendingQuantity <= 0) {
       return { success: false, error: `Already tallied for ${slip.staffName}. No payroll was added.` };
+    }
+    const completedQuantity = requestedCompletedQuantity > 0 ? requestedCompletedQuantity : pendingQuantity;
+    if (completedQuantity < 1) {
+      return { success: false, error: "Completed quantity must be at least 1." };
     }
     if (completedQuantity > pendingQuantity) {
       return { success: false, error: `Only ${pendingQuantity} item(s) are pending for this slip.` };
@@ -726,6 +667,7 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
     const todayIso = new Date().toISOString().slice(0, 10);
     const finalStage = await getFinalWorkStage(admin);
     const startUnitNo = tallySlip.unitNo + tallySlip.talliedQuantity;
+    const scanLabel = requestedCompletedQuantity > 0 || extraAmount > 0 ? "partial tally scan" : "quick tally scan";
     const completions = [];
     for (let offset = 0; offset < completedQuantity; offset += 1) {
       const unitNo = startUnitNo + offset;
@@ -769,7 +711,7 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
           fromStage: unitCompletion.fromStage,
           toStage: unitCompletion.toStage,
           assignedStaffId: staff.id,
-          notes: `Completed by partial tally scan: ${tallySlip.slipCode} (${completedQuantity} item${completedQuantity === 1 ? "" : "s"}${extraAmount > 0 ? `, extra ${extraAmount}` : ""})`,
+          notes: `Completed by ${scanLabel}: ${tallySlip.slipCode} (${completedQuantity} item${completedQuantity === 1 ? "" : "s"}${extraAmount > 0 ? `, extra ${extraAmount}` : ""})`,
           performedBy: guard.userId,
         });
       }
@@ -907,7 +849,8 @@ export async function markOrderReadyWithBinAction(
 
 /** Creates/reuses one Cutting then one Stitching slip for every garment unit. */
 export async function createProductionPrintBundleAction(
-  orderIds: string[]
+  orderIds: string[],
+  productionGroup: ProductionPrintGroup | "All" = "All"
 ): Promise<ActionResult<JobCardStageSlip[]>> {
   const uniqueOrderIds = Array.from(new Set(orderIds.filter(Boolean)));
   if (uniqueOrderIds.length === 0) return { success: false, error: "Select at least one order." };
@@ -918,6 +861,11 @@ export async function createProductionPrintBundleAction(
 
   try {
     const orders = await getOrdersByIds(supabase, uniqueOrderIds);
+    const garments = await getActiveGarmentTypes(supabase);
+    const garmentsById = new Map(garments.map((garment) => [garment.id, garment]));
+    const garmentsByName = new Map(
+      garments.map((garment) => [garment.name.trim().toLowerCase(), garment])
+    );
     const ordersById = new Map(orders.map((order) => [order.id, order]));
     const existingSlips = await getJobCardStageSlipsForOrders(
       supabase,
@@ -932,7 +880,13 @@ export async function createProductionPrintBundleAction(
     const bundleInputs = orders
       .filter((order) => order.status !== "Cancelled" && order.status !== "Delivered")
       .flatMap((order) =>
-        order.items.flatMap((item) => {
+        order.items.filter((item) => {
+          if (productionGroup === "All") return true;
+          const garment =
+            (item.garmentTypeId ? garmentsById.get(item.garmentTypeId) : undefined) ??
+            garmentsByName.get(item.particular.trim().toLowerCase());
+          return garment?.productionPrintGroup === productionGroup;
+        }).flatMap((item) => {
           const quantity = Math.max(1, item.qty);
           return (["Cutting", "Stitching"] as const).map((stage) => ({
             orderId: order.id,

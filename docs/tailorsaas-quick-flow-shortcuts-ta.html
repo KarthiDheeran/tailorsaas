@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ta">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TailorSaaS விரைவு வழிகாட்டி</title>
+  <style>
+    @page { size: A4; margin: 13mm 12mm 15mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #0f172a;
+      background: #ffffff;
+      font-family: "Nirmala UI", "Latha", "Segoe UI", Arial, sans-serif;
+      line-height: 1.5;
+      font-size: 12.5px;
+    }
+    .page {
+      min-height: 269mm;
+      position: relative;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .cover {
+      min-height: 269mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 18mm;
+      border: 1.2mm solid #2563eb;
+      background: linear-gradient(135deg, #eff6ff 0%, #ffffff 48%, #f0fdfa 100%);
+    }
+    .brand {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      color: #ffffff;
+      background: #2563eb;
+      font-size: 30px;
+      font-weight: 800;
+      margin-bottom: 18px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      max-width: 660px;
+      color: #0f172a;
+      font-size: 34px;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+    }
+    .subtitle {
+      margin-top: 10px;
+      color: #0f766e;
+      font-size: 19px;
+      font-weight: 750;
+    }
+    .marketing {
+      margin-top: 18px;
+      max-width: 680px;
+      color: #334155;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .company-box {
+      margin-top: 26px;
+      max-width: 650px;
+      border: 1px solid #bfdbfe;
+      border-radius: 16px;
+      background: #ffffff;
+      padding: 16px 18px;
+    }
+    .company-name {
+      color: #1e40af;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .company-line {
+      margin-top: 6px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .phone {
+      margin-top: 10px;
+      color: #0f766e;
+      font-size: 15px;
+      font-weight: 750;
+    }
+    .footer-note {
+      position: absolute;
+      left: 18mm;
+      right: 18mm;
+      bottom: 15mm;
+      color: #64748b;
+      font-size: 11px;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 8px;
+    }
+    .content { padding: 7mm 2mm 0; }
+    .section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #2563eb;
+      padding-bottom: 7px;
+    }
+    h2 {
+      color: #0f172a;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+    }
+    .section-kicker {
+      color: #0f766e;
+      font-weight: 750;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+    }
+    thead th {
+      background: #dbeafe;
+      color: #0f172a;
+      font-size: 11.5px;
+      text-align: left;
+      padding: 8px;
+      border: 1px solid #cbd5e1;
+    }
+    tbody td {
+      vertical-align: top;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    .key {
+      display: inline-block;
+      min-width: 52px;
+      text-align: center;
+      border: 1px solid #bfdbfe;
+      border-radius: 7px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 800;
+      padding: 4px 7px;
+      white-space: nowrap;
+    }
+    .module-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+    .module-card {
+      min-height: 78px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 10px 11px;
+    }
+    .module-card h3 {
+      color: #1e40af;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+    .module-card p {
+      color: #334155;
+      font-size: 12px;
+    }
+    .tip {
+      margin-top: 10px;
+      border-left: 4px solid #0f766e;
+      background: #f0fdfa;
+      color: #134e4a;
+      padding: 9px 11px;
+      border-radius: 10px;
+      font-weight: 650;
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <div class="brand">TS</div>
+    <h1>TailorSaaS விரைவு பயன்பாட்டு வழிகாட்டி மற்றும் Keyboard Shortcuts</h1>
+    <p class="subtitle">தையல் கடை தினசரி வேலைகளுக்கான எளிய வழிகாட்டி</p>
+    <p class="marketing">
+      Order உருவாக்குவது, Production slip print செய்வது, Staff salary payable பதிவு செய்வது,
+      Delivery முடிப்பது போன்ற தினசரி வேலைகளை வேகமாக செய்ய இந்த வழிகாட்டி உதவும்.
+    </p>
+    <div class="company-box">
+      <p class="company-name">Dheeran Infotech Solutions Pvt Ltd</p>
+      <p class="company-line">
+        We build simple digital solutions for business problems — Websites, Web Applications,
+        Mobile Apps, and Custom Software.
+      </p>
+      <p class="phone">Phone: 8110007172</p>
+    </div>
+    <p class="footer-note">Prepared by Dheeran Infotech Solutions Pvt Ltd • TailorSaaS training document</p>
+  </section>
+
+  <section class="page content">
+    <div class="section-header">
+      <div>
+        <p class="section-kicker">Quick access</p>
+        <h2>Keyboard Shortcuts</h2>
+      </div>
+      <p class="section-kicker">Mouse குறைவு, வேகம் அதிகம்</p>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 85px;">Shortcut</th>
+          <th style="width: 145px;">Screen / Action</th>
+          <th>எப்போது பயன்படுத்த வேண்டும்</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="key">F2</span></td>
+          <td><strong>New Order</strong></td>
+          <td>புதிய customer order உருவாக்க, garment items, measurements, photos, advance amount, delivery date சேர்த்து save செய்ய பயன்படுத்தவும்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">F3</span></td>
+          <td><strong>Delivery</strong></td>
+          <td>Customer receipt scan/search செய்து, balance amount collect செய்து, ready order-ஐ delivered ஆக mark செய்ய பயன்படுத்தவும்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">F4</span></td>
+          <td><strong>Tally Scans</strong></td>
+          <td>Tailor/staff முடித்த job card scan செய்து salary payable பதிவு செய்ய பயன்படுத்தவும். Daily use-க்கு Quick Scan; special case-க்கு Partial / Extra.</td>
+        </tr>
+        <tr>
+          <td><span class="key">F5</span></td>
+          <td><strong>Order Ready</strong></td>
+          <td>Order-ல் உள்ள அனைத்து garments ready ஆன பிறகு, அந்த full customer order-ஐ Ready ஆக mark செய்ய பயன்படுத்தவும்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">F6</span></td>
+          <td><strong>Production Print</strong></td>
+          <td>Cutting/Stitching production slips print செய்ய பயன்படுத்தவும். Garment group, order number, date போன்ற filters மூலம் selected work மட்டும் print செய்யலாம்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">Ctrl + K</span></td>
+          <td><strong>Scan / Find</strong></td>
+          <td>App-ல் எந்த screen-லிருந்தும் order number, customer, phone, barcode போன்றவற்றை வேகமாக search செய்ய பயன்படுத்தவும்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">Alt + N</span></td>
+          <td><strong>New Order button</strong></td>
+          <td>Dashboard/header-ல் இருந்து mouse இல்லாமல் new order page open செய்ய பயன்படும்.</td>
+        </tr>
+        <tr>
+          <td><span class="key">Alt + S</span></td>
+          <td><strong>Save Order</strong></td>
+          <td>Order details அல்லது edit order முடித்த பிறகு mouse இல்லாமல் save செய்ய பயன்படும்.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="tip">Tip: Barcode scan செய்யும்போது ஒரு scan success/failure status வந்த பிறகே அடுத்த barcode scan செய்யவும்.</p>
+  </section>
+
+  <section class="page content">
+    <div class="section-header">
+      <div>
+        <p class="section-kicker">Daily workflow</p>
+        <h2>Main Screens Explained</h2>
+      </div>
+      <p class="section-kicker">Customer training guide</p>
+    </div>
+    <div class="module-grid">
+      <div class="module-card">
+        <h3>Dashboard</h3>
+        <p>இன்றைய production summary, pending stage counts, due orders, முக்கிய alerts ஆகியவை தெரியும். Shop owner daily overview பார்க்கும் screen.</p>
+      </div>
+      <div class="module-card">
+        <h3>Orders &gt; New Order</h3>
+        <p>Customer, garment, measurements, add-ons/work details, photos, amount, delivery date சேர்த்து புதிய order உருவாக்கும் main screen.</p>
+      </div>
+      <div class="module-card">
+        <h3>Orders &gt; View Order</h3>
+        <p>Existing orders search/view/edit செய்ய, receipt print செய்ய, payment மற்றும் order follow-up பார்க்க பயன்படும்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Job Cards &gt; Tally Scans</h3>
+        <p>Tailor/staff முடித்த work cards scan செய்து staff salary payable பதிவு செய்யும் screen. Quick Scan daily use; Partial / Extra special use.</p>
+      </div>
+      <div class="module-card">
+        <h3>Job Cards &gt; Order Ready</h3>
+        <p>Order-ல் பல garments இருந்தாலும் customerக்கு ஒரு order row மட்டும் காட்டி, full order ready ஆனதும் Ready ஆக mark செய்ய பயன்படும்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Job Cards &gt; Production Print</h3>
+        <p>Cutting மற்றும் Stitching production/job slips print செய்ய பயன்படும். Shirt/Pant/common group அல்லது specific order filter செய்து print செய்யலாம்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Delivery</h3>
+        <p>Customer garments collect செய்ய வரும் போது receipt scan/search செய்து, full/partial amount collect செய்து delivered ஆக mark செய்யும் screen.</p>
+      </div>
+      <div class="module-card">
+        <h3>Customers</h3>
+        <p>Customer details add/search/view செய்யவும், saved measurements பார்க்கவும் பயன்படும். Repeat customer order வேகமாக create செய்ய உதவும்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Finance</h3>
+        <p>Income, pending dues, adjustments, expenses, payment tracking பார்க்க பயன்படும். Owner collection மற்றும் balance check செய்யலாம்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Inventory</h3>
+        <p>Inventory enabled இருந்தால் fabric/material stock மற்றும் usage maintain செய்ய பயன்படும்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Staff</h3>
+        <p>Staff/tailor details, rates, payable, payment/advance records maintain செய்யும் payroll control screen.</p>
+      </div>
+      <div class="module-card">
+        <h3>Reports</h3>
+        <p>Orders, payments, pending dues, production details போன்ற reports பார்க்க பயன்படும். Business performance review செய்ய உதவும்.</p>
+      </div>
+      <div class="module-card">
+        <h3>Settings</h3>
+        <p>Catalog, garment types, fields, add-ons, users, roles, billing, shop configuration manage செய்யும் admin screen.</p>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

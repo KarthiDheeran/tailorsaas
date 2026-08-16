@@ -43,6 +43,7 @@ import {
   customMeasurementFieldLabel,
   isBodyMeasurementLayout,
   isGarmentSection,
+  isProductionPrintGroup,
   isCustomMeasurementFieldId,
   measurementFields,
   type AddOnInput,
@@ -248,6 +249,9 @@ function validateGarmentInput(
   }
   if (!isBodyMeasurementLayout(data.bodyMeasurementLayout)) {
     return "Choose a valid body measurement layout.";
+  }
+  if (!isProductionPrintGroup(data.productionPrintGroup)) {
+    return "Choose a valid production print group.";
   }
   for (const id of data.measurementFieldIds) {
     if (isCustomMeasurementFieldId(id)) {

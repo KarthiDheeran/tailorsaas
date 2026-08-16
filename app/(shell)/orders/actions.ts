@@ -1234,6 +1234,19 @@ export async function updateOrderStatusAction(
   return { success: true, data: order };
 }
 
+export async function getPrintableGarmentTypesAction(): Promise<CatalogGarmentType[]> {
+  const supabase = createServerClient();
+  const permissions = await getServerCallerPermissions(supabase);
+  if (
+    !permissions ||
+    (!hasPermission(permissions, "orders.printCustomerReceipt") &&
+      !hasPermission(permissions, "orders.printJobCard"))
+  ) {
+    return [];
+  }
+  return getActiveGarmentTypes(supabase);
+}
+
 export async function updateOrderNotesAction(
   id: string,
   orderNotes: string

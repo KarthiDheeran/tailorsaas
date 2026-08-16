@@ -126,22 +126,39 @@ export const SHIRT_STYLE_FIELDS = [
   {
     id: "shirtR1",
     label: "R1 (Sleeve)",
-    options: ["பட்டி மடிப்பு", "உள் பட்டி மடிப்பு", "1 இஞ்ச் பட்டி மடிப்பு"],
+    options: [
+      "பட்டி மட்டும்",
+      "உள் பட்டி",
+      "சாதா சர்ட்",
+      "1 இன்ச் பட்டி",
+      "1.5 இன்ச் பட்டி",
+      "3/4 இன்ச் பட்டி",
+    ],
   },
   {
     id: "shirtR2",
     label: "R2",
-    options: ["2 தையல்", "1/2 இஞ்ச் தையல்", "அனைத்தும் 2 தையல்"],
+    options: [
+      "அயன் + 3/4 இன்ச் கையில்",
+      "அனைத்தும் 2 கையில்",
+      "2 கையில்",
+    ],
   },
   {
     id: "shirtR3",
     label: "R3",
-    options: ["உள் பாக்கெட்", "ஒரு பாக்கெட்"],
+    options: [
+      "ஒரு பாக்கெட்",
+      "உள் பாக்கெட்",
+      "2 பாக்கெட் பிளாப்",
+      "2 சைடு பாக்கெட்",
+      "2 பாக்கெட்",
+    ],
   },
   {
     id: "shirtR4",
     label: "R4",
-    options: ["கட் சர்ட்"],
+    options: ["ஸ்லாக்", "கட் சர்ட்", "ஸ்லாக் சைடு ஓப்பன்"],
   },
 ] as const;
 
@@ -200,6 +217,8 @@ export interface CatalogGarmentType {
   addOnIds: string[];
   showOrderAddOns: boolean;
   bodyMeasurementLayout: BodyMeasurementLayout;
+  productionPrintGroup: ProductionPrintGroup;
+  customerPrintName: string | null;
   isActive: boolean;
 }
 
@@ -208,6 +227,9 @@ export type GarmentSection = (typeof GARMENT_SECTIONS)[number];
 
 export const BODY_MEASUREMENT_LAYOUTS = ["columns", "compact_legacy"] as const;
 export type BodyMeasurementLayout = (typeof BODY_MEASUREMENT_LAYOUTS)[number];
+
+export const PRODUCTION_PRINT_GROUPS = ["Common", "Shirt", "Pant"] as const;
+export type ProductionPrintGroup = (typeof PRODUCTION_PRINT_GROUPS)[number];
 
 export function isBodyMeasurementLayout(value: unknown): value is BodyMeasurementLayout {
   return (
@@ -218,6 +240,13 @@ export function isBodyMeasurementLayout(value: unknown): value is BodyMeasuremen
 
 export function isGarmentSection(value: unknown): value is GarmentSection {
   return typeof value === "string" && GARMENT_SECTIONS.includes(value as GarmentSection);
+}
+
+export function isProductionPrintGroup(value: unknown): value is ProductionPrintGroup {
+  return (
+    typeof value === "string" &&
+    PRODUCTION_PRINT_GROUPS.includes(value as ProductionPrintGroup)
+  );
 }
 
 // Supports a safe rollout while the database migration is being applied. Once
@@ -231,6 +260,13 @@ export function defaultGarmentSectionForName(name: string): GarmentSection {
     default:
       return "Men";
   }
+}
+
+export function defaultProductionPrintGroupForName(name: string): ProductionPrintGroup {
+  const normalized = name.trim().toLowerCase();
+  if (normalized.includes("pant")) return "Pant";
+  if (normalized.includes("shirt")) return "Shirt";
+  return "Common";
 }
 
 export const INITIAL_GARMENT_SHORTCUT_CODES: Record<string, number> = {
@@ -389,21 +425,14 @@ export function measurementFieldLabel(id: string): string {
   return measurementFields.find((f) => f.id === id)?.label ?? id;
 }
 
-// Resolves a garment type's addOnIds to full CatalogAddOn records, given an
-// already-fetched add-ons array (Phase 6B: this used to call getAddOnById()
-// over an in-memory mock array internally; now it's a pure function so
-// callers that already have both records in hand — e.g. New Order, which
-// fetches active garment types + all add-ons once at the page level — never
-// need a per-lookup Supabase round trip). Drops any id that doesn't resolve
-// (e.g. a data inconsistency) rather than throwing.
+// Add-ons / Extras are one shared catalogue, but each garment type controls
+// which shared records are enabled on its item form through addOnIds.
 export function getAddOnsForGarment(
   garment: CatalogGarmentType,
   addOns: CatalogAddOn[]
 ): CatalogAddOn[] {
-  const byId = new Map(addOns.map((a) => [a.id, a]));
-  return garment.addOnIds
-    .map((id) => byId.get(id))
-    .filter((a): a is CatalogAddOn => a !== undefined);
+  const enabled = new Set(garment.addOnIds);
+  return addOns.filter((addOn) => enabled.has(addOn.id));
 }
 
 // Item Amount = Qty × (Base Rate + selected add-ons total), per the Catalog
@@ -427,6 +456,8 @@ export type GarmentTypeInput = {
   addOnIds: string[];
   showOrderAddOns: boolean;
   bodyMeasurementLayout: BodyMeasurementLayout;
+  productionPrintGroup: ProductionPrintGroup;
+  customerPrintName: string | null;
   isActive: boolean;
 };
 

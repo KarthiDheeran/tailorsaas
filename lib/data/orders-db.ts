@@ -37,7 +37,7 @@ const ORDER_ITEM_REPEAT_COLUMNS =
   "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 const ORDER_ITEM_SUMMARY_COLUMNS =
-  "id, order_id, serial_no, particular, size, qty, rate, amount";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount";
 
 interface OrderItemRow {
   id: string;
