@@ -164,6 +164,26 @@ body {
     accent-color: rgb(var(--secondary));
   }
 
+  :where(button, a).bg-primary {
+    border-color: rgb(var(--primary));
+    background-color: rgb(var(--primary));
+    color: #ffffff;
+  }
+
+  :where(button, a).bg-primary:hover:not(:disabled) {
+    background-color: rgb(var(--primary-hover));
+  }
+
+  :where(button, a).bg-secondary {
+    border-color: rgb(var(--secondary));
+    background-color: rgb(var(--secondary));
+    color: #ffffff;
+  }
+
+  :where(button, a).bg-secondary:hover:not(:disabled) {
+    background-color: rgb(var(--secondary-hover));
+  }
+
   main :where(table thead) {
     background-color: rgb(var(--table-header, var(--primary-soft)));
     color: rgb(var(--table-header-text, var(--text-primary)));

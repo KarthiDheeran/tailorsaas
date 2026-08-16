@@ -541,7 +541,7 @@ function JobCardsContent() {
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-7">
       <div className="mb-5">
         <div>
-          <h1 className="text-[30px] font-bold tracking-tight text-ink">Job Cards</h1>
+          <h1 className="text-[30px] font-bold tracking-tight text-ink">Order Ready</h1>
           <p className="mt-1 text-[16px] text-ink-muted">
             Garment-level work cards for readiness, delays, and delivery tracking.
           </p>

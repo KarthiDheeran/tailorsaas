@@ -19,6 +19,7 @@ const config: Config = {
           dark: token("--primary-hover"),
           hover: token("--primary-hover"),
           active: token("--primary-active"),
+          strong: token("--primary-active"),
           tint: token("--primary-soft"),
           soft: token("--primary-soft"),
           border: token("--primary-border"),

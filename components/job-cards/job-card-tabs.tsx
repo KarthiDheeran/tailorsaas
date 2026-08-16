@@ -7,13 +7,13 @@ type JobCardTab = "cards" | "tally" | "production-print";
 
 const tabs: { label: string; href: string; value: JobCardTab }[] = [
   { label: "Tally Scans", href: "/job-cards/tally", value: "tally" },
-  { label: "Job Cards", href: "/job-cards", value: "cards" },
+  { label: "Order Ready", href: "/job-cards", value: "cards" },
   { label: "Production Print", href: "/job-cards/production-print", value: "production-print" },
 ];
 
 export function JobCardTabs({ active }: { active: JobCardTab }) {
   return (
-    <nav className="flex flex-wrap gap-2 border-b border-border-soft" aria-label="Job card sections">
+    <nav className="flex flex-wrap gap-2 border-b border-border-soft" aria-label="Production sections">
       {tabs.map((tab) => (
         <Link
           key={tab.value}

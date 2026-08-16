@@ -69,7 +69,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/job-cards",
-    labelKey: "nav.jobCards",
+    labelKey: "nav.production",
     icon: FileText,
     shortcut: "Alt J",
     anyOf: ["orders.view", "staff.view", "orders.printJobCard"],

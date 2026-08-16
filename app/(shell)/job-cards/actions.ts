@@ -644,6 +644,7 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
     const order = await getOrderById(admin, slip.orderId);
     const item = order?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
     if (!order || !item) return { success: false, error: "Order item for this job card was not found." };
+    await syncJobCardsForOrder(supabase, order.id);
 
     const wageRate = slip.staffId ? slip.wageRate : staffGarmentStageRate(staff, item.garmentTypeId, slip.stage);
     const labourAddOnsTotal = (slip.labourAddOnsSnapshot ?? []).reduce(

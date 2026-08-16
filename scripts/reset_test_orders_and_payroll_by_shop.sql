@@ -122,18 +122,20 @@ begin
     and shop_id = v_shop_id;
 
   -- Keep global sequences safe for remaining shops/records.
-  select coalesce(max(nullif(regexp_replace(job_card_number, '\D', '', 'g'), '')::bigint), 0) + 1
+  select coalesce(max(nullif(substring(job_card_number from '(\d+)$'), '')::bigint), 0) + 1
     into v_next_job_card_number
-  from public.job_cards;
+  from public.job_cards
+  where job_card_number ~ '\d+$';
 
   execute format(
     'alter sequence if exists public.job_card_number_seq restart with %s',
     greatest(v_next_job_card_number, 1)
   );
 
-  select coalesce(max(nullif(regexp_replace(slip_code, '\D', '', 'g'), '')::bigint), 0) + 1
+  select coalesce(max(nullif(substring(slip_code from '(\d+)$'), '')::bigint), 0) + 1
     into v_next_stage_slip_number
-  from public.job_card_stage_slips;
+  from public.job_card_stage_slips
+  where slip_code ~ '\d+$';
 
   execute format(
     'alter sequence if exists public.job_card_stage_slip_code_seq restart with %s',
