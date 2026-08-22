@@ -40,12 +40,16 @@ import {
   updateRoleAction,
   updateUserProfileAction,
 } from "@/app/(shell)/users-access/actions";
-import { updateDisplayThemeAction } from "@/app/(shell)/settings/actions";
+import { updateAppTextSizeAction, updateDisplayThemeAction } from "@/app/(shell)/settings/actions";
 import type { CreateUserInput } from "@/components/users-access/add-user-drawer";
 import {
+  DEFAULT_TEXT_SIZE,
   DEFAULT_THEME,
+  isAppTextSize,
   isDisplayTheme,
+  TEXT_SIZE_COOKIE_NAME,
   THEME_COOKIE_NAME,
+  type AppTextSize,
   type DisplayTheme,
 } from "@/lib/theme";
 
@@ -58,6 +62,7 @@ type CurrentUserCache = {
   profile: AppUser;
   role?: Role;
   displayTheme: DisplayTheme;
+  appTextSize: AppTextSize;
 };
 
 function readCurrentUserCache(): CurrentUserCache | null {
@@ -74,6 +79,9 @@ function readCurrentUserCache(): CurrentUserCache | null {
       displayTheme: isDisplayTheme(parsed.displayTheme)
         ? parsed.displayTheme
         : DEFAULT_THEME,
+      appTextSize: isAppTextSize(parsed.appTextSize)
+        ? parsed.appTextSize
+        : DEFAULT_TEXT_SIZE,
     };
   } catch {
     return null;
@@ -103,6 +111,7 @@ interface CurrentUserContextValue {
   currentUserId: string | undefined;
   currentRole: Role | undefined;
   displayTheme: DisplayTheme;
+  appTextSize: AppTextSize;
   effectivePermissions: Permission[];
   // True until the first session + profile/role fetch resolves — consumers
   // (app-shell.tsx) use this to avoid a flash of "access denied" before real
@@ -127,6 +136,7 @@ interface CurrentUserContextValue {
   updateRole: (id: string, input: RoleInput) => Promise<ActionResult>;
   deleteRole: (id: string) => Promise<ActionResult>;
   setDisplayTheme: (theme: DisplayTheme) => Promise<ActionResult>;
+  setAppTextSize: (textSize: AppTextSize) => Promise<ActionResult>;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasAllPermissions: (permissions: Permission[]) => boolean;
@@ -146,6 +156,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role | undefined>(undefined);
   const [profileResolved, setProfileResolved] = useState(false);
   const [displayTheme, setDisplayThemeState] = useState<DisplayTheme>(DEFAULT_THEME);
+  const [appTextSize, setAppTextSizeState] = useState<AppTextSize>(DEFAULT_TEXT_SIZE);
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const profileRef = useRef<AppUser | undefined>(undefined);
@@ -163,6 +174,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setProfile(cached.profile);
     setRole(cached.role);
     setDisplayThemeState(cached.displayTheme);
+    setAppTextSizeState(cached.appTextSize);
     setAuthResolved(true);
     setProfileResolved(true);
   }, []);
@@ -206,6 +218,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         setProfile(undefined);
         setRole(undefined);
         setDisplayThemeState(DEFAULT_THEME);
+        setAppTextSizeState(DEFAULT_TEXT_SIZE);
         setProfileResolved(true);
         return;
       }
@@ -220,9 +233,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         type ProfileWithRole = AppUser & { role?: Role | Role[] | null };
         let profileRow: ProfileWithRole | null = null;
         const joined = await supabase
-          .from("profiles")
+            .from("profiles")
             .select(
-            "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme, role:roles(id,name,description,type,permissions)"
+            "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme, preferred_text_size, role:roles(id,name,description,type,permissions)"
           )
           .eq("id", authUserId)
           .maybeSingle();
@@ -246,6 +259,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
             ? profileRow.preferred_theme
             : DEFAULT_THEME
         );
+        setAppTextSizeState(
+          isAppTextSize(profileRow?.preferred_text_size)
+            ? profileRow.preferred_text_size
+            : DEFAULT_TEXT_SIZE
+        );
         const joinedRole = Array.isArray(profileRow?.role) ? profileRow.role[0] : profileRow?.role;
         const roleId = profileRow?.role_id;
         const resolvedRole = joinedRole
@@ -263,6 +281,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
               displayTheme: isDisplayTheme(profileRow.preferred_theme)
                 ? profileRow.preferred_theme
                 : DEFAULT_THEME,
+              appTextSize: isAppTextSize(profileRow.preferred_text_size)
+                ? profileRow.preferred_text_size
+                : DEFAULT_TEXT_SIZE,
             });
           }
         }
@@ -291,6 +312,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = displayTheme;
     document.cookie = `${THEME_COOKIE_NAME}=${displayTheme}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
   }, [displayTheme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.textSize = appTextSize;
+    document.cookie = `${TEXT_SIZE_COOKIE_NAME}=${appTextSize}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+  }, [appTextSize]);
 
   // Full roles list — Users & Access Roles tab, and the Users tab's role
   // dropdown/name lookup.
@@ -416,11 +442,41 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
           profile: { ...profile, preferred_theme: theme },
           role,
           displayTheme: theme,
+          appTextSize,
         });
       }
       return { success: true };
     },
-    [authUserId, displayTheme, profile, role]
+    [appTextSize, authUserId, displayTheme, profile, role]
+  );
+
+  const setAppTextSize = useCallback(
+    async (textSize: AppTextSize): Promise<ActionResult> => {
+      if (!isAppTextSize(textSize)) return { success: false, error: "Invalid text size." };
+      const previous = appTextSize;
+      setAppTextSizeState(textSize);
+
+      const result = await updateAppTextSizeAction(textSize);
+      if (!result.success) {
+        setAppTextSizeState(previous);
+        return { success: false, error: result.error };
+      }
+
+      setProfile((current) =>
+        current ? { ...current, preferred_text_size: textSize } : current
+      );
+      if (profile && authUserId) {
+        writeCurrentUserCache({
+          authUserId,
+          profile: { ...profile, preferred_text_size: textSize },
+          role,
+          displayTheme,
+          appTextSize: textSize,
+        });
+      }
+      return { success: true };
+    },
+    [appTextSize, authUserId, displayTheme, profile, role]
   );
 
   const isLoading = !authResolved || (!profile && !profileResolved);
@@ -437,6 +493,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       currentUserId: authUserId ?? undefined,
       currentRole: role,
       displayTheme,
+      appTextSize,
       effectivePermissions,
       isLoading,
       users,
@@ -448,6 +505,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       updateRole,
       deleteRole,
       setDisplayTheme,
+      setAppTextSize,
       hasPermission: (permission) => checkPermission(effectivePermissions, permission),
       hasAnyPermission: (permissions) =>
         checkAnyPermission(effectivePermissions, permissions),
@@ -459,6 +517,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     authUserId,
     role,
     displayTheme,
+    appTextSize,
     isLoading,
     users,
     roles,
@@ -470,6 +529,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     updateRole,
     deleteRole,
     setDisplayTheme,
+    setAppTextSize,
   ]);
 
   return (

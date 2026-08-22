@@ -139,42 +139,98 @@ body {
   @apply bg-background text-ink;
   font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: var(--app-text-base, 16px);
 }
 
 @media screen {
-  :where(.text-base) {
-    font-size: 16px;
-    line-height: 1.5rem;
+  :root,
+  [data-text-size="default"] {
+    --app-text-base: 16px;
+    --app-text-sm: 16px;
+    --app-text-13: 15px;
+    --app-text-xs: 14px;
+    --app-text-11: 13px;
+    --app-text-10: 12px;
+    --app-control-text: 16px;
   }
 
-  :where(.text-sm, .text-\[14px\]) {
-    font-size: 16px;
-    line-height: 1.5rem;
+  [data-text-size="17"] {
+    --app-text-base: 17px;
+    --app-text-sm: 17px;
+    --app-text-13: 16px;
+    --app-text-xs: 15px;
+    --app-text-11: 14px;
+    --app-text-10: 13px;
+    --app-control-text: 17px;
   }
 
-  :where(.text-\[13px\]) {
-    font-size: 15px;
-    line-height: 1.35rem;
+  [data-text-size="18"] {
+    --app-text-base: 18px;
+    --app-text-sm: 18px;
+    --app-text-13: 17px;
+    --app-text-xs: 16px;
+    --app-text-11: 15px;
+    --app-text-10: 14px;
+    --app-control-text: 18px;
   }
 
-  :where(.text-xs, .text-\[12px\]) {
-    font-size: 14px;
-    line-height: 1.25rem;
+  [data-text-size="19"] {
+    --app-text-base: 19px;
+    --app-text-sm: 19px;
+    --app-text-13: 18px;
+    --app-text-xs: 17px;
+    --app-text-11: 16px;
+    --app-text-10: 15px;
+    --app-control-text: 19px;
   }
 
-  :where(.text-\[11px\]) {
-    font-size: 13px;
-    line-height: 1.15rem;
+  [data-text-size="20"] {
+    --app-text-base: 20px;
+    --app-text-sm: 20px;
+    --app-text-13: 19px;
+    --app-text-xs: 18px;
+    --app-text-11: 17px;
+    --app-text-10: 16px;
+    --app-control-text: 20px;
   }
 
-  :where(.text-\[10px\]) {
-    font-size: 12px;
-    line-height: 1rem;
+  [data-text-size] .text-base {
+    font-size: var(--app-text-base);
+    line-height: 1.5;
   }
 
-  :where(input, select, textarea, button) {
-    font-size: 16px;
+  [data-text-size] .text-sm,
+  [data-text-size] .text-\[14px\] {
+    font-size: var(--app-text-sm);
+    line-height: 1.45;
+  }
+
+  [data-text-size] .text-\[13px\] {
+    font-size: var(--app-text-13);
+    line-height: 1.35;
+  }
+
+  [data-text-size] .text-xs,
+  [data-text-size] .text-\[12px\] {
+    font-size: var(--app-text-xs);
+    line-height: 1.3;
+  }
+
+  [data-text-size] .text-\[11px\] {
+    font-size: var(--app-text-11);
+    line-height: 1.2;
+  }
+
+  [data-text-size] .text-\[10px\] {
+    font-size: var(--app-text-10);
+    line-height: 1.15;
+  }
+
+  [data-text-size] input,
+  [data-text-size] select,
+  [data-text-size] textarea,
+  [data-text-size] button {
+    font-size: var(--app-control-text);
   }
 
   :where(input, select, textarea) {

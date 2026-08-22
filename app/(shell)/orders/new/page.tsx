@@ -1503,13 +1503,22 @@ function NewOrderPageContent() {
                 "mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border-soft pb-3",
                 isClassicEntry && "mb-2 pb-2"
               )}>
-                <div>
-                  <p className="text-sm font-semibold text-ink">Order Information</p>
-                  <p className="mt-0.5 text-xs text-ink-muted">Order number is confirmed when the order is saved.</p>
+                <div className={cn("min-w-0", isClassicEntry && "flex items-center gap-3")}>
+                  {isClassicEntry && (
+                    <div className="flex h-16 min-w-20 shrink-0 items-center justify-center rounded-lg border border-primary/35 bg-primary-tint px-3 text-center text-3xl font-black leading-none text-primary shadow-sm">
+                      {orderNumberPreview || "—"}
+                    </div>
+                  )}
+                  <div>
+                    <p className={cn("text-sm font-semibold text-ink", isClassicEntry && "text-lg")}>Order Information</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">Order number is confirmed when the order is saved.</p>
+                  </div>
                 </div>
-                <span className="rounded-full border border-primary/30 bg-primary-tint px-3 py-1.5 text-sm font-bold text-primary">
-                  {orderNumberPreview || "Select order section"}
-                </span>
+                {!isClassicEntry && (
+                  <span className="rounded-full border border-primary/30 bg-primary-tint px-3 py-1.5 text-sm font-bold text-primary">
+                    {orderNumberPreview || "Select order section"}
+                  </span>
+                )}
               </div>
               {customerMode !== "selected" && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

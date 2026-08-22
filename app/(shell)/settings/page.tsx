@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
+import { AppTextSizeSetting } from "@/components/settings/app-text-size-setting";
 import { DisplayThemeSetting } from "@/components/settings/display-theme-setting";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -137,6 +138,7 @@ function SettingsContent() {
       </div>
 
       <DisplayThemeSetting />
+      <AppTextSizeSetting />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visibleSections.map((section) => (

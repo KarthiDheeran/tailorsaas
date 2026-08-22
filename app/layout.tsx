@@ -7,9 +7,13 @@ import { LanguageProvider } from "@/components/i18n/language-provider";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
+  DEFAULT_TEXT_SIZE,
   DEFAULT_THEME,
+  isAppTextSize,
   isDisplayTheme,
+  TEXT_SIZE_COOKIE_NAME,
   THEME_COOKIE_NAME,
+  type AppTextSize,
   type DisplayTheme,
 } from "@/lib/theme";
 
@@ -67,15 +71,45 @@ async function getInitialTheme(): Promise<DisplayTheme> {
   return theme;
 }
 
+async function getInitialTextSize(): Promise<AppTextSize> {
+  const cookieTextSize = cookies().get(TEXT_SIZE_COOKIE_NAME)?.value;
+  let textSize = isAppTextSize(cookieTextSize) ? cookieTextSize : DEFAULT_TEXT_SIZE;
+
+  try {
+    const supabase = createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("preferred_text_size")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (isAppTextSize(data?.preferred_text_size)) {
+        textSize = data.preferred_text_size;
+      }
+    }
+  } catch {
+    // Older local databases may not have the preferred_text_size column yet.
+  }
+
+  return textSize;
+}
+
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const initialTheme = await getInitialTheme();
+  const [initialTheme, initialTextSize] = await Promise.all([
+    getInitialTheme(),
+    getInitialTextSize(),
+  ]);
 
   return (
-    <html lang="en" data-theme={initialTheme} suppressHydrationWarning>
+    <html lang="en" data-theme={initialTheme} data-text-size={initialTextSize} suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <LanguageProvider>
           <CurrentUserProvider>

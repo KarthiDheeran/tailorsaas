@@ -30,10 +30,11 @@ export interface AppUser {
   shop_id: string | null;
   allowed_order_sections: GarmentSection[];
   preferred_theme?: "modern" | "classic" | "classic-dark";
+  preferred_text_size?: "default" | "17" | "18" | "19" | "20";
 }
 
 const PROFILE_COLUMNS =
-  "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme";
+  "id, full_name, phone, role_id, active, must_change_password, staff_id, tenant_id, shop_id, allowed_order_sections, preferred_theme, preferred_text_size";
 
 export async function getAppUsers(supabase: SupabaseClient): Promise<AppUser[]> {
   const { data, error } = await supabase
