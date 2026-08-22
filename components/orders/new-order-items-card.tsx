@@ -505,7 +505,10 @@ function ConfigureItemModal({
   const bodyMeasurementLayout =
     garment.bodyMeasurementLayout === "compact_legacy"
       ? "compactLegacyBody"
+      : garment.bodyMeasurementLayout === "paper_rows"
+        ? "paperRowsBody"
       : "columns";
+  const isPaperRowsLayout = bodyMeasurementLayout === "paperRowsBody";
   const addOnOptions = useMemo(
     () => showOrderAddOns ? getAddOnsForGarment(garment, addOns).filter((addOn) => addOn.isActive) : [],
     [addOns, garment, showOrderAddOns]
@@ -532,20 +535,22 @@ function ConfigureItemModal({
     () => new Set(nonInstructionFields.map((field) => field.sectionName)).size,
     [nonInstructionFields]
   );
+  const instructionFields = useMemo(
+    () => runtimeFields.filter((field) => field.fieldType === "instruction"),
+    [runtimeFields]
+  );
   const measurementGridClass =
-    measurementSectionCount >= 3
+    isPaperRowsLayout
+      ? "flex min-w-0 flex-wrap items-start justify-start gap-3"
+      : measurementSectionCount >= 3
       ? "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)_360px]"
       : measurementSectionCount === 2
         ? "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(430px,0.95fr)_minmax(500px,1.1fr)_340px]"
         : "grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(400px,0.95fr)_minmax(360px,0.85fr)]";
   const measurementContentSpanClass =
-    measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-1";
+    isPaperRowsLayout ? "xl:col-span-1" : measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-1";
   const instructionSpanClass =
-    measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-2";
-  const instructionFields = useMemo(
-    () => runtimeFields.filter((field) => field.fieldType === "instruction"),
-    [runtimeFields]
-  );
+    isPaperRowsLayout ? "xl:col-span-1" : measurementSectionCount >= 3 ? "xl:col-span-3" : measurementSectionCount === 2 ? "xl:col-span-2" : "xl:col-span-2";
   const filteredAddOnOptions = useMemo(() => {
     const query = addOnSearch.trim().toLowerCase();
     if (!query) return addOnOptions;
@@ -1181,7 +1186,7 @@ function ConfigureItemModal({
                 {metadataLoading ? (
                   <p className={cn("rounded-lg bg-white px-3 py-2 text-sm text-ink-muted", measurementContentSpanClass)}>Loading configured fields...</p>
                 ) : nonInstructionFields.length > 0 ? (
-                  <div className={cn("min-w-0", measurementContentSpanClass)}>
+                  <div className={cn("min-w-0", measurementContentSpanClass, isPaperRowsLayout && "flex-none")}>
                     <GarmentFormFields fields={nonInstructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} layout={bodyMeasurementLayout} firstControlRef={firstMeasurementRef} />
                   </div>
                 ) : (
@@ -1190,7 +1195,18 @@ function ConfigureItemModal({
                   </p>
                 )}
 
-                <section className="min-w-0 rounded-lg border border-border-soft bg-white p-4">
+                <>
+                  {!metadataLoading && instructionFields.length > 0 && isPaperRowsLayout && (
+                    <section
+                      className="max-w-full flex-none overflow-hidden rounded-lg border border-border-soft bg-white p-4"
+                      style={{ width: 640 }}
+                    >
+                      <h4 className="mb-3 text-[15px] font-semibold text-ink">Tailor Instructions</h4>
+                      <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout={bodyMeasurementLayout} />
+                    </section>
+                  )}
+
+                  <section className={cn("min-w-0 overflow-hidden rounded-lg border border-border-soft bg-white p-4", isPaperRowsLayout && "w-[390px] max-w-full flex-none")}>
                   {showOrderAddOns && (
                     <>
                       <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>
@@ -1235,9 +1251,10 @@ function ConfigureItemModal({
                     <input type="checkbox" checked={printMeasurementsOnJobCard} onChange={(event) => setPrintMeasurementsOnJobCard(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
                     <span><b className="block font-semibold">Print body measurements on job card</b><span className="text-xs text-ink-muted">Measurements stay saved even when they are not printed.</span></span>
                   </label>
-                </section>
+                  </section>
+                </>
 
-                {!metadataLoading && instructionFields.length > 0 && <section className={cn("min-w-0 rounded-lg border border-border-soft bg-white p-4", instructionSpanClass)}>
+                {!metadataLoading && instructionFields.length > 0 && !isPaperRowsLayout && <section className={cn("min-w-0 rounded-lg border border-border-soft bg-white p-4", instructionSpanClass)}>
                   <h4 className="mb-3 text-[15px] font-semibold text-ink">Notes & Instructions</h4>
                   <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout="instructions" />
                 </section>}

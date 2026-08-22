@@ -139,10 +139,44 @@ body {
   @apply bg-background text-ink;
   font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 @media screen {
+  :where(.text-base) {
+    font-size: 16px;
+    line-height: 1.5rem;
+  }
+
+  :where(.text-sm, .text-\[14px\]) {
+    font-size: 16px;
+    line-height: 1.5rem;
+  }
+
+  :where(.text-\[13px\]) {
+    font-size: 15px;
+    line-height: 1.35rem;
+  }
+
+  :where(.text-xs, .text-\[12px\]) {
+    font-size: 14px;
+    line-height: 1.25rem;
+  }
+
+  :where(.text-\[11px\]) {
+    font-size: 13px;
+    line-height: 1.15rem;
+  }
+
+  :where(.text-\[10px\]) {
+    font-size: 12px;
+    line-height: 1rem;
+  }
+
+  :where(input, select, textarea, button) {
+    font-size: 16px;
+  }
+
   :where(input, select, textarea) {
     border-color: rgb(var(--input-border, var(--border)));
     background-color: rgb(var(--surface));

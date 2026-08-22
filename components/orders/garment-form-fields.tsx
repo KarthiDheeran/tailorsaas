@@ -14,6 +14,7 @@ import {
   garmentTableColumnOptions,
   garmentTableSelectedOptionMetadata,
 } from "@/lib/garment-form-runtime";
+import { cn } from "@/lib/utils";
 
 function multiselectValues(value: GarmentFieldValue): string[] {
   return Array.isArray(value)
@@ -410,6 +411,85 @@ function CompactLegacyFieldControl({
   );
 }
 
+function PaperRowsFieldControl({
+  field,
+  value,
+  error,
+  disabled,
+  onChange,
+  controlRef,
+}: {
+  field: RuntimeGarmentField;
+  value: GarmentFieldValue;
+  error?: string;
+  disabled: boolean;
+  onChange: (code: string, value: GarmentFieldValue) => void;
+  controlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
+}) {
+  if (
+    field.inputType === "table" ||
+    field.inputType === "textarea" ||
+    field.inputType === "multiselect" ||
+    field.inputType === "checkbox"
+  ) {
+    return <FieldControl field={field} value={value} error={error} disabled={disabled} onChange={onChange} controlRef={controlRef} />;
+  }
+
+  const isInstructionField = field.fieldType === "instruction";
+  const inputClass = "h-9 w-full min-w-0 rounded-r-md border-0 border-l border-border-soft bg-white px-2.5 text-base text-ink outline-none focus:bg-primary-tint/40";
+  const rowClass = isInstructionField
+    ? "grid w-full min-w-0 grid-cols-[110px_minmax(420px,1fr)] items-stretch overflow-hidden rounded-md border border-border bg-white"
+    : "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_108px] items-stretch overflow-hidden rounded-md border border-border bg-white";
+
+  return (
+    <label className={rowClass}>
+      <span className="truncate bg-surface-muted px-2.5 py-2 text-sm font-semibold text-ink-muted" title={field.name}>
+        {field.name}
+        {field.required && <b className="ml-1 text-chip-red-fg">*</b>}
+      </span>
+      {field.inputType === "select" ? (
+        <select
+          ref={controlRef as Ref<HTMLSelectElement>}
+          disabled={disabled}
+          required={field.required}
+          value={(value as string | null) ?? ""}
+          onChange={(event) => onChange(field.code, event.target.value)}
+          className={inputClass}
+        >
+          <option value="">Select...</option>
+          {field.options.map((option) => (
+            <option key={option}>{option}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          ref={controlRef as Ref<HTMLInputElement>}
+          disabled={disabled}
+          required={field.required}
+          type={field.inputType === "number" ? "number" : "text"}
+          min={field.min ?? undefined}
+          max={field.max ?? undefined}
+          step={field.decimalPlaces === null ? undefined : 1 / 10 ** field.decimalPlaces}
+          value={(value as string | number | null) ?? ""}
+          placeholder={field.placeholder ?? undefined}
+          onChange={(event) =>
+            onChange(
+              field.code,
+              field.inputType === "number"
+                ? event.target.value === ""
+                  ? null
+                  : Number(event.target.value)
+                : event.target.value
+            )
+          }
+          className={inputClass}
+        />
+      )}
+      {error && <span className="col-span-2 border-t border-chip-red/30 px-2 py-1 text-xs text-chip-red-fg">{error}</span>}
+    </label>
+  );
+}
+
 export function GarmentFormFields({
   fields,
   values,
@@ -425,7 +505,7 @@ export function GarmentFormFields({
   errors?: Record<string, string>;
   disabled?: boolean;
   showSectionHeadings?: boolean;
-  layout?: "stack" | "columns" | "instructions" | "compactLegacyBody";
+  layout?: "stack" | "columns" | "instructions" | "compactLegacyBody" | "paperRowsBody";
   onChange: (code: string, value: GarmentFieldValue) => void;
   firstControlRef?: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
 }) {
@@ -452,15 +532,34 @@ export function GarmentFormFields({
       layout === "compactLegacyBody" &&
       !hasTable &&
       section.trim().toLowerCase() === "body measurements";
+    const usePaperRows =
+      layout === "paperRowsBody" &&
+      !hasTable;
     const firstColumnFields = useTwoColumnVertical
       ? group.slice(0, Math.ceil(group.length / 2))
       : group;
     const secondColumnFields = useTwoColumnVertical
       ? group.slice(Math.ceil(group.length / 2))
       : [];
+    const paperRowColumns = usePaperRows
+      ? Array.from({ length: Math.ceil(group.length / 10) }, (_, index) =>
+          group.slice(index * 10, index * 10 + 10)
+        )
+      : [];
+    const isPaperInstructionGroup = usePaperRows && group[0]?.fieldType === "instruction";
+    const paperRowsGridClass =
+      paperRowColumns.length >= 3
+        ? "grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3"
+        : paperRowColumns.length === 2
+          ? "grid grid-cols-1 gap-3 lg:grid-cols-2"
+          : "grid grid-cols-1 gap-3";
     const renderControl = (field: RuntimeGarmentField) => {
       const isFirst = controlIndex++ === 0;
-      const Control = useTwoColumnVertical ? CompactLegacyFieldControl : FieldControl;
+      const Control = usePaperRows
+        ? PaperRowsFieldControl
+        : useTwoColumnVertical
+          ? CompactLegacyFieldControl
+          : FieldControl;
       return <Control
         key={field.code}
         field={field}
@@ -475,7 +574,12 @@ export function GarmentFormFields({
     <section
       key={section}
       className={
-        layout === "columns" || layout === "compactLegacyBody"
+        layout === "paperRowsBody"
+          ? cn(
+              "max-w-full min-w-0 rounded-lg border border-border-soft bg-white p-4",
+              isPaperInstructionGroup ? "w-full" : "w-fit"
+            )
+          : layout === "columns" || layout === "compactLegacyBody"
           ? "min-w-0 rounded-lg border border-border-soft bg-white p-4"
           : "mb-4"
       }
@@ -488,13 +592,21 @@ export function GarmentFormFields({
           ? "grid grid-cols-1 gap-3"
           : useTwoColumnVertical
             ? "grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2"
-            : layout === "columns" || layout === "compactLegacyBody"
+            : usePaperRows
+              ? paperRowsGridClass
+            : layout === "columns" || layout === "compactLegacyBody" || layout === "paperRowsBody"
               ? "grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
               : layout === "instructions"
                 ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
                 : "grid grid-cols-2 gap-3 md:grid-cols-3"
       }>
-        {useTwoColumnVertical ? (
+        {usePaperRows ? (
+          paperRowColumns.map((column, index) => (
+            <div className={cn("grid max-w-full grid-cols-1 content-start gap-2", isPaperInstructionGroup ? "w-full" : "w-[300px]")} key={index}>
+              {column.map(renderControl)}
+            </div>
+          ))
+        ) : useTwoColumnVertical ? (
           <>
             <div className="grid grid-cols-1 gap-3">
               {firstColumnFields.map(renderControl)}
@@ -511,13 +623,17 @@ export function GarmentFormFields({
     );
   });
 
-  if (layout === "columns" || layout === "compactLegacyBody") {
+  if (layout === "columns" || layout === "compactLegacyBody" || layout === "paperRowsBody") {
     const groupEntries = Object.entries(groups);
     const columnsClass =
-      groupEntries.length >= 3
-        ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)_minmax(430px,1.15fr)]"
+      layout === "paperRowsBody" && groupEntries.length >= 3
+        ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0px,1.05fr)_minmax(0px,1fr)_minmax(360px,0.8fr)]"
+        : groupEntries.length >= 3
+        ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0px,1fr)_minmax(0px,1fr)_minmax(430px,1.15fr)]"
+        : layout === "paperRowsBody" && groupEntries.length === 2
+          ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0px,1.05fr)_minmax(0px,1fr)]"
         : groupEntries.length === 2
-          ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(430px,0.95fr)_minmax(500px,1.1fr)]"
+          ? "grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0px,0.95fr)_minmax(0px,1.1fr)]"
           : "grid min-w-0 items-start gap-4 xl:grid-cols-1";
     return (
       <div className={columnsClass}>

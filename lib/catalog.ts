@@ -225,7 +225,7 @@ export interface CatalogGarmentType {
 export const GARMENT_SECTIONS = ["Men", "Chudidar", "Blouse"] as const;
 export type GarmentSection = (typeof GARMENT_SECTIONS)[number];
 
-export const BODY_MEASUREMENT_LAYOUTS = ["columns", "compact_legacy"] as const;
+export const BODY_MEASUREMENT_LAYOUTS = ["columns", "compact_legacy", "paper_rows"] as const;
 export type BodyMeasurementLayout = (typeof BODY_MEASUREMENT_LAYOUTS)[number];
 
 export const PRODUCTION_PRINT_GROUPS = ["Common", "Shirt", "Pant"] as const;
@@ -236,6 +236,12 @@ export function isBodyMeasurementLayout(value: unknown): value is BodyMeasuremen
     typeof value === "string" &&
     BODY_MEASUREMENT_LAYOUTS.includes(value as BodyMeasurementLayout)
   );
+}
+
+export function bodyMeasurementLayoutLabel(value: BodyMeasurementLayout) {
+  if (value === "compact_legacy") return "Compact vertical";
+  if (value === "paper_rows") return "Paper rows (10 per column)";
+  return "Normal columns";
 }
 
 export function isGarmentSection(value: unknown): value is GarmentSection {

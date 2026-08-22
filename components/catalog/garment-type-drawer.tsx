@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import {
   BODY_MEASUREMENT_LAYOUTS,
+  bodyMeasurementLayoutLabel,
   GARMENT_SECTIONS,
   MEASUREMENT_FIELD_GROUPS,
   PRODUCTION_PRINT_GROUPS,
@@ -291,9 +292,7 @@ export function GarmentTypeDrawer({
                   >
                     {BODY_MEASUREMENT_LAYOUTS.map((option) => (
                       <option key={option} value={option}>
-                        {option === "compact_legacy"
-                          ? "Compact vertical"
-                          : "Normal columns"}
+                        {bodyMeasurementLayoutLabel(option)}
                       </option>
                     ))}
                   </select>

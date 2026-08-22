@@ -7,13 +7,14 @@ import { getProductionPrintBundleAction } from "@/app/(shell)/job-cards/actions"
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { barcodeSvgDataUri, barcodeSvgMetrics, toBarcodeValue } from "@/lib/barcode-code128";
 import {
+  type HistoricalGarmentDisplayField,
   historicalGarmentValueTextForPrint,
   resolveHistoricalGarmentDisplayFields,
   shouldPrintMeasurementsOnJobCard,
 } from "@/lib/garment-form-runtime";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
+import type { OrderItemAddOn } from "@/lib/types";
 
-const MEASUREMENT_NOTES_KEY = "__measurementNotes";
 const PRODUCTION_BARCODE_OPTIONS = {
   height: 30,
   moduleWidth: 1.25,
@@ -49,6 +50,105 @@ function productionFieldText(value: unknown, uiMetadata?: Record<string, unknown
   const tableLines = tableWorkDetailLines(value);
   if (tableLines.length > 0) return tableLines.join("\n");
   return historicalGarmentValueTextForPrint(value, uiMetadata, "ta");
+}
+
+type ProductionValueCell =
+  | { kind: "field"; field: HistoricalGarmentDisplayField }
+  | { kind: "text"; key: string; label: string; value: string };
+
+function normalizedProductionKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function productionFieldKeys(field: HistoricalGarmentDisplayField) {
+  const metadata = field.uiMetadata ?? {};
+  const shortCode = typeof metadata.shortCode === "string" ? metadata.shortCode : "";
+  const legacyCode = typeof metadata.legacyCode === "string" ? metadata.legacyCode : "";
+
+  return [
+    field.code,
+    field.label,
+    shortCode,
+    legacyCode,
+  ]
+    .filter((value) => value.trim())
+    .map(normalizedProductionKey);
+}
+
+function takeFieldByKey(
+  fields: HistoricalGarmentDisplayField[],
+  acceptedKeys: string[],
+) {
+  const matchIndex = fields.findIndex((field) => {
+    const keys = productionFieldKeys(field);
+    return acceptedKeys.some((key) => keys.includes(normalizedProductionKey(key)));
+  });
+  if (matchIndex === -1) return null;
+  const [field] = fields.splice(matchIndex, 1);
+  return field;
+}
+
+function productionAddOnCells(addOns: OrderItemAddOn[] | undefined): ProductionValueCell[] {
+  return (addOns ?? []).flatMap((addOn) => {
+    const label = (addOn.labelTa ?? addOn.label ?? "").trim();
+    if (!label) return [];
+    const qty = Number(addOn.qty ?? 1);
+    const value = Number.isFinite(qty) && qty > 1 ? `${label} ${qty}` : label;
+    return [{
+      kind: "text" as const,
+      key: `addon:${addOn.key}`,
+      label,
+      value,
+    }];
+  });
+}
+
+function fieldCell(field: HistoricalGarmentDisplayField | null): ProductionValueCell | null {
+  return field ? { kind: "field", field } : null;
+}
+
+function buildProductionValueCells(
+  fields: HistoricalGarmentDisplayField[],
+  addOns: OrderItemAddOn[] | undefined,
+) {
+  const bodyFields = fields.filter((field) => field.fieldType === "measurement");
+  const bodyFieldSet = new Set(bodyFields);
+  const nonBodyFields = fields.filter((field) => !bodyFieldSet.has(field));
+  const measurements = bodyFields.map(fieldCell);
+
+  const r1 = fieldCell(takeFieldByKey(nonBodyFields, ["r1", "shirtr1"]));
+  const r2 = fieldCell(takeFieldByKey(nonBodyFields, ["r2", "shirtr2"]));
+  const r3 = fieldCell(takeFieldByKey(nonBodyFields, ["r3", "shirtr3"]));
+  const r4 = fieldCell(takeFieldByKey(nonBodyFields, ["r4", "shirtr4"]));
+  const extras = [
+    ...productionAddOnCells(addOns),
+    ...nonBodyFields.map(fieldCell),
+  ].filter((cell): cell is ProductionValueCell => cell !== null);
+
+  const rows: Array<Array<ProductionValueCell | null>> = [
+    [...measurements.slice(0, 5), r1],
+    [...measurements.slice(5, 10), r2],
+    [r3, r4, ...extras.slice(0, 4)],
+  ];
+  const remainder = [
+    ...measurements.slice(10),
+    ...extras.slice(4),
+  ].filter((cell): cell is ProductionValueCell => cell !== null);
+
+  for (let index = 0; index < remainder.length; index += 6) {
+    rows.push(remainder.slice(index, index + 6));
+  }
+
+  return rows.flatMap((row) => {
+    const padded = [...row];
+    while (padded.length < 6) padded.push(null);
+    return padded.slice(0, 6);
+  });
+}
+
+function productionValueCellText(cell: ProductionValueCell) {
+  if (cell.kind === "text") return cell.value;
+  return productionFieldText(cell.field.value, cell.field.uiMetadata);
 }
 
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
@@ -103,10 +203,6 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
       field.value !== "" &&
       (!Array.isArray(field.value) || field.value.length > 0),
   );
-  const measurementNotesValue = slip.measurementsSnapshot?.[MEASUREMENT_NOTES_KEY];
-  const measurementNotes =
-    typeof measurementNotesValue === "string" ? measurementNotesValue.trim() : "";
-
   return (
     <section className="production-ticket production-stitching">
       <div className="production-stage">STITCHING</div>
@@ -121,21 +217,21 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         </span>
       </div>
 
-      <div className="production-fields">
+      <div className="production-fields production-fixed-value-grid">
         {visible.length ? (
-          visible.map((field) => (
-            <div key={field.code} title={field.label} aria-label={field.label}>
-              <strong>{productionFieldText(field.value, field.uiMetadata)}</strong>
+          buildProductionValueCells(visible, slip.addOnsSnapshot).map((cell, index) => (
+            <div
+              key={cell ? `${cell.kind}-${cell.kind === "field" ? cell.field.code : cell.key}-${index}` : `empty-${index}`}
+              title={cell ? (cell.kind === "field" ? cell.field.label : cell.label) : ""}
+              aria-label={cell ? (cell.kind === "field" ? cell.field.label : cell.label) : "Empty production value position"}
+            >
+              {cell && <strong>{productionValueCellText(cell)}</strong>}
             </div>
           ))
         ) : (
           <p>No measurements recorded.</p>
         )}
       </div>
-
-      {measurementNotes && (
-        <p className="production-measurement-notes">Note: {measurementNotes}</p>
-      )}
 
       <SlipBarcode slip={slip} />
 
@@ -243,6 +339,10 @@ function ProductionPrintBundleContent() {
           font-size: 10px;
         }
 
+        .production-fixed-value-grid {
+          grid-template-rows: repeat(3, minmax(23px, auto));
+        }
+
         .production-fields div {
           border: 1px solid #777;
           display: flex;
@@ -257,16 +357,6 @@ function ProductionPrintBundleContent() {
           font-size: 11px;
           line-height: 1.18;
           white-space: pre-line;
-        }
-
-        .production-measurement-notes {
-          grid-column: 1 / -1;
-          margin: 0;
-          border: 1px solid #777;
-          padding: 3px 5px;
-          font-size: 10px;
-          font-weight: 700;
-          white-space: pre-wrap;
         }
 
         .production-barcode {
