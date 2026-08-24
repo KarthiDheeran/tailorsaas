@@ -322,7 +322,7 @@ function TallyContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-5 lg:p-5">
+    <div className="w-full p-2 sm:p-3 lg:p-4">
       <div className="mb-3">
         <JobCardTabs active="tally" />
       </div>
@@ -343,13 +343,13 @@ function TallyContent() {
           </div>
         </div>
         <form
-          className="grid gap-3 xl:grid-cols-[170px_170px_240px_auto_minmax(280px,1fr)]"
+          className="flex flex-wrap items-end gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             void scan(inputRef.current?.value ?? code);
           }}
         >
-          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+          <label className="grid min-w-[190px] flex-[0_0_190px] gap-1 text-xs font-semibold text-ink-muted">
             Tally Date
             <input
               type="date"
@@ -358,11 +358,11 @@ function TallyContent() {
               className="h-12 rounded-[10px] border border-border px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </label>
-          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+          <label className="grid min-w-[190px] flex-[0_0_190px] gap-1 text-xs font-semibold text-ink-muted">
             To Date
             <input type="date" value={tallyToDate} min={tallyDate} onChange={(event) => setTallyToDate(event.target.value)} className="h-12 rounded-[10px] border border-border px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
-          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+          <label className="grid min-w-[260px] flex-[0_0_260px] gap-1 text-xs font-semibold text-ink-muted">
             Staff member
             <select
               value={selectedStaffId}
@@ -379,7 +379,7 @@ function TallyContent() {
               type="button"
               onClick={changeStaff}
               disabled={isScanning}
-              className="mt-5 flex h-12 items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface-muted"
+              className="flex h-12 min-w-[150px] items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface-muted"
             >
               Change Staff
             </button>
@@ -388,12 +388,12 @@ function TallyContent() {
               type="button"
               onClick={startSession}
               disabled={!selectedStaffId || isScanning}
-              className="mt-5 flex h-12 items-center justify-center rounded-[10px] bg-primary px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-12 min-w-[150px] items-center justify-center rounded-[10px] bg-primary px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               Start Scanning
             </button>
           )}
-          <label className="grid gap-1 text-xs font-semibold text-ink-muted">
+          <label className="grid min-w-[360px] flex-1 gap-1 text-xs font-semibold text-ink-muted">
             Scan Barcode / Slip Code
             <span className="relative block">
             <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
@@ -416,6 +416,13 @@ function TallyContent() {
               : "Select a staff member, then start scanning. Each barcode is recorded immediately."}
           </p>
           {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} items · {formatCurrency(sessionPayable)}</p>}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white px-3 py-2 text-xs font-semibold text-ink-muted">
+          <span>Scans: <span className="text-ink">{visibleTalliedUnits}</span></span>
+          <span className="text-border">|</span>
+          <span>Workers: <span className="text-ink">{totals.length}</span></span>
+          <span className="text-border">|</span>
+          <span>Payable: <span className="text-primary">{formatCurrency(todayPayable)}</span></span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Scan mode</span>
@@ -649,7 +656,7 @@ function TallyContent() {
       </section>
 
       <section className="mt-3 rounded-2xl border border-border-soft bg-white p-[18px] shadow-soft">
-        <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="hidden">
           <div className="flex h-[90px] items-center gap-3 rounded-2xl border border-border-soft bg-surface-muted px-4 shadow-sm">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-chip-mint text-primary"><QrCode className="h-5 w-5" /></span>
             <div><p className="text-sm font-medium text-ink-muted">Today&apos;s Scans</p><p className="text-[22px] font-bold text-ink">{visibleTalliedUnits}</p></div>
@@ -667,28 +674,35 @@ function TallyContent() {
             <div><p className="text-sm font-medium text-ink-muted">Pending Scans</p><p className="text-[22px] font-bold text-ink-muted">—</p></div>
           </div>
         </div>
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
           <div>
             <h2 className="text-lg font-semibold text-ink">Worker Totals</h2>
             <p className="mt-0.5 text-sm text-ink-muted">{formatDate(tallyDate)}</p>
-            <div className="mt-3 space-y-2.5">
-              {totals.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border-soft px-3 py-5 text-center text-sm text-ink-muted">No job cards tallied for this date.</div>
-              ) : totals.map((row) => (
-                <div key={row.staffId} className="rounded-2xl border border-border-soft bg-white p-3.5 shadow-sm">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-tint text-primary"><UserRound className="h-4.5 w-4.5" /></span>
-                    <p className="min-w-0 truncate font-semibold text-ink">{row.staffName}</p>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
-                    <div><p className="text-xs font-medium text-ink-muted">Items</p><p className="mt-0.5 text-lg font-bold text-ink">{row.count}</p></div>
-                    <div><p className="text-xs font-medium text-ink-muted">Payable</p><p className="mt-0.5 text-lg font-bold text-primary">{formatCurrency(row.amount)}</p></div>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-ink-muted">
-                    {Array.from(row.stages.entries()).map(([stage, count]) => <span key={stage} className="rounded-full bg-surface-muted px-2 py-1">{stage} {count}</span>)}
-                  </div>
-                </div>
-              ))}
+            <div className="mt-3 overflow-x-auto rounded-md border border-[#8f9bad] bg-white shadow-none">
+              <table className="min-w-[420px] w-full border-collapse text-left text-xs">
+                <thead className="bg-[#e7edf7] text-[11px] font-bold text-ink">
+                  <tr>
+                    <th className="border border-[#8f9bad] px-2 py-1">Worker</th>
+                    <th className="border border-[#8f9bad] px-2 py-1 text-right">Items</th>
+                    <th className="border border-[#8f9bad] px-2 py-1 text-right">Payable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {totals.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="border border-[#aeb8c8] px-3 py-8 text-center text-ink-muted">
+                        No job cards tallied for this date.
+                      </td>
+                    </tr>
+                  ) : totals.map((row) => (
+                    <tr key={row.staffId} className="hover:bg-surface-muted">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 font-semibold text-ink">{row.staffName}</td>
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-right text-ink">{row.count}</td>
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-right font-bold text-primary">{formatCurrency(row.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -697,39 +711,39 @@ function TallyContent() {
             <p className="mt-0.5 text-sm text-ink-muted">
               Showing saved scans for {formatDate(tallyDate)}.
             </p>
-          <div className="mt-3 overflow-x-auto rounded-xl border border-border-soft">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-chip-info text-[15px] font-semibold text-ink-muted">
+          <div className="mt-3 overflow-x-auto rounded-md border border-[#8f9bad] bg-white shadow-none">
+            <table className="min-w-[900px] w-full border-collapse text-left text-xs">
+              <thead className="bg-[#e7edf7] text-[11px] font-bold text-ink">
                 <tr>
-                  <th className="px-3 py-2">Order</th>
-                  <th className="px-3 py-2">Garment</th>
-                  <th className="px-3 py-2">Stage</th>
-                  <th className="px-3 py-2">Worker</th>
-                  <th className="px-3 py-2">Tallied</th>
-                  <th className="px-3 py-2 text-right">Amount</th>
+                  <th className="border border-[#8f9bad] px-2 py-1">Order</th>
+                  <th className="border border-[#8f9bad] px-2 py-1">Garment</th>
+                  <th className="border border-[#8f9bad] px-2 py-1">Stage</th>
+                  <th className="border border-[#8f9bad] px-2 py-1">Worker</th>
+                  <th className="border border-[#8f9bad] px-2 py-1">Tallied</th>
+                  <th className="border border-[#8f9bad] px-2 py-1 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleSlips.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-ink-muted">
+                    <td colSpan={6} className="border border-[#aeb8c8] px-3 py-8 text-center text-ink-muted">
                       Scan a returned job card to start this tally.
                     </td>
                   </tr>
                 ) : (
                   visibleSlips.map((slip) => (
-                    <tr key={slip.id} className="h-16 border-t border-border-soft transition-colors hover:bg-surface-muted">
-                      <td className="px-3 py-2">
+                    <tr key={slip.id} className="transition-colors hover:bg-surface-muted">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
                         <p className="font-semibold text-primary hover:underline">{slip.orderNumber}</p>
                         <p className="text-xs font-semibold text-ink-muted">{slip.slipCode}</p>
                       </td>
-                      <td className="px-3 py-2 text-ink">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-ink">
                         {slipGarmentLabel(slip)}
                       </td>
-                      <td className="px-3 py-2"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${stageChipClass(slip.stage)}`}>{slip.stage}</span></td>
-                      <td className="px-3 py-2 text-ink"><span className="flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{slip.staffName}</span></td>
-                      <td className="px-3 py-2 text-sm text-ink-muted"><span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />{localTime(slip.talliedAt)}</span></td>
-                      <td className="px-3 py-2 text-right text-[18px] font-bold text-primary">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5"><span className={`inline-flex rounded px-1.5 py-0 text-[10px] font-semibold leading-4 ${stageChipClass(slip.stage)}`}>{slip.stage}</span></td>
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-ink"><span className="flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{slip.staffName}</span></td>
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-ink-muted"><span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />{localTime(slip.talliedAt)}</span></td>
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-right font-bold text-primary">
                         {formatCurrency(slipPayableAmount(slip))}
                       </td>
                     </tr>

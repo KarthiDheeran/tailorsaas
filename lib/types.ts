@@ -154,6 +154,7 @@ export interface OrderItem {
   garmentTypeId?: string;
   size?: string;
   qty: number;
+  deliveredQty?: number;
   // Base rate (catalog base price, or a manual override) — excludes add-ons.
   rate: number;
   addOns?: OrderItemAddOn[];

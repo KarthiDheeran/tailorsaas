@@ -344,10 +344,12 @@ function NewOrderPageContent() {
   const advanceAmountRef = useRef<HTMLInputElement | null>(null);
   const deliveryDateInputRef = useRef<HTMLInputElement | null>(null);
   const finalizeDialogRef = useRef<HTMLDivElement | null>(null);
+  const successDialogRef = useRef<HTMLDivElement | null>(null);
   const finalizeConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
   const [createdByOperatorId, setCreatedByOperatorId] = useState("");
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [profileUpdateWarning, setProfileUpdateWarning] = useState<string | null>(null);
   const [attachmentUploadFailures, setAttachmentUploadFailures] = useState<
     AttachmentUploadFailure[]
@@ -386,6 +388,7 @@ function NewOrderPageContent() {
 
   useEffect(() => {
     if (!finalizeOpen) return;
+    setFinalizeError(null);
     const timer = window.setTimeout(() => {
       deliveryDateInputRef.current?.focus();
       finalizeConfirmButtonRef.current =
@@ -395,6 +398,14 @@ function NewOrderPageContent() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [finalizeOpen]);
+
+  useEffect(() => {
+    if (!savedOrder) return;
+    const timer = window.setTimeout(() => {
+      successDialogRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [savedOrder]);
 
   useEffect(() => {
     if (!orderSection && currentUser?.allowed_order_sections.length === 1) {
@@ -1199,12 +1210,25 @@ function NewOrderPageContent() {
 
   async function handleSave() {
     setSubmitAttempted(true);
+    setFinalizeError(null);
     if (hasErrors) return;
     setSaveError(null);
     setAttachmentError(null);
     setProfileUpdateWarning(null);
     setAttachmentUploadFailures([]);
     setAttachmentUploadCount(0);
+    if (!measurementTakenByOperatorId) {
+      const message = "Select who took the measurements before confirming the order.";
+      setFinalizeError(message);
+      setSaveError(message);
+      return;
+    }
+    if (!createdByOperatorId) {
+      const message = "Select who created the order before confirming.";
+      setFinalizeError(message);
+      setSaveError(message);
+      return;
+    }
     setSaving(true);
 
     const validItems = computedItems.filter(
@@ -2236,11 +2260,16 @@ function NewOrderPageContent() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-semibold text-ink">Order date<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
               <label className="text-sm font-semibold text-ink">Delivery date<input ref={deliveryDateInputRef} type="date" value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
-              <label className="text-sm font-semibold text-ink">Measurements taken by<select value={measurementTakenByOperatorId} onChange={(event) => setMeasurementTakenByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Not specified</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
-              <label className="text-sm font-semibold text-ink">Created by<select value={createdByOperatorId} onChange={(event) => setCreatedByOperatorId(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Active operator</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Measurements taken by <span className="text-chip-red-fg">*</span><select required value={measurementTakenByOperatorId} onChange={(event) => { setMeasurementTakenByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Created by <span className="text-chip-red-fg">*</span><select required value={createdByOperatorId} onChange={(event) => { setCreatedByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
               <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
               <label className="text-sm font-semibold text-ink sm:col-span-2">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3">{paymentModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
             </div>
+            {finalizeError && (
+              <p className="mt-4 rounded-lg bg-chip-red px-3 py-2 text-sm font-semibold text-chip-red-fg">
+                {finalizeError}
+              </p>
+            )}
             <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-secondary px-6 font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
           </div>
         </div>
@@ -2253,7 +2282,21 @@ function NewOrderPageContent() {
               fully unmounted yet. */}
           <div className="fixed inset-0 z-[80] bg-black/40" />
           <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-            <div className="w-full max-w-sm rounded-xl border border-border-soft bg-white p-6 text-center shadow-soft">
+            <div
+              ref={successDialogRef}
+              tabIndex={-1}
+              onKeyDownCapture={(event) => {
+                if (event.key !== "Enter" || event.repeat || leavingToOrders) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (canPrintReceipt) {
+                  handlePrintCustomerReceiptAndCreateNext(savedOrder);
+                } else {
+                  handleCreateAnotherOrder();
+                }
+              }}
+              className="w-full max-w-sm rounded-xl border border-border-soft bg-white p-6 text-center shadow-soft outline-none"
+            >
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-chip-mint">
                 <CheckCircle2 className="h-6 w-6 text-chip-mint-fg" />
               </div>

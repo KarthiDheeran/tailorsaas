@@ -110,7 +110,7 @@ export function RecordPaymentModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-[13px] font-medium text-ink-muted">
-              {t("common.amount")}
+              {t("payments.amountReceived")}
             </label>
             <input
               type="number"

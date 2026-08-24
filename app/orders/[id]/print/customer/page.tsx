@@ -22,30 +22,21 @@ import {
 import { barcodeSvgDataUri, barcodeSvgMetrics } from "@/lib/barcode-code128";
 import { formatCurrency } from "@/lib/currency";
 import type { CatalogGarmentType } from "@/lib/catalog";
-import type { Customer, Order, OrderItemAddOn, Payment } from "@/lib/types";
+import type { Customer, Order, Payment } from "@/lib/types";
 
 type PaymentModeSummary =
   | { kind: "none" }
   | { kind: "single"; mode: string }
   | { kind: "multiple"; breakdown: { mode: string; amount: number }[] };
 
-type ReceiptRow =
-  | {
-      type: "item";
-      key: string;
-      particular: string;
-      qty: number;
-      rate: number | "Mixed";
-      total: number;
-    }
-  | {
-      type: "addon";
-      key: string;
-      label: string;
-      qty: number;
-      rate: number;
-      total: number;
-    };
+type ReceiptRow = {
+  type: "item";
+  key: string;
+  particular: string;
+  qty: number;
+  rate: number | "Mixed";
+  total: number;
+};
 
 const ROWS_PER_RECEIPT_PAGE = 12;
 const RECEIPT_PRINT_PAGE_WIDTH_MM = 210;
@@ -82,35 +73,12 @@ function paymentModeLabel(summary: PaymentModeSummary) {
   return "Multiple";
 }
 
-function addOnReceiptQuantity(addOn: OrderItemAddOn, itemQty: number): number {
-  const qty = typeof addOn.qty === "number" ? addOn.qty : Number(addOn.qty);
-  return Number.isFinite(qty) && qty > 0 ? qty : itemQty;
-}
-
-function addOnReceiptRate(addOn: OrderItemAddOn): number {
-  const rate = typeof addOn.rate === "number" ? addOn.rate : Number(addOn.rate);
-  if (Number.isFinite(rate)) return rate;
-  const qty = typeof addOn.qty === "number" ? addOn.qty : Number(addOn.qty);
-  if (Number.isFinite(qty) && qty > 0) return addOn.amount / qty;
-  return addOn.amount;
-}
-
-function addOnReceiptTotal(addOn: OrderItemAddOn, fallbackQty: number, fallbackRate: number): number {
-  const total = typeof addOn.total === "number" ? addOn.total : Number(addOn.total);
-  if (Number.isFinite(total)) return total;
-  return fallbackQty * fallbackRate;
-}
-
-function normalizedTableAddOnLabel(label: string): string {
-  return label.replace(/\s+-\s+\d+$/, "").trim();
-}
-
 function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptRow[] {
   const garmentsById = new Map(garmentTypes.map((garment) => [garment.id, garment]));
   const garmentsByName = new Map(
     garmentTypes.map((garment) => [garment.name.trim().toLowerCase(), garment])
   );
-  const groups = new Map<string, { item: Extract<ReceiptRow, { type: "item" }>; rates: Set<number>; addOns: Map<string, Extract<ReceiptRow, { type: "addon" }>> }>();
+  const groups = new Map<string, { item: ReceiptRow; rates: Set<number> }>();
   for (const item of order.items) {
     const garment =
       (item.garmentTypeId ? garmentsById.get(item.garmentTypeId) : undefined) ??
@@ -122,39 +90,17 @@ function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptR
       group = {
         item: { type: "item", key: `item-${groupKey}`, particular: displayParticular, qty: 0, rate: item.rate, total: 0 },
         rates: new Set(),
-        addOns: new Map(),
       };
       groups.set(groupKey, group);
     }
+    const itemRateWithAddOns = item.finalRate ?? item.rate + (item.addOnsTotal ?? 0);
+    const itemTotalWithAddOns = item.amount ?? item.qty * itemRateWithAddOns;
     group.item.qty += item.qty;
-    group.item.total += item.qty * item.rate;
-    group.rates.add(item.rate);
-    group.item.rate = group.rates.size === 1 ? item.rate : "Mixed";
-    for (const addOn of item.addOns ?? []) {
-      const addOnQty = addOnReceiptQuantity(addOn, item.qty);
-      const addOnRate = addOnReceiptRate(addOn);
-      const addOnTotal = addOnReceiptTotal(addOn, addOnQty, addOnRate);
-      const isTableAddOn = addOn.key.startsWith("table:");
-      const normalizedLabel = isTableAddOn ? normalizedTableAddOnLabel(addOn.label) : addOn.label.trim();
-      const addOnKey = isTableAddOn
-        ? `${normalizedLabel.toLocaleLowerCase()}|${addOnRate}`
-        : `${addOn.label.trim().toLocaleLowerCase()}|${addOnRate}`;
-      const row =
-        group.addOns.get(addOnKey) ??
-        {
-          type: "addon" as const,
-          key: `addon-${groupKey}-${addOnKey}`,
-          label: isTableAddOn ? normalizedLabel : addOn.label,
-          qty: 0,
-          rate: addOnRate,
-          total: 0,
-        };
-      row.qty += addOnQty;
-      row.total += addOnTotal;
-      group.addOns.set(addOnKey, row);
-    }
+    group.item.total += itemTotalWithAddOns;
+    group.rates.add(itemRateWithAddOns);
+    group.item.rate = group.rates.size === 1 ? itemRateWithAddOns : "Mixed";
   }
-  return Array.from(groups.values()).flatMap((group) => [group.item, ...Array.from(group.addOns.values())]);
+  return Array.from(groups.values()).map((group) => group.item);
 }
 
 function paginateRows(rows: ReceiptRow[]) {
@@ -246,23 +192,14 @@ function ReceiptPage({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) =>
-                row.type === "item" ? (
-                  <tr key={row.key}>
-                    <td>{row.particular}</td>
-                    <td className="num">{row.qty}</td>
-                    <td className="num">{row.rate === "Mixed" ? "Mixed" : formatCurrency(row.rate)}</td>
-                    <td className="num">{formatCurrency(row.total)}</td>
-                  </tr>
-                ) : (
-                  <tr key={row.key} className="addon-row">
-                    <td>+ {row.label}</td>
-                    <td className="num">{row.qty}</td>
-                    <td className="num">{formatCurrency(row.rate)}</td>
-                    <td className="num">{formatCurrency(row.total)}</td>
-                  </tr>
-                )
-              )}
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td>{row.particular}</td>
+                  <td className="num">{row.qty}</td>
+                  <td className="num">{row.rate === "Mixed" ? "Mixed" : formatCurrency(row.rate)}</td>
+                  <td className="num">{formatCurrency(row.total)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </main>

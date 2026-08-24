@@ -31,13 +31,13 @@ import type { GarmentSection } from "@/lib/catalog";
 // ---------------------------------------------------------------------------
 
 const ORDER_ITEM_COLUMNS =
-  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, field_schema_snapshot, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, delivered_qty, rate, add_ons, add_ons_total, final_rate, amount, measurements, field_schema_snapshot, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 const ORDER_ITEM_REPEAT_COLUMNS =
-  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, delivered_qty, rate, add_ons, add_ons_total, final_rate, amount, fabric_source, fabric_notes, design_notes, alteration_issue, alteration_required_change, alteration_charge_type, linked_original_order_id";
 
 const ORDER_ITEM_SUMMARY_COLUMNS =
-  "id, order_id, serial_no, particular, garment_type_id, size, qty, rate, add_ons, add_ons_total, final_rate, amount";
+  "id, order_id, serial_no, particular, garment_type_id, size, qty, delivered_qty, rate, add_ons, add_ons_total, final_rate, amount";
 
 interface OrderItemRow {
   id: string;
@@ -46,6 +46,7 @@ interface OrderItemRow {
   garment_type_id: string | null;
   size: string | null;
   qty: number;
+  delivered_qty?: number | null;
   rate: number;
   add_ons: OrderItemAddOn[] | null;
   add_ons_total: number | null;
@@ -70,6 +71,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
     garmentTypeId: row.garment_type_id ?? undefined,
     size: row.size ?? undefined,
     qty: row.qty,
+    deliveredQty: row.delivered_qty ?? 0,
     rate: row.rate,
     addOns: row.add_ons ?? undefined,
     addOnsTotal: row.add_ons_total ?? undefined,

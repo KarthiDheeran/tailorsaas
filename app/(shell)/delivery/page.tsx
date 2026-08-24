@@ -10,8 +10,10 @@ import {
   IndianRupee,
   Search,
   Truck,
+  X,
 } from "lucide-react";
 import {
+  deliverOrderItemsAction,
   getDeliveryDeskOrdersAction,
   getQuickDeliveryOrderAction,
   markOrderDeliveredAction,
@@ -53,9 +55,13 @@ function customerPhone(row: DeliveryDeskOrder) {
 }
 
 function itemsLabel(order: Order) {
-  const pieces = order.items.reduce((sum, item) => sum + item.qty, 0);
+  const pieces = order.items.reduce((sum, item) => sum + Math.max(0, item.qty - (item.deliveredQty ?? 0)), 0);
   const garments = Array.from(new Set(order.items.map((item) => item.particular))).join(", ");
-  return `${pieces} pc${pieces === 1 ? "" : "s"}${garments ? ` - ${garments}` : ""}`;
+  return `${pieces} pending pc${pieces === 1 ? "" : "s"}${garments ? ` - ${garments}` : ""}`;
+}
+
+function itemPendingQty(item: Order["items"][number]) {
+  return Math.max(0, item.qty - (item.deliveredQty ?? 0));
 }
 
 function DeliveryStatCard({
@@ -89,6 +95,177 @@ function DeliveryStatCard({
   );
 }
 
+function PartialDeliveryModal({
+  row,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  row: DeliveryDeskOrder;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (data: {
+    items: Array<{ orderItemId: string; quantity: number }>;
+    amount: number;
+    paymentMode: PaymentMode;
+  }) => void;
+}) {
+  const pendingItems = row.order.items.filter((item) => item.id && itemPendingQty(item) > 0);
+  const [quantities, setQuantities] = useState<Record<string, string>>(() =>
+    Object.fromEntries(pendingItems.map((item) => [item.id!, "0"]))
+  );
+  const [amount, setAmount] = useState("0");
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
+  const [error, setError] = useState("");
+
+  const deliverAmount = useMemo(() => {
+    return pendingItems.reduce((sum, item) => {
+      const qty = Number(quantities[item.id!] || 0);
+      const rate = item.finalRate ?? item.rate;
+      return sum + Math.max(0, qty) * rate;
+    }, 0);
+  }, [pendingItems, quantities]);
+  const collectedAmount = Number(amount || 0);
+  const balanceAfterCollection = Number.isFinite(collectedAmount)
+    ? Math.max(0, row.order.balance - Math.max(0, collectedAmount))
+    : row.order.balance;
+
+  function fillAllPending() {
+    setQuantities(Object.fromEntries(pendingItems.map((item) => [item.id!, String(itemPendingQty(item))])));
+  }
+
+  function handleSubmit() {
+    const deliveryItems = pendingItems.map((item) => ({
+      orderItemId: item.id!,
+      quantity: Number(quantities[item.id!] || 0),
+    }));
+    const invalid = pendingItems.find((item) => {
+      const qty = Number(quantities[item.id!] || 0);
+      return !Number.isInteger(qty) || qty < 0 || qty > itemPendingQty(item);
+    });
+    if (invalid) {
+      setError(`Enter a valid delivery quantity for ${invalid.particular}.`);
+      return;
+    }
+    if (!deliveryItems.some((item) => item.quantity > 0)) {
+      setError("Enter at least one item quantity to deliver.");
+      return;
+    }
+    if (!Number.isFinite(collectedAmount) || collectedAmount < 0 || collectedAmount > row.order.balance) {
+      setError("Enter a valid collected amount within the order balance.");
+      return;
+    }
+    setError("");
+    onSubmit({ items: deliveryItems, amount: collectedAmount, paymentMode });
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/30" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-[70] w-[min(760px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-5 shadow-soft">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-ink">Deliver Items</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              {row.order.orderNumber} · {customerLabel(row)} · Balance {money(row.order.balance)}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-border">
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-surface-muted text-xs uppercase text-ink-faint">
+              <tr>
+                <th className="px-3 py-2 text-left">Item</th>
+                <th className="px-3 py-2 text-right">Rate</th>
+                <th className="px-3 py-2 text-center">Ordered</th>
+                <th className="px-3 py-2 text-center">Delivered</th>
+                <th className="px-3 py-2 text-center">Pending</th>
+                <th className="px-3 py-2 text-center">Deliver now</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-soft">
+              {pendingItems.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-3 py-2 font-semibold text-ink">{item.particular}</td>
+                  <td className="px-3 py-2 text-right">{money(item.finalRate ?? item.rate)}</td>
+                  <td className="px-3 py-2 text-center">{item.qty}</td>
+                  <td className="px-3 py-2 text-center">{item.deliveredQty ?? 0}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-primary">{itemPendingQty(item)}</td>
+                  <td className="px-3 py-2 text-center">
+                    <input
+                      type="number"
+                      min="0"
+                      max={itemPendingQty(item)}
+                      step="1"
+                      value={quantities[item.id!]}
+                      onChange={(event) =>
+                        setQuantities((current) => ({ ...current, [item.id!]: event.target.value }))
+                      }
+                      className="h-9 w-20 rounded-lg border border-border px-2 text-center font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_150px_160px] md:items-end">
+          <div className="rounded-lg bg-surface-muted p-3 text-sm text-ink-muted">
+            Selected delivery value: <span className="font-bold text-ink">{money(deliverAmount)}</span>
+            <button type="button" onClick={fillAllPending} className="ml-3 text-xs font-bold text-primary hover:underline">
+              Fill all pending
+            </button>
+          </div>
+          <label className="block text-xs font-semibold text-ink-muted">
+            Collected amount
+            <input
+              type="number"
+              min="0"
+              max={row.order.balance}
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-border px-3 text-right text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </label>
+          <div className="rounded-lg bg-chip-orange px-3 py-2 text-right">
+            <p className="text-xs font-semibold text-chip-orange-fg">Balance after collect</p>
+            <p className="mt-1 text-base font-bold text-chip-orange-fg">{money(balanceAfterCollection)}</p>
+          </div>
+          <label className="block text-xs font-semibold text-ink-muted">
+            Payment mode
+            <select
+              value={paymentMode}
+              onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}
+              className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              {["Cash", "GPay", "UPI", "Card", "Bank Transfer", "Cheque"].map((mode) => (
+                <option key={mode}>{mode}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {error && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface-muted">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={busy} className="h-10 rounded-lg bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
+            Confirm Delivery
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DeliveryDeskContent() {
   const { hasPermission } = useCurrentUser();
   const canRecordPayment = hasPermission("orders.recordPayment");
@@ -103,6 +280,7 @@ function DeliveryDeskContent() {
   const [filter, setFilter] = useState<DeliveryFilter>("all");
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
+  const [deliveryOrder, setDeliveryOrder] = useState<DeliveryDeskOrder | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const quickScanRef = useRef<HTMLInputElement | null>(null);
@@ -227,6 +405,37 @@ function DeliveryDeskContent() {
     }
   }
 
+  function deliverItems(
+    row: DeliveryDeskOrder,
+    delivery: {
+      items: Array<{ orderItemId: string; quantity: number }>;
+      amount: number;
+      paymentMode: PaymentMode;
+    }
+  ) {
+    setPendingOrderId(row.order.id);
+    startTransition(async () => {
+      const result = await deliverOrderItemsAction({
+        orderId: row.order.id,
+        items: delivery.items,
+        amount: delivery.amount,
+        paymentMode: delivery.paymentMode,
+        notes: "Delivery desk item handover",
+      });
+      setPendingOrderId(null);
+      if (!result.success) {
+        window.alert(result.error);
+        return;
+      }
+      if (result.data.status === "Delivered") {
+        removeOrder(result.data.id);
+      } else {
+        replaceOrder(result.data);
+      }
+      setDeliveryOrder(null);
+    });
+  }
+
   async function collectAndDeliver() {
     if (!quickOrder || quickBusy) return;
     const amount = Number(quickAmount || 0);
@@ -256,7 +465,7 @@ function DeliveryDeskContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+    <div className="w-full p-2 sm:p-3 lg:p-4">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Delivery Desk</h1>
@@ -281,7 +490,7 @@ function DeliveryDeskContent() {
           </div>
           {quickBusy && <span className="rounded-full bg-primary-tint px-3 py-1 text-sm font-semibold text-primary">Processing…</span>}
         </div>
-        <form onSubmit={(event) => { event.preventDefault(); void scanQuickDelivery(quickScanRef.current?.value ?? quickCode); }} className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <form onSubmit={(event) => { event.preventDefault(); void scanQuickDelivery(quickScanRef.current?.value ?? quickCode); }} className="flex flex-col gap-3 xl:flex-row xl:items-end">
           <label className="relative block min-w-0 flex-1">
             <span className="mb-1 block text-xs font-semibold text-ink-muted">Receipt barcode / Order number</span>
             <Barcode className="pointer-events-none absolute bottom-3 left-3 h-4 w-4 text-ink-faint" />
@@ -291,7 +500,7 @@ function DeliveryDeskContent() {
         </form>
         {quickMessage && <p className={`mt-3 text-sm font-semibold ${quickOrder ? "text-primary" : quickMessage.includes("successfully") ? "text-success" : "text-chip-red-fg"}`}>{quickMessage}</p>}
         {quickOrder && (
-          <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 lg:grid-cols-[minmax(0,1fr)_140px_150px_auto] lg:items-end">
+          <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 xl:grid-cols-[minmax(0,1fr)_150px_170px_auto] xl:items-end">
             <div>
               <p className="font-bold text-primary">{quickOrder.order.orderNumber} · {customerLabel(quickOrder)}</p>
               <p className="mt-1 text-sm text-ink-muted">{itemsLabel(quickOrder.order)}</p>
@@ -313,7 +522,7 @@ function DeliveryDeskContent() {
       </div>
 
       <div className="mb-4 rounded-lg border border-border-soft bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
             <input
@@ -356,24 +565,24 @@ function DeliveryDeskContent() {
       {!loaded ? (
         <LoadingState label="Loading delivery desk..." />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border-soft bg-white shadow-sm">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
-            <thead className="bg-surface-muted text-left text-xs font-semibold uppercase text-ink-faint">
+        <div className="overflow-x-auto rounded-md border border-[#8f9bad] bg-white shadow-none">
+          <table className="w-full min-w-[1180px] border-collapse text-xs">
+            <thead className="bg-[#e7edf7] text-left text-[11px] font-bold text-ink">
               <tr>
-                <th className="px-5 py-3">Order</th>
-                <th className="px-5 py-3">Customer</th>
-                <th className="px-5 py-3">Items</th>
-                <th className="px-5 py-3">Delivery</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Total</th>
-                <th className="px-5 py-3 text-right">Balance</th>
-                <th className="px-5 py-3 text-right">Actions</th>
+                <th className="border border-[#8f9bad] px-2 py-1">Order</th>
+                <th className="border border-[#8f9bad] px-2 py-1">Customer</th>
+                <th className="border border-[#8f9bad] px-2 py-1">Items</th>
+                <th className="border border-[#8f9bad] px-2 py-1">Delivery</th>
+                <th className="border border-[#8f9bad] px-2 py-1">Status</th>
+                <th className="border border-[#8f9bad] px-2 py-1 text-right">Total</th>
+                <th className="border border-[#8f9bad] px-2 py-1 text-right">Balance</th>
+                <th className="border border-[#8f9bad] px-2 py-1 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-soft">
+            <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-ink-muted">
+                  <td colSpan={8} className="border border-[#aeb8c8] px-3 py-8 text-center text-sm text-ink-muted">
                     No delivery desk orders match this view.
                   </td>
                 </tr>
@@ -384,8 +593,8 @@ function DeliveryDeskContent() {
                   const canDeliverNow = order.status === "Ready";
                   const deliverDisabled = !canMarkDelivered || !canDeliverNow || pendingOrderId === order.id || isPending;
                   return (
-                    <tr key={order.id} className="align-top hover:bg-surface-muted/60">
-                      <td className="px-5 py-4">
+                    <tr key={order.id} className="hover:bg-surface-muted/60">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
                         <Link
                           href={`/orders?view=${order.id}`}
                           className="font-semibold text-primary hover:underline"
@@ -396,30 +605,30 @@ function DeliveryDeskContent() {
                           Ordered {formatDate(order.orderDate)}
                         </div>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
                         <div className="font-medium text-ink">{customerLabel(row)}</div>
                         <div className="mt-1 text-xs text-ink-faint">{phone || "No phone"}</div>
                       </td>
-                      <td className="max-w-[220px] px-5 py-4 text-ink-muted">
+                      <td className="max-w-[320px] truncate border border-[#aeb8c8] px-2 py-0.5 text-ink-muted">
                         {itemsLabel(order)}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
                         <div className="font-medium text-ink">{formatDate(order.deliveryDate)}</div>
                         {order.deliveryDate < today && (
                           <div className="mt-1 text-xs font-semibold text-chip-red-fg">Overdue</div>
                         )}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
                         <OrderStatusChip status={order.status} />
                       </td>
-                      <td className="px-5 py-4 text-right font-medium text-ink">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-right font-medium text-ink">
                         {money(order.totalAmount)}
                       </td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5 text-right">
                         <BalanceBadge order={order} todayIso={today} />
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="border border-[#aeb8c8] px-2 py-0.5">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           {phone && (
                             <ContactActions
                               phone={phone}
@@ -458,10 +667,16 @@ function DeliveryDeskContent() {
                                   ? "Order is not ready"
                                   : "Mark delivered"
                             }
-                            onClick={() => markDelivered(order.id)}
+                            onClick={() => {
+                              if (order.items.length <= 1 && itemPendingQty(order.items[0]) <= 1) {
+                                markDelivered(order.id);
+                              } else {
+                                setDeliveryOrder(row);
+                              }
+                            }}
                             className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-45"
                           >
-                            Delivered
+                            Deliver
                           </button>
                         </div>
                       </td>
@@ -482,6 +697,14 @@ function DeliveryDeskContent() {
             replaceOrder(order);
             setPaymentOrder(null);
           }}
+        />
+      )}
+      {deliveryOrder && (
+        <PartialDeliveryModal
+          row={deliveryOrder}
+          busy={pendingOrderId === deliveryOrder.order.id || isPending}
+          onClose={() => setDeliveryOrder(null)}
+          onSubmit={(delivery) => deliverItems(deliveryOrder, delivery)}
         />
       )}
     </div>

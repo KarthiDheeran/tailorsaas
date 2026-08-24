@@ -538,7 +538,7 @@ function JobCardsContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-7">
+    <div className="w-full p-2 sm:p-3 lg:p-4">
       <div className="mb-5">
         <div>
           <h1 className="text-[30px] font-bold tracking-tight text-ink">Order Ready</h1>
@@ -677,19 +677,19 @@ function JobCardsContent() {
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-ink-muted">{filteredLines.length} order{filteredLines.length === 1 ? "" : "s"}</p>
           </div>
-          <div className="overflow-visible rounded-[14px] border border-border bg-white shadow-soft">
-            <table className="w-full table-fixed text-left">
-              <thead className="bg-surface-muted text-[14px] font-bold text-ink-muted">
-                <tr className="h-[50px] border-b border-border">
-                  <th className="w-[12%] whitespace-nowrap px-4 py-3">Order</th>
-                  <th className="w-[22%] whitespace-nowrap px-4 py-3">Customer</th>
-                  <th className="w-[28%] whitespace-nowrap px-4 py-3">Garment</th>
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Status</th>
-                  <th className="w-[13%] whitespace-nowrap px-4 py-3">Due Date</th>
-                  <th className="w-[190px] whitespace-nowrap bg-white px-4 py-3 text-right">Actions</th>
+          <div className="overflow-x-auto rounded-md border border-[#8f9bad] bg-white shadow-none">
+            <table className="min-w-[1220px] w-full table-auto border-collapse text-left">
+              <thead className="bg-[#e7edf7] text-[11px] font-bold text-ink">
+                <tr>
+                  <th className="w-[120px] whitespace-nowrap border border-[#8f9bad] px-2 py-1">Order</th>
+                  <th className="w-[240px] whitespace-nowrap border border-[#8f9bad] px-2 py-1">Customer</th>
+                  <th className="min-w-[340px] whitespace-nowrap border border-[#8f9bad] px-2 py-1">Garment</th>
+                  <th className="w-[150px] whitespace-nowrap border border-[#8f9bad] px-2 py-1">Status</th>
+                  <th className="w-[180px] whitespace-nowrap border border-[#8f9bad] px-2 py-1">Due Date</th>
+                  <th className="w-[250px] whitespace-nowrap border border-[#8f9bad] px-2 py-1 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="text-[13px]">
+              <tbody className="text-xs">
                 {filteredLines.map((line) => {
                   const card = line.card;
                   const stage = lineStage(line);
@@ -698,11 +698,11 @@ function JobCardsContent() {
                     key={line.id}
                     data-job-card-line-id={line.id}
                     className={cn(
-                      "h-[68px] border-t border-border-soft text-[15px] transition-colors duration-150 hover:bg-surface-muted",
+                      "h-8 border-t-0 transition-colors duration-150 hover:bg-surface-muted",
                       line.cards.some((row) => row.id === focusedJobCardId) && "bg-primary-tint ring-2 ring-primary/30"
                     )}
                   >
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5">
                       {canViewOrders ? (
                         <Link
                           href={`/orders?view=${card.orderId}`}
@@ -714,17 +714,17 @@ function JobCardsContent() {
                         <span className="font-semibold text-ink-muted">{card.orderNumber}</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5">
                       <div className="flex items-center gap-1.5 font-semibold text-ink"><UserRound className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />{card.customer?.name ?? "Unknown"}</div>
                       <div className="pl-5 text-[13px] text-ink-muted">{card.customer?.phone ?? ""}</div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-ink">
+                    <td className="whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5 text-ink">
                       <span className="flex items-center gap-1.5 font-semibold"><Shirt className="h-3.5 w-3.5 text-primary" aria-hidden="true" /><GarmentLineCell line={line} /></span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5">
                       <StageBadge stage={stage} />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5">
                       <span className={isDelayedLine(line) ? "font-semibold text-chip-red-fg" : "text-ink-muted"}>
                         <CalendarDays className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
                         {formatDate(card.deliveryDate)}
@@ -735,13 +735,13 @@ function JobCardsContent() {
                         </div>
                       )}
                     </td>
-                    <td className="w-[190px] whitespace-nowrap px-4 py-3 text-right">
-                      <div className="relative flex items-center justify-end gap-2">
+                    <td className="w-[250px] whitespace-nowrap border border-[#aeb8c8] px-2 py-0.5 text-right">
+                      <div className="relative flex flex-wrap items-center justify-end gap-2">
                         {!['Ready', 'Delivered', 'Cancelled'].includes(card.orderStatus) && (
                           <button
                             type="button"
                             onClick={() => setReadyCard(card)}
-                            className="inline-flex h-10 items-center rounded-[9px] border border-primary bg-white px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-tint"
+                            className="inline-flex min-h-8 items-center rounded-md border border-primary bg-white px-2 py-1 text-xs font-semibold leading-tight text-primary transition-colors hover:bg-primary-tint"
                           >
                             Mark Order Ready
                           </button>
@@ -751,7 +751,7 @@ function JobCardsContent() {
                           onClick={() =>
                             setOpenMenuCardId((current) => (current === card.id ? null : card.id))
                           }
-                          className="flex h-10 w-10 items-center justify-center rounded-[9px] border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                           aria-label="More actions"
                         >
                           <MoreVertical className="h-4 w-4" />

@@ -135,7 +135,7 @@ export function ProductionPrintPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-5 lg:px-8">
+    <div className="w-full p-2 sm:p-3 lg:p-4">
       <div className="mb-5">
         <h1 className="text-3xl font-bold tracking-tight text-ink">Production Print</h1>
         <p className="mt-1 text-base text-ink-muted">
@@ -144,7 +144,7 @@ export function ProductionPrintPage() {
       </div>
       <JobCardTabs active="production-print" />
       <section className="mt-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
-        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_140px_120px_105px_105px_145px_145px_auto] lg:items-end">
+        <div className="grid gap-3 xl:grid-cols-[minmax(240px,1fr)_140px_140px_110px_110px_145px_145px_auto] xl:items-end">
           <label className="relative block min-w-0 flex-1 sm:max-w-xl">
             <span className="mb-1.5 block text-xs font-semibold text-ink-muted">Search</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" />
@@ -166,8 +166,8 @@ export function ProductionPrintPage() {
         </div>
         {error && <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">{error}</p>}
         {orders === null ? <p className="py-12 text-center text-sm text-ink-muted">Loading orders...</p> : (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-border-soft">
-            <table className="min-w-full text-left text-sm"><thead className="bg-surface-muted text-ink-muted"><tr><th className="w-12 px-4 py-3"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Delivery</th><th className="px-4 py-3 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => { const items = matchingProductionItems(order); return <tr key={order.id} className="border-t border-border-soft hover:bg-primary-tint/30"><td className="px-4 py-3"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="px-4 py-3 font-semibold text-primary">{order.orderNumber}</td><td className="px-4 py-3"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="px-4 py-3 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="px-4 py-3 text-right text-ink">{items.map((item) => `${item.particular} x${item.qty}`).join(", ")}</td></tr>; })}</tbody></table>
+          <div className="mt-4 overflow-x-auto rounded-md border border-[#8f9bad] bg-white shadow-none">
+            <table className="min-w-[920px] w-full border-collapse text-left text-xs"><thead className="bg-[#e7edf7] text-[11px] font-bold text-ink"><tr><th className="w-12 border border-[#8f9bad] px-2 py-1"><input aria-label="Select filtered orders" type="checkbox" checked={printableOrders.length > 0 && printableOrders.every((order) => selected.has(order.id))} onChange={(event) => event.target.checked ? selectFiltered() : setSelected(new Set())} /></th><th className="border border-[#8f9bad] px-2 py-1 font-semibold">Order</th><th className="border border-[#8f9bad] px-2 py-1 font-semibold">Customer</th><th className="border border-[#8f9bad] px-2 py-1 font-semibold">Delivery</th><th className="border border-[#8f9bad] px-2 py-1 text-right font-semibold">Garments</th></tr></thead><tbody>{printableOrders.map((order) => { const items = matchingProductionItems(order); return <tr key={order.id} className="hover:bg-primary-tint/30"><td className="border border-[#aeb8c8] px-2 py-0.5"><input aria-label={`Select ${order.orderNumber}`} type="checkbox" checked={selected.has(order.id)} onChange={() => toggleOrder(order.id)} /></td><td className="border border-[#aeb8c8] px-2 py-0.5 font-semibold text-primary">{order.orderNumber}</td><td className="border border-[#aeb8c8] px-2 py-0.5"><p className="font-medium text-ink">{order.customerSnapshot?.name ?? "Customer"}</p><p className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</p></td><td className="border border-[#aeb8c8] px-2 py-0.5 text-ink-muted">{formatDate(order.deliveryDate)}</td><td className="border border-[#aeb8c8] px-2 py-0.5 text-right text-ink">{items.map((item) => `${item.particular} x${item.qty}`).join(", ")}</td></tr>; })}</tbody></table>
             {printableOrders.length === 0 && <p className="p-10 text-center text-sm text-ink-muted">No printable orders found.</p>}
           </div>
         )}
