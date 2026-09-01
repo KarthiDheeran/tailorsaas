@@ -35,15 +35,29 @@ export type GarmentFieldDraft = {
 
 export function createGarmentFieldDraft(
   values: Record<string, unknown>,
-  knownFields: ReadonlyArray<Pick<RuntimeGarmentField, "code" | "inputType">>
+  knownFields: ReadonlyArray<Pick<RuntimeGarmentField, "code" | "inputType"> & Partial<Pick<RuntimeGarmentField, "options">>>
 ): GarmentFieldDraft {
   const fieldByCode = new Map(knownFields.map((field) => [field.code, field]));
   const typedValues: GarmentFieldValues = {};
   const passthroughValues: Record<string, unknown> = {};
   for (const [code, value] of Object.entries(values)) {
     const field = fieldByCode.get(code);
-    if (field) typedValues[code] = normalizeGarmentFieldValue(value, field.inputType);
-    else passthroughValues[code] = value;
+    if (!field) {
+      passthroughValues[code] = value;
+      continue;
+    }
+    const normalized = normalizeGarmentFieldValue(value, field.inputType);
+    const options = field.options ?? [];
+    // Historical/customer defaults can outlive catalog option changes. Never
+    // keep an invisible stale selection in a new order draft: the control
+    // appears blank but the old value would otherwise fail server validation.
+    if (field.inputType === "select" && typeof normalized === "string" && options.length > 0) {
+      typedValues[code] = options.includes(normalized) ? normalized : null;
+    } else if (field.inputType === "multiselect" && Array.isArray(normalized) && options.length > 0) {
+      typedValues[code] = normalized.filter((option): option is string => typeof option === "string" && options.includes(option));
+    } else {
+      typedValues[code] = normalized;
+    }
   }
   return { typedValues, passthroughValues };
 }

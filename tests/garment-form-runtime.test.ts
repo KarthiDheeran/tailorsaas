@@ -108,6 +108,8 @@ test("typed drafts round-trip native values and preserve unknown legacy keys wit
     emptyChoices: [],
     emptyText: "",
     nullable: null,
+    sleeve: "Retired sleeve option",
+    activeStyles: ["Slim", "Retired style"],
     legacy_key: { retained: true },
   };
   const draft = createGarmentFieldDraft(values, [
@@ -117,6 +119,8 @@ test("typed drafts round-trip native values and preserve unknown legacy keys wit
     field({ code: "emptyChoices", inputType: "multiselect" }),
     field({ code: "emptyText", inputType: "text" }),
     field({ code: "nullable", inputType: "text" }),
+    field({ code: "sleeve", inputType: "select", options: ["Plain", "Cuff"] }),
+    field({ code: "activeStyles", inputType: "multiselect", options: ["Slim", "Regular"] }),
   ]);
 
   assert.equal(draft.typedValues.height, 38.5);
@@ -125,6 +129,8 @@ test("typed drafts round-trip native values and preserve unknown legacy keys wit
   assert.deepEqual(draft.typedValues.emptyChoices, []);
   assert.equal(draft.typedValues.emptyText, null);
   assert.equal(draft.typedValues.nullable, null);
+  assert.equal(draft.typedValues.sleeve, null);
+  assert.deepEqual(draft.typedValues.activeStyles, ["Slim"]);
   assert.deepEqual(draft.passthroughValues, { legacy_key: { retained: true } });
   assert.equal("legacy_key" in draft.typedValues, false);
   assert.deepEqual(serializeGarmentFieldDraft(draft), {
@@ -134,10 +140,13 @@ test("typed drafts round-trip native values and preserve unknown legacy keys wit
     emptyChoices: [],
     emptyText: null,
     nullable: null,
+    sleeve: null,
+    activeStyles: ["Slim"],
     legacy_key: { retained: true },
   });
   assert.deepEqual(values, {
-    height: "38.5", enabled: false, choices: ["Slim", "Double stitch"], emptyChoices: [], emptyText: "", nullable: null, legacy_key: { retained: true },
+    height: "38.5", enabled: false, choices: ["Slim", "Double stitch"], emptyChoices: [], emptyText: "", nullable: null,
+    sleeve: "Retired sleeve option", activeStyles: ["Slim", "Retired style"], legacy_key: { retained: true },
   });
 });
 

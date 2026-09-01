@@ -19,7 +19,7 @@ import {
   getJobCardTallyPageDataAction,
   getTalliedJobCardStageSlipsForRangeAction,
   previewQuickTallyJobCardStageSlipAction,
-  quickTallyJobCardStageSlipAction,
+  quickTallyJobCardStageSlipBatchAction,
   type QuickTallyPreview,
 } from "@/app/(shell)/job-cards/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -28,6 +28,45 @@ import { formatDate } from "@/components/orders/orders-table";
 import { formatCurrency } from "@/lib/currency";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 import type { StaffOption } from "@/lib/data/staff-db";
+
+const QUICK_TALLY_QUEUE_KEY = "tailorsaas.quickTallyQueue.v1";
+const QUICK_TALLY_BATCH_SIZE = 25;
+
+interface FailedQuickScan {
+  code: string;
+  error: string;
+}
+
+function playScanTone(kind: "captured" | "success" | "error") {
+  try {
+    const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = kind === "error" ? 180 : kind === "success" ? 880 : 620;
+    gain.gain.setValueAtTime(0.06, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.08);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.08);
+    oscillator.addEventListener("ended", () => void context.close());
+  } catch {
+    // Sound feedback is optional; scanner capture must never depend on audio.
+  }
+}
+
+function quickScanCodesFromPayload(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.toUpperCase().startsWith("TSB|")) return [trimmed];
+  return trimmed
+    .slice(4)
+    .split(/[,+;]/)
+    .map((code) => code.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+}
 
 function todayIso() {
   const now = new Date();
@@ -77,6 +116,9 @@ function slipPayableAmount(slip: JobCardStageSlip) {
 
 function TallyContent() {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const quickQueueRef = useRef<string[]>([]);
+  const queuedQuickCodesRef = useRef(new Set<string>());
+  const processingQuickQueueRef = useRef(false);
   const automaticallyOpenedSlipRef = useRef<string | null>(null);
   const staffLoadedRef = useRef(false);
   const searchParams = useSearchParams();
@@ -86,6 +128,8 @@ function TallyContent() {
   const [tallyToDate, setTallyToDate] = useState(todayIso);
   const [message, setMessage] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+  const [queuedScanCount, setQueuedScanCount] = useState(0);
+  const [failedQuickScans, setFailedQuickScans] = useState<FailedQuickScan[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [sessionActive, setSessionActive] = useState(false);
@@ -165,9 +209,128 @@ function TallyContent() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
+  useEffect(() => {
+    if (!staffLoadedRef.current) return;
+    try {
+      const raw = window.localStorage.getItem(QUICK_TALLY_QUEUE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { staffId?: string; codes?: string[] };
+      const savedStaff = staff.find((member) => member.id === saved.staffId && member.status === "Active");
+      const codes = Array.isArray(saved.codes) ? saved.codes.filter((value): value is string => typeof value === "string" && Boolean(value.trim())) : [];
+      if (!savedStaff || codes.length === 0 || quickQueueRef.current.length > 0) return;
+      setSelectedStaffId(savedStaff.id);
+      setSessionActive(true);
+      for (const value of codes) {
+        const code = value.trim();
+        const key = code.toUpperCase();
+        if (!queuedQuickCodesRef.current.has(key)) {
+          queuedQuickCodesRef.current.add(key);
+          quickQueueRef.current.push(code);
+        }
+      }
+      setQueuedScanCount(quickQueueRef.current.length);
+      setMessage(`Recovered ${quickQueueRef.current.length} unsaved scan(s). Processing will resume.`);
+    } catch {
+      window.localStorage.removeItem(QUICK_TALLY_QUEUE_KEY);
+    }
+  }, [staff]);
+
+  useEffect(() => {
+    if (queuedScanCount > 0 && selectedStaffId) {
+      window.localStorage.setItem(QUICK_TALLY_QUEUE_KEY, JSON.stringify({
+        staffId: selectedStaffId,
+        codes: quickQueueRef.current,
+      }));
+    } else {
+      window.localStorage.removeItem(QUICK_TALLY_QUEUE_KEY);
+    }
+  }, [queuedScanCount, selectedStaffId]);
+
+  const processQuickQueue = useCallback(async function processQuickQueue() {
+    if (processingQuickQueueRef.current) return;
+    processingQuickQueueRef.current = true;
+    setIsScanning(true);
+
+    try {
+      while (quickQueueRef.current.length > 0) {
+        const batch = quickQueueRef.current.slice(0, QUICK_TALLY_BATCH_SIZE);
+        setScanState("processing");
+        setMessage(`Saving ${batch.length} scan(s) · ${quickQueueRef.current.length} queued...`);
+        try {
+          const results = await quickTallyJobCardStageSlipBatchAction(batch, selectedStaffId);
+          let savedCount = 0;
+          for (const item of results) {
+            if (!item.result.success) {
+              const failureError = item.result.error;
+              setFailedQuickScans((current) => [
+                ...current.filter((failure) => failure.code.toUpperCase() !== item.code.toUpperCase()),
+                { code: item.code, error: failureError },
+              ]);
+              continue;
+            }
+            const result = item.result;
+            const talliedUnits = Math.max(1, Number(result.data.talliedQuantity) || Number(result.data.quantity) || 1);
+            const payable = slipPayableAmount(result.data);
+            savedCount += 1;
+            setScanned((current) => [result.data, ...current.filter((slip) => slip.id !== result.data.id)]);
+            setSessionCount((count) => count + talliedUnits);
+            setSessionPayable((amount) => amount + payable);
+            setFailedQuickScans((current) => current.filter((failure) => failure.code.toUpperCase() !== item.code.toUpperCase()));
+            if (result.data.talliedAt) {
+              const talliedDate = localDateKey(result.data.talliedAt);
+              setTallyDate(talliedDate);
+              setTallyToDate((current) => (current < talliedDate ? talliedDate : current));
+            }
+          }
+          if (savedCount === results.length) {
+            setScanState("success");
+            playScanTone("success");
+          } else {
+            setScanState("error");
+            playScanTone("error");
+          }
+          setMessage(`${savedCount}/${batch.length} saved · ${Math.max(0, quickQueueRef.current.length - batch.length)} remaining.`);
+        } catch {
+          setScanState("error");
+          setMessage(`Batch could not be saved. It remains available after refresh; retrying shortly.`);
+          playScanTone("error");
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          continue;
+        } finally {
+          focusScanField();
+        }
+        quickQueueRef.current.splice(0, batch.length);
+        for (const queuedCode of batch) queuedQuickCodesRef.current.delete(queuedCode.toUpperCase());
+        setQueuedScanCount(quickQueueRef.current.length);
+      }
+    } finally {
+      processingQuickQueueRef.current = false;
+      setIsScanning(false);
+      focusScanField();
+    }
+  }, [focusScanField, selectedStaffId]);
+
+  useEffect(() => {
+    if (sessionActive && selectedStaffId && queuedScanCount > 0) void processQuickQueue();
+  }, [processQuickQueue, queuedScanCount, selectedStaffId, sessionActive]);
+
+  function retryFailedQuickScans() {
+    if (!sessionActive || failedQuickScans.length === 0) return;
+    for (const failure of failedQuickScans) {
+      const key = failure.code.toUpperCase();
+      if (queuedQuickCodesRef.current.has(key)) continue;
+      queuedQuickCodesRef.current.add(key);
+      quickQueueRef.current.push(failure.code);
+    }
+    setFailedQuickScans([]);
+    setQueuedScanCount(quickQueueRef.current.length);
+    setMessage(`${quickQueueRef.current.length} failed scan(s) queued for retry.`);
+    void processQuickQueue();
+  }
+
   const scan = useCallback(async function scan(rawCode = code) {
     const trimmed = rawCode.trim();
-    if (!trimmed || isScanning || pendingPreview) {
+    if (!trimmed || pendingPreview || (scanMode === "partial" && isScanning)) {
       focusScanField();
       return;
     }
@@ -177,36 +340,41 @@ function TallyContent() {
       focusScanField();
       return;
     }
-    setIsScanning(true);
-    setMessage(`Scanned ${trimmed}: Recording worker payable...`);
-    setScanState("processing");
     setCode("");
     if (inputRef.current) inputRef.current.value = "";
-    try {
-      if (scanMode === "quick") {
-        const result = await quickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
-        if (!result.success) {
-          setScanState(result.error.startsWith("Already tallied") ? "duplicate" : "error");
-          setMessage(`Scanned ${trimmed}: ${result.error}`);
-          return;
+    if (scanMode === "quick") {
+      const capturedCodes = quickScanCodesFromPayload(trimmed);
+      let added = 0;
+      let duplicates = 0;
+      for (const capturedCode of capturedCodes) {
+        const normalizedCode = capturedCode.toUpperCase();
+        if (queuedQuickCodesRef.current.has(normalizedCode)) {
+          duplicates += 1;
+          continue;
         }
-        const talliedUnits = Math.max(1, Number(result.data.talliedQuantity) || Number(result.data.quantity) || 1);
-        const payable = slipPayableAmount(result.data);
-        setScanned((current) => [result.data, ...current.filter((slip) => slip.id !== result.data.id)]);
-        if (result.data.talliedAt) {
-          const talliedDate = localDateKey(result.data.talliedAt);
-          setTallyDate(talliedDate);
-          setTallyToDate((current) => (current < talliedDate ? talliedDate : current));
-        }
-        setSessionCount((count) => count + talliedUnits);
-        setSessionPayable((amount) => amount + payable);
-        setScanState("success");
-        setMessage(
-          `${result.data.slipCode}: ${talliedUnits} item(s) tallied. ${formatCurrency(payable)} added to ${result.data.staffName}.`
-        );
+        queuedQuickCodesRef.current.add(normalizedCode);
+        quickQueueRef.current.push(capturedCode);
+        added += 1;
+      }
+      if (added === 0) {
+        setScanState("duplicate");
+        setMessage(`${trimmed}: already captured in the current queue.`);
+        playScanTone("error");
+        focusScanField();
         return;
       }
-
+      setQueuedScanCount(quickQueueRef.current.length);
+      setScanState("processing");
+      setMessage(`${added} scan(s) captured${duplicates ? ` · ${duplicates} duplicate(s) skipped` : ""} · ${quickQueueRef.current.length} queued.`);
+      playScanTone("captured");
+      focusScanField();
+      void processQuickQueue();
+      return;
+    }
+    setIsScanning(true);
+    setMessage(`Scanned ${trimmed}: Loading job card...`);
+    setScanState("processing");
+    try {
       const result = await previewQuickTallyJobCardStageSlipAction(trimmed, selectedStaffId);
 
     if (!result.success) {
@@ -233,7 +401,7 @@ function TallyContent() {
       setIsScanning(false);
       focusScanField();
     }
-  }, [code, focusScanField, isScanning, pendingPreview, scanMode, selectedStaffId, sessionActive]);
+  }, [code, focusScanField, isScanning, pendingPreview, processQuickQueue, scanMode, selectedStaffId, sessionActive]);
 
   useEffect(() => {
     const incomingCode = searchParams.get("scan")?.trim();
@@ -258,6 +426,12 @@ function TallyContent() {
   }
 
   function changeStaff() {
+    if (processingQuickQueueRef.current || quickQueueRef.current.length > 0) {
+      setScanState("error");
+      setMessage("Wait for the captured scans to finish before changing staff.");
+      focusScanField();
+      return;
+    }
     setSessionActive(false);
     setCode("");
     if (inputRef.current) inputRef.current.value = "";
@@ -366,7 +540,7 @@ function TallyContent() {
             Staff member
             <select
               value={selectedStaffId}
-              disabled={sessionActive || isScanning}
+              disabled={sessionActive || isScanning || queuedScanCount > 0}
               onChange={(event) => setSelectedStaffId(event.target.value)}
               className="h-12 rounded-[10px] border border-border bg-white px-3 text-sm font-normal text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted"
             >
@@ -378,7 +552,7 @@ function TallyContent() {
             <button
               type="button"
               onClick={changeStaff}
-              disabled={isScanning}
+              disabled={scanMode === "partial" && isScanning}
               className="flex h-12 min-w-[150px] items-center justify-center rounded-[10px] border border-border px-4 text-sm font-semibold text-ink transition hover:bg-surface-muted"
             >
               Change Staff
@@ -387,7 +561,7 @@ function TallyContent() {
             <button
               type="button"
               onClick={startSession}
-              disabled={!selectedStaffId || isScanning}
+              disabled={!selectedStaffId || isScanning || queuedScanCount > 0}
               className="flex h-12 min-w-[150px] items-center justify-center rounded-[10px] bg-primary px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               Start Scanning
@@ -400,7 +574,7 @@ function TallyContent() {
             <input
               ref={inputRef}
               onChange={(event) => setCode(event.target.value)}
-              disabled={!sessionActive || isScanning}
+              disabled={!sessionActive || (scanMode === "partial" && isScanning)}
               placeholder="Scan barcode or enter slip code"
               autoComplete="off"
               data-raw-barcode-input="true"
@@ -415,7 +589,7 @@ function TallyContent() {
               ? `Scanning for ${staff.find((member) => member.id === selectedStaffId)?.name ?? "selected staff"}. Staff is locked until you choose Change Staff.`
               : "Select a staff member, then start scanning. Each barcode is recorded immediately."}
           </p>
-          {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} items · {formatCurrency(sessionPayable)}</p>}
+          {sessionActive && <p className="font-semibold text-primary">Session: {sessionCount} saved · {queuedScanCount} queued · {formatCurrency(sessionPayable)}</p>}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white px-3 py-2 text-xs font-semibold text-ink-muted">
           <span>Scans: <span className="text-ink">{visibleTalliedUnits}</span></span>
@@ -429,7 +603,7 @@ function TallyContent() {
           <button
             type="button"
             onClick={() => setScanMode("quick")}
-            disabled={isScanning || Boolean(pendingPreview)}
+            disabled={isScanning || queuedScanCount > 0 || Boolean(pendingPreview)}
             className={`h-9 rounded-lg border px-3 text-sm font-semibold transition ${
               scanMode === "quick"
                 ? "border-primary bg-primary text-white"
@@ -441,7 +615,7 @@ function TallyContent() {
           <button
             type="button"
             onClick={() => setScanMode("partial")}
-            disabled={isScanning || Boolean(pendingPreview)}
+            disabled={isScanning || queuedScanCount > 0 || Boolean(pendingPreview)}
             className={`h-9 rounded-lg border px-3 text-sm font-semibold transition ${
               scanMode === "partial"
                 ? "border-primary bg-primary text-white"
@@ -457,6 +631,26 @@ function TallyContent() {
           </span>
         </div>
         {message && <p className={`mt-3 text-sm font-semibold ${scanState === "success" ? "text-success" : scanState === "duplicate" ? "text-warning" : scanState === "processing" ? "text-primary" : "text-danger"}`}>{message}</p>}
+        {failedQuickScans.length > 0 && (
+          <div className="mt-3 rounded-xl border border-danger/25 bg-danger-soft p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-bold text-danger">{failedQuickScans.length} scan(s) need attention</p>
+              <button
+                type="button"
+                onClick={retryFailedQuickScans}
+                disabled={!sessionActive || queuedScanCount > 0}
+                className="h-9 rounded-lg border border-danger/30 bg-white px-3 text-sm font-semibold text-danger disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Retry failed scans
+              </button>
+            </div>
+            <ul className="mt-2 grid gap-1 text-xs text-danger">
+              {failedQuickScans.map((failure) => (
+                <li key={failure.code}><span className="font-bold">{failure.code}</span>: {failure.error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {loadingTallies && <p className="mt-3 text-sm text-ink-muted">Loading saved scans...</p>}
       </section>
 

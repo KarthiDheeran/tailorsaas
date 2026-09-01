@@ -533,6 +533,43 @@ export async function quickTallyJobCardStageSlipAction(
   });
 }
 
+export interface QuickTallyBatchResult {
+  code: string;
+  result: ActionResult<JobCardStageSlip>;
+}
+
+/**
+ * Processes a captured scanner chunk in one client/server request. Items stay
+ * ordered deliberately: slips from the same order can advance shared job-card
+ * state, so concurrent writes would trade speed for payroll races.
+ */
+export async function quickTallyJobCardStageSlipBatchAction(
+  codes: string[],
+  staffId: string
+): Promise<QuickTallyBatchResult[]> {
+  const normalizedStaffId = staffId.trim();
+  if (!normalizedStaffId) return [];
+
+  const uniqueCodes: string[] = [];
+  const seen = new Set<string>();
+  for (const rawCode of codes.slice(0, 25)) {
+    const code = rawCode.trim();
+    const key = code.toUpperCase();
+    if (!code || seen.has(key)) continue;
+    seen.add(key);
+    uniqueCodes.push(code);
+  }
+
+  const results: QuickTallyBatchResult[] = [];
+  for (const code of uniqueCodes) {
+    results.push({
+      code,
+      result: await quickTallyJobCardStageSlipAction(code, normalizedStaffId),
+    });
+  }
+  return results;
+}
+
 export async function previewQuickTallyJobCardStageSlipAction(
   code: string,
   staffId: string

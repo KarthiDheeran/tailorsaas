@@ -30,7 +30,7 @@ import {
   getTalliedJobCardStageSlips,
   type JobCardStageSlip,
 } from "@/lib/data/job-card-stage-slips-db";
-import { getActiveWorkStages, getAllGarmentTypes } from "@/lib/data/catalog-db";
+import { getActiveWorkStages, getAllGarmentTypes, getAllWorkStages } from "@/lib/data/catalog-db";
 import { getShops, type Shop } from "@/lib/shops";
 import {
   createExpense,
@@ -332,7 +332,9 @@ export async function createStaffAction(
   if (!context?.tenantId) return { success: false, error: "Current user is not assigned to a tenant." };
 
   const [stages, garments] = await Promise.all([
-    getActiveWorkStages(supabase),
+    // Existing staff rates can reference a stage that was later deactivated.
+    // It remains a known catalog stage and must not block unrelated edits.
+    getAllWorkStages(supabase),
     getAllGarmentTypes(supabase),
   ]);
   const validationError = validateStaffInput(
@@ -363,7 +365,9 @@ export async function updateStaffAction(
   if (!context?.tenantId) return { success: false, error: "Current user is not assigned to a tenant." };
 
   const [stages, garments] = await Promise.all([
-    getActiveWorkStages(supabase),
+    // Validate persisted rate keys against the complete catalog. The form
+    // still exposes only active stages, so inactive stages cannot be newly set.
+    getAllWorkStages(supabase),
     getAllGarmentTypes(supabase),
   ]);
   const validationError = validateStaffInput(
