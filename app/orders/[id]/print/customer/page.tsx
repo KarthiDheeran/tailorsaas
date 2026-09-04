@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import {
@@ -10,7 +10,6 @@ import {
 } from "@/app/(shell)/orders/actions";
 import { getPrintableBillingSettingsAction } from "@/app/(shell)/settings/billing/actions";
 import { getCustomerByIdAction } from "@/app/(shell)/customers/actions";
-import { formatDate } from "@/components/orders/orders-table";
 import { PrintPageFrame } from "@/components/orders/print/print-page-frame";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -39,9 +38,14 @@ type ReceiptRow = {
   workDetails: WorkDetail[];
 };
 
-type WorkDetail = { name: string; quantity: number | null };
+type WorkDetail = {
+  name: string;
+  quantity: number | null;
+  rate: number | null;
+  total: number;
+};
 
-const ROWS_PER_RECEIPT_PAGE = 12;
+const ROWS_PER_RECEIPT_PAGE = 10;
 const RECEIPT_PRINT_PAGE_WIDTH_MM = 210;
 const RECEIPT_PRINT_PAGE_HEIGHT_MM = 297;
 const CUSTOMER_RECEIPT_WIDTH = "6in";
@@ -55,6 +59,15 @@ const CUSTOMER_RECEIPT_BARCODE_OPTIONS = {
   moduleWidth: 1.35,
   quietZoneModules: 10,
 };
+
+function formatReceiptDate(value: string) {
+  const dateOnly = value.slice(0, 10);
+  const isoMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return `${isoMatch[3]}-${isoMatch[2]}-${isoMatch[1]}`;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return `${String(parsed.getDate()).padStart(2, "0")}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${parsed.getFullYear()}`;
+}
 
 function summarizePaymentModes(payments: Payment[]): PaymentModeSummary {
   const counted = payments.filter((p) => !p.voided);
@@ -106,7 +119,21 @@ function customerWorkDetails(item: Order["items"][number], garment: CatalogGarme
     const quantity = parsedQuantity !== null && Number.isFinite(parsedQuantity) && parsedQuantity > 0
       ? parsedQuantity * item.qty
       : null;
-    return [{ name, quantity }];
+    const rateValue = row.itemPrice ?? row.rate ?? row.price;
+    const parsedRate = typeof rateValue === "number" || typeof rateValue === "string"
+      ? Number(rateValue)
+      : null;
+    const rate = parsedRate !== null && Number.isFinite(parsedRate) ? parsedRate : null;
+    const totalValue = row.total;
+    const parsedTotal = typeof totalValue === "number" || typeof totalValue === "string"
+      ? Number(totalValue)
+      : null;
+    const perGarmentTotal = parsedTotal !== null && Number.isFinite(parsedTotal)
+      ? parsedTotal
+      : rate !== null && parsedQuantity !== null && Number.isFinite(parsedQuantity)
+        ? rate * parsedQuantity
+        : 0;
+    return [{ name, quantity, rate, total: perGarmentTotal * item.qty }];
   });
 }
 
@@ -115,8 +142,16 @@ function mergeWorkDetails(existing: WorkDetail[], incoming: WorkDetail[]): WorkD
   for (const detail of incoming) {
     const key = detail.name.trim().toLocaleLowerCase();
     const current = merged.get(key);
-    if (!current) merged.set(key, { ...detail });
-    else if (current.quantity !== null && detail.quantity !== null) current.quantity += detail.quantity;
+    if (!current) {
+      merged.set(key, { ...detail });
+      continue;
+    }
+    if (current.quantity !== null && detail.quantity !== null) current.quantity += detail.quantity;
+    else current.quantity = null;
+    current.total += detail.total;
+    current.rate = current.quantity !== null && current.quantity > 0
+      ? current.total / current.quantity
+      : null;
   }
   return Array.from(merged.values());
 }
@@ -157,7 +192,7 @@ function paginateRows(rows: ReceiptRow[]) {
   let page: ReceiptRow[] = [];
   let usedSpace = 0;
   for (const row of rows) {
-    const rowSpace = 1 + row.workDetails.length * 0.55;
+    const rowSpace = 1 + row.workDetails.length * 0.75;
     if (page.length > 0 && usedSpace + rowSpace > ROWS_PER_RECEIPT_PAGE) {
       pages.push(page);
       page = [];
@@ -201,10 +236,6 @@ function ReceiptPage({
       <div className="receipt-main-content">
         <header className="receipt-header">
           <div className="receipt-shop">
-            <div className="receipt-shop-name">{billingSettings.shopName || "NewLook"}</div>
-            {billingSettings.tagline && (
-              <div className="receipt-tagline">{billingSettings.tagline}</div>
-            )}
             <dl className="receipt-details">
               <div>
                 <dt>Order No</dt>
@@ -212,11 +243,11 @@ function ReceiptPage({
               </div>
               <div>
                 <dt>Order Date</dt>
-                <dd>{formatDate(order.orderDate)}</dd>
+                <dd>{formatReceiptDate(order.orderDate)}</dd>
               </div>
               <div>
                 <dt>Delivery Date</dt>
-                <dd>{formatDate(order.deliveryDate)}</dd>
+                <dd>{formatReceiptDate(order.deliveryDate)}</dd>
               </div>
             </dl>
           </div>
@@ -251,14 +282,29 @@ function ReceiptPage({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.key}>
-                  <td><div>{row.particular}</div>{row.workDetails.length > 0 && <div className="receipt-work-details"><b>Work Details</b>{row.workDetails.map((detail) => <div key={detail.name}>• {detail.name}{detail.quantity !== null ? ` - ${detail.quantity}` : ""}</div>)}</div>}</td>
-                  <td className="num">{row.qty}</td>
-                  <td className="num">{row.rate === "Mixed" ? "Mixed" : formatCurrency(row.rate)}</td>
-                  <td className="num">{formatCurrency(row.total)}</td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const workDetailsTotal = row.workDetails.reduce((sum, detail) => sum + detail.total, 0);
+                const garmentTotal = Math.max(0, row.total - workDetailsTotal);
+                const garmentRate = row.qty > 0 ? garmentTotal / row.qty : 0;
+                return (
+                  <Fragment key={row.key}>
+                    <tr>
+                      <td>{row.particular}</td>
+                      <td className="num">{row.qty}</td>
+                      <td className="num">{formatCurrency(garmentRate)}</td>
+                      <td className="num">{formatCurrency(garmentTotal)}</td>
+                    </tr>
+                    {row.workDetails.map((detail) => (
+                      <tr className="receipt-work-detail-row" key={`${row.key}-${detail.name}`}>
+                        <td>+ {detail.name}</td>
+                        <td className="num">{detail.quantity ?? "-"}</td>
+                        <td className="num">{detail.rate === null ? "-" : formatCurrency(detail.rate)}</td>
+                        <td className="num">{formatCurrency(detail.total)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </main>
@@ -552,15 +598,15 @@ function CustomerReceiptPrintPageContent({
           max-width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          font-size: 10.8px;
-          line-height: 1.14;
+          font-size: 12.5px;
+          line-height: 1.2;
         }
 
         .receipt-items th {
           border-bottom: 1px solid #111827;
-          padding: 1.5px 2px;
+          padding: 2px 2px;
           text-align: left;
-          font-size: 10px;
+          font-size: 11.5px;
           font-weight: 800;
           overflow: hidden;
         }
@@ -579,7 +625,7 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td {
-          padding: 1.8px 2px;
+          padding: 2.4px 2px;
           vertical-align: top;
           border-bottom: 1px solid #e5e7eb;
           break-inside: avoid;
@@ -588,24 +634,20 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td:first-child {
+          font-size: 14px;
           font-weight: 650;
           white-space: normal;
         }
 
-        .receipt-work-details {
-          margin-top: 1.2mm;
-          padding-left: 2mm;
+        .receipt-items .receipt-work-detail-row td {
           color: #374151;
-          font-size: 9.6px;
-          font-weight: 500;
-          line-height: 1.28;
+          font-size: 11.5px;
+          font-weight: 600;
         }
 
-        .receipt-work-details b {
-          display: block;
-          margin-bottom: 0.5mm;
-          color: #111827;
-          font-size: 9.8px;
+        .receipt-items .receipt-work-detail-row td:first-child {
+          padding-left: 4mm;
+          font-size: 11.5px;
         }
 
         .receipt-items .addon-row td {
