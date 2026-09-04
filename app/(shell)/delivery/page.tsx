@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   deliverOrderItemsAction,
+  getDeliveryCollectorsAction,
   getDeliveryDeskOrdersAction,
   getQuickDeliveryOrderAction,
   markOrderDeliveredAction,
@@ -34,6 +35,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/currency";
 import type { Order, PaymentMode } from "@/lib/types";
+import type { StaffOption } from "@/lib/data/staff-db";
 import { isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
 type DeliveryFilter = "all" | "ready" | "due" | "balance" | "clear";
@@ -97,17 +99,20 @@ function DeliveryStatCard({
 
 function PartialDeliveryModal({
   row,
+  collectors,
   busy,
   onClose,
   onSubmit,
 }: {
   row: DeliveryDeskOrder;
+  collectors: StaffOption[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (data: {
     items: Array<{ orderItemId: string; quantity: number }>;
     amount: number;
     paymentMode: PaymentMode;
+    collectorStaffId: string;
   }) => void;
 }) {
   const pendingItems = row.order.items.filter((item) => item.id && itemPendingQty(item) > 0);
@@ -116,6 +121,7 @@ function PartialDeliveryModal({
   );
   const [amount, setAmount] = useState("0");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("Cash");
+  const [collectorStaffId, setCollectorStaffId] = useState("");
   const [error, setError] = useState("");
 
   const deliverAmount = useMemo(() => {
@@ -155,8 +161,12 @@ function PartialDeliveryModal({
       setError("Enter a valid collected amount within the order balance.");
       return;
     }
+    if (collectedAmount > 0 && !collectorStaffId) {
+      setError("Select who collected the amount.");
+      return;
+    }
     setError("");
-    onSubmit({ items: deliveryItems, amount: collectedAmount, paymentMode });
+    onSubmit({ items: deliveryItems, amount: collectedAmount, paymentMode, collectorStaffId });
   }
 
   return (
@@ -214,7 +224,7 @@ function PartialDeliveryModal({
           </table>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_150px_160px] md:items-end">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_140px_150px_160px_190px] xl:items-end">
           <div className="rounded-lg bg-surface-muted p-3 text-sm text-ink-muted">
             Selected delivery value: <span className="font-bold text-ink">{money(deliverAmount)}</span>
             <button type="button" onClick={fillAllPending} className="ml-3 text-xs font-bold text-primary hover:underline">
@@ -249,6 +259,18 @@ function PartialDeliveryModal({
               ))}
             </select>
           </label>
+          <label className="block text-xs font-semibold text-ink-muted">
+            Collected by
+            <select
+              value={collectorStaffId}
+              onChange={(event) => setCollectorStaffId(event.target.value)}
+              disabled={collectedAmount <= 0}
+              className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted"
+            >
+              <option value="">Select staff</option>
+              {collectors.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name}</option>)}
+            </select>
+          </label>
         </div>
 
         {error && <p className="mt-3 text-sm font-semibold text-chip-red-fg">{error}</p>}
@@ -274,6 +296,7 @@ function DeliveryDeskContent() {
   const today = todayIso();
 
   const [rows, setRows] = useState<DeliveryDeskOrder[]>([]);
+  const [collectors, setCollectors] = useState<StaffOption[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -288,16 +311,18 @@ function DeliveryDeskContent() {
   const [quickOrder, setQuickOrder] = useState<DeliveryDeskOrder | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
   const [quickPaymentMode, setQuickPaymentMode] = useState<PaymentMode>("Cash");
+  const [quickCollectorStaffId, setQuickCollectorStaffId] = useState("");
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickMessage, setQuickMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
-    getDeliveryDeskOrdersAction()
-      .then((result) => {
+    Promise.all([getDeliveryDeskOrdersAction(), getDeliveryCollectorsAction()])
+      .then(([result, staff]) => {
         if (cancelled) return;
         setRows(result);
+        setCollectors(staff);
         setLoadError(null);
       })
       .catch((error) => {
@@ -411,6 +436,7 @@ function DeliveryDeskContent() {
       items: Array<{ orderItemId: string; quantity: number }>;
       amount: number;
       paymentMode: PaymentMode;
+      collectorStaffId: string;
     }
   ) {
     setPendingOrderId(row.order.id);
@@ -420,6 +446,7 @@ function DeliveryDeskContent() {
         items: delivery.items,
         amount: delivery.amount,
         paymentMode: delivery.paymentMode,
+        collectorStaffId: delivery.collectorStaffId,
         notes: "Delivery desk item handover",
       });
       setPendingOrderId(null);
@@ -446,6 +473,7 @@ function DeliveryDeskContent() {
         orderId: quickOrder.order.id,
         amount,
         paymentMode: quickPaymentMode,
+        collectorStaffId: quickCollectorStaffId,
         notes: "Quick delivery scan",
       });
       if (!result.success) {
@@ -456,6 +484,7 @@ function DeliveryDeskContent() {
       setQuickMessage(`${result.data.orderNumber} collected and delivered successfully.`);
       setQuickOrder(null);
       setQuickAmount("");
+      setQuickCollectorStaffId("");
       setQuickCode("");
       if (quickScanRef.current) quickScanRef.current.value = "";
     } finally {
@@ -500,7 +529,7 @@ function DeliveryDeskContent() {
         </form>
         {quickMessage && <p className={`mt-3 text-sm font-semibold ${quickOrder ? "text-primary" : quickMessage.includes("successfully") ? "text-success" : "text-chip-red-fg"}`}>{quickMessage}</p>}
         {quickOrder && (
-          <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 xl:grid-cols-[minmax(0,1fr)_150px_170px_auto] xl:items-end">
+          <div className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary-tint/40 p-4 xl:grid-cols-[minmax(0,1fr)_140px_160px_190px_auto] xl:items-end">
             <div>
               <p className="font-bold text-primary">{quickOrder.order.orderNumber} · {customerLabel(quickOrder)}</p>
               <p className="mt-1 text-sm text-ink-muted">{itemsLabel(quickOrder.order)}</p>
@@ -509,7 +538,8 @@ function DeliveryDeskContent() {
             </div>
             <label className="block text-xs font-semibold text-ink-muted">Collected amount<input type="number" min="0" max={quickOrder.order.balance} step="0.01" value={quickAmount} onChange={(event) => setQuickAmount(event.target.value)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-right text-sm font-semibold text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
             <label className="block text-xs font-semibold text-ink-muted">Payment mode<select value={quickPaymentMode} onChange={(event) => setQuickPaymentMode(event.target.value as PaymentMode)} disabled={quickBusy} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{["Cash", "GPay", "UPI", "Card", "Bank Transfer", "Cheque"].map((mode) => <option key={mode}>{mode}</option>)}</select></label>
-            <button type="button" onClick={() => void collectAndDeliver()} disabled={quickBusy} className="h-11 rounded-lg bg-secondary px-5 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">Collect & Deliver</button>
+            <label className="block text-xs font-semibold text-ink-muted">Collected by<select value={quickCollectorStaffId} onChange={(event) => setQuickCollectorStaffId(event.target.value)} disabled={quickBusy || Number(quickAmount || 0) <= 0} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-surface-muted"><option value="">Select staff</option>{collectors.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name}</option>)}</select></label>
+            <button type="button" onClick={() => void collectAndDeliver()} disabled={quickBusy || (Number(quickAmount || 0) > 0 && !quickCollectorStaffId)} className="h-11 rounded-lg bg-secondary px-5 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">Collect & Deliver</button>
           </div>
         )}
       </section>
@@ -692,6 +722,7 @@ function DeliveryDeskContent() {
       {paymentOrder && (
         <RecordPaymentModal
           order={paymentOrder}
+          collectors={collectors}
           onClose={() => setPaymentOrder(null)}
           onRecorded={({ order }) => {
             replaceOrder(order);
@@ -702,6 +733,7 @@ function DeliveryDeskContent() {
       {deliveryOrder && (
         <PartialDeliveryModal
           row={deliveryOrder}
+          collectors={collectors}
           busy={pendingOrderId === deliveryOrder.order.id || isPending}
           onClose={() => setDeliveryOrder(null)}
           onSubmit={(delivery) => deliverItems(deliveryOrder, delivery)}

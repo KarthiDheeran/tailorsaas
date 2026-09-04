@@ -22,6 +22,7 @@ import {
   recordPaymentOperatorAttribution,
 } from "@/lib/data/operator-attribution-db";
 import { getPaymentsForOrder } from "@/lib/data/payments-db";
+import { getStaffById, getStaffOptions, type StaffOption } from "@/lib/data/staff-db";
 import { requireActiveSharedDesktopOperator } from "@/lib/shared-desktop-operator";
 import type { Customer, Order } from "@/lib/types";
 
@@ -99,11 +100,19 @@ export async function markOrderDeliveredAction(
   return { success: true, data: order };
 }
 
+export async function getDeliveryCollectorsAction(): Promise<StaffOption[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.view");
+  if (!guard.ok) return [];
+  return getStaffOptions(supabase, { activeOnly: true });
+}
+
 export async function deliverOrderItemsAction(data: {
   orderId: string;
   items: Array<{ orderItemId: string; quantity: number }>;
   amount: number;
   paymentMode: PaymentMode;
+  collectorStaffId?: string;
   notes?: string;
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
@@ -117,6 +126,10 @@ export async function deliverOrderItemsAction(data: {
   }
   if (!Number.isFinite(data.amount) || data.amount < 0) {
     return { success: false, error: "Enter a valid collected amount." };
+  }
+  const collector = data.amount > 0 ? await getStaffById(supabase, data.collectorStaffId?.trim() ?? "") : undefined;
+  if (data.amount > 0 && (!collector || collector.status !== "Active")) {
+    return { success: false, error: "Select the active staff member who collected the amount." };
   }
   const existing = await getOrderById(supabase, data.orderId);
   if (!existing) return { success: false, error: "Order was not found." };
@@ -213,7 +226,7 @@ export async function deliverOrderItemsAction(data: {
   if (data.amount > 0) {
     const payments = await getPaymentsForOrder(admin, data.orderId);
     const latestPayment = payments.find((payment) => !payment.voided);
-    if (latestPayment) await recordPaymentOperatorAttribution(admin, latestPayment.id, operatorGuard.operator);
+    if (latestPayment) await recordPaymentOperatorAttribution(admin, latestPayment.id, collector);
   }
 
   return { success: true, data: order };
@@ -246,6 +259,7 @@ export async function quickCollectAndDeliverAction(data: {
   orderId: string;
   amount: number;
   paymentMode: PaymentMode;
+  collectorStaffId?: string;
   notes?: string;
 }): Promise<ActionResult<Order>> {
   const supabase = createServerClient();
@@ -255,6 +269,10 @@ export async function quickCollectAndDeliverAction(data: {
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
   if (!data.orderId) return { success: false, error: "Order is required." };
   if (!Number.isFinite(data.amount) || data.amount < 0) return { success: false, error: "Enter a valid collected amount." };
+  const collector = data.amount > 0 ? await getStaffById(supabase, data.collectorStaffId?.trim() ?? "") : undefined;
+  if (data.amount > 0 && (!collector || collector.status !== "Active")) {
+    return { success: false, error: "Select the active staff member who collected the amount." };
+  }
 
   const { error } = await supabase.rpc("quick_collect_and_deliver", {
     p_order_id: data.orderId,
@@ -273,7 +291,7 @@ export async function quickCollectAndDeliverAction(data: {
   if (data.amount > 0) {
     const payments = await getPaymentsForOrder(admin, data.orderId);
     const latestPayment = payments.find((payment) => !payment.voided);
-    if (latestPayment) await recordPaymentOperatorAttribution(admin, latestPayment.id, operatorGuard.operator);
+    if (latestPayment) await recordPaymentOperatorAttribution(admin, latestPayment.id, collector);
   }
   const order = await getOrderById(supabase, data.orderId);
   return order ? { success: true, data: order } : { success: false, error: "Order was not found." };

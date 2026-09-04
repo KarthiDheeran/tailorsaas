@@ -993,11 +993,152 @@ export async function getProductionPrintBundleAction(ids: string[]): Promise<Job
   });
 }
 
+export interface ProductionPrintBatchSummary {
+  id: string;
+  orderSection: string;
+  productionGroup: string;
+  slipIds: string[];
+  orderCount: number;
+  createdAt: string;
+}
+
+export async function createSequentialProductionPrintAction(
+  orderIds: string[],
+  productionGroup: ProductionPrintGroup | "All" = "All"
+): Promise<ActionResult<{ slips: JobCardStageSlip[]; batch: ProductionPrintBatchSummary }>> {
+  const uniqueOrderIds = Array.from(new Set(orderIds.filter(Boolean)));
+  if (uniqueOrderIds.length === 0) return { success: false, error: "No orders are available in this range." };
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const context = await getServerCallerContext(supabase);
+  if (!context?.tenantId || !context.shopId) return { success: false, error: "Your account is not assigned to a shop." };
+
+  const before = await getJobCardStageSlipsForOrders(supabase, uniqueOrderIds);
+  const existingIds = new Set(before.map((slip) => slip.id));
+  const bundle = await createProductionPrintBundleAction(uniqueOrderIds, productionGroup);
+  if (!bundle.success) return bundle;
+  const newSlips = bundle.data.filter((slip) => !existingIds.has(slip.id));
+  if (newSlips.length === 0) {
+    return { success: false, error: "No new production slips are available. Use Reprint Selected for previously printed orders." };
+  }
+  const printedOrderIds = new Set(newSlips.map((slip) => slip.orderId));
+  const orders = await getOrdersByIds(supabase, Array.from(printedOrderIds));
+  const orderSection = orders[0]?.orderSection ?? "Mixed";
+  const { data, error } = await supabase
+    .from("production_print_batches")
+    .insert({
+      tenant_id: context.tenantId,
+      shop_id: context.shopId,
+      order_section: orderSection,
+      production_group: productionGroup,
+      slip_ids: newSlips.map((slip) => slip.id),
+      order_count: printedOrderIds.size,
+      created_by: guard.userId,
+    })
+    .select("id,order_section,production_group,slip_ids,order_count,created_at")
+    .single();
+  if (error) return { success: false, error: "Production print history is not enabled. Run migration 0090." };
+  return {
+    success: true,
+    data: {
+      slips: newSlips,
+      batch: {
+        id: data.id,
+        orderSection: data.order_section,
+        productionGroup: data.production_group,
+        slipIds: data.slip_ids,
+        orderCount: data.order_count,
+        createdAt: data.created_at,
+      },
+    },
+  };
+}
+
+export async function getProductionPrintHistoryAction(): Promise<ProductionPrintBatchSummary[]> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.printJobCard");
+  if (!guard.ok) return [];
+  const { data, error } = await supabase
+    .from("production_print_batches")
+    .select("id,order_section,production_group,slip_ids,order_count,created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) return [];
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    orderSection: row.order_section,
+    productionGroup: row.production_group,
+    slipIds: row.slip_ids,
+    orderCount: row.order_count,
+    createdAt: row.created_at,
+  }));
+}
+
 export interface AssignedProductionUnitInput {
   orderId: string;
   orderItemSerialNo: number;
   unitNo: number;
   stage: TaskType;
+}
+
+export interface WorkAssignmentScanPreview {
+  slip: JobCardStageSlip;
+  currentStaffName: string;
+  targetStaffName: string;
+}
+
+export async function previewWorkAssignmentScanAction(code: string, staffId: string, stage: TaskType): Promise<ActionResult<WorkAssignmentScanPreview>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const admin = createAdminClient();
+  const [slip, staff] = await Promise.all([getJobCardStageSlipByScanCode(admin, code.trim()), getStaffById(admin, staffId.trim())]);
+  if (!slip) return { success: false, error: "Production slip not found." };
+  if (!staff || staff.status !== "Active") return { success: false, error: "Select an active worker." };
+  if (slip.stage !== stage) return { success: false, error: `This is a ${slip.stage} slip. Select ${slip.stage} and scan again.` };
+  if (slip.talliedAt || slip.talliedQuantity > 0) return { success: false, error: `Already tallied for ${slip.staffName}. Use payroll correction; assignment cannot be changed here.` };
+  const shopError = await requireStaffSameShopForOrder(slip.orderId, staff.id);
+  if (shopError) return { success: false, error: shopError };
+  return { success: true, data: { slip, currentStaffName: slip.staffId ? slip.staffName : "Unassigned", targetStaffName: staff.name } };
+}
+
+export async function confirmWorkAssignmentScanAction(input: { code: string; staffId: string; stage: TaskType; mode: "assign" | "reassign"; reason?: string }): Promise<ActionResult<JobCardStageSlip>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (input.mode === "reassign" && !input.reason?.trim()) return { success: false, error: "Reason is required when changing an assignment." };
+  const admin = createAdminClient();
+  const [slip, staff] = await Promise.all([getJobCardStageSlipByScanCode(admin, input.code.trim()), getStaffById(admin, input.staffId.trim())]);
+  if (!slip) return { success: false, error: "Production slip not found." };
+  if (!staff || staff.status !== "Active") return { success: false, error: "Select an active worker." };
+  if (slip.stage !== input.stage) return { success: false, error: `This is a ${slip.stage} slip.` };
+  if (slip.talliedAt || slip.talliedQuantity > 0) return { success: false, error: `Already tallied for ${slip.staffName}. No assignment was changed.` };
+  if (input.mode === "assign" && slip.staffId && slip.staffId !== staff.id) return { success: false, error: `Already assigned to ${slip.staffName}. Use Change Assignment mode.` };
+  if (input.mode === "reassign" && !slip.staffId) return { success: false, error: "This slip is unassigned. Use Assign mode." };
+  if (slip.staffId === staff.id) return { success: false, error: `This slip is already assigned to ${staff.name}.` };
+  const shopError = await requireStaffSameShopForOrder(slip.orderId, staff.id);
+  if (shopError) return { success: false, error: shopError };
+  try {
+    const order = await getOrderById(admin, slip.orderId);
+    const item = order?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
+    if (!order || !item) return { success: false, error: "Order item not found." };
+    await syncJobCardsForOrder(admin, order.id);
+    const wageRate = staffGarmentStageRate(staff, item.garmentTypeId, slip.stage);
+    const labourTotal = (slip.labourAddOnsSnapshot ?? []).reduce((sum, addOn) => sum + Number(addOn.amount ?? 0), 0);
+    const allCards = await getJobCards(admin, new Date().toISOString().slice(0, 10), await getStaffOptions(admin));
+    const unitCards = (allCards ?? []).filter((card) => card.orderId === slip.orderId && card.item.serialNo === slip.orderItemSerialNo && card.unitNo >= slip.unitNo && card.unitNo < slip.unitNo + slip.quantity);
+    if (unitCards.length !== slip.quantity) return { success: false, error: "Not all garment units could be found." };
+    for (const card of unitCards) {
+      if (input.mode === "reassign") await transferJobCard(admin, card.id, staff.id);
+      else await assignJobCardForStageSlip(admin, { orderId: slip.orderId, orderItemSerialNo: slip.orderItemSerialNo, unitNo: card.unitNo, taskType: slip.stage, staffId: staff.id, wageRate, wageAmount: wageRate + labourTotal, notes: slip.notes });
+      await logJobCardActivityBestEffort({ jobCardId: card.id, orderId: slip.orderId, actionType: input.mode === "reassign" ? "Transferred" : "Assigned", fromStage: input.mode === "reassign" ? card.stage : "Unassigned", toStage: taskTypeToStage(slip.stage), assignedStaffId: staff.id, notes: input.mode === "reassign" ? `Scan assignment changed from ${slip.staffName} to ${staff.name}. Reason: ${input.reason!.trim()}` : `Assigned by production slip scan: ${slip.slipCode}`, performedBy: guard.userId });
+    }
+    const assigned = await assignJobCardStageSlipForTally(admin, { id: slip.id, staffId: staff.id, staffName: staff.name, wageRate, wageAmount: (wageRate + labourTotal) * slip.quantity });
+    return assigned ? { success: true, data: assigned } : { success: false, error: "Slip assignment could not be saved." };
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to assign the scanned production slip.") };
+  }
 }
 
 export async function assignProductionUnitsAndCreateSlipsAction(

@@ -62,6 +62,7 @@ import type {
   TaskType,
   WorkAssignment,
 } from "@/lib/types";
+import type { StaffOption } from "@/lib/data/staff-db";
 
 // ---------------------------------------------------------------------------
 // Phase 6D: Staff HR, Work Assignments, and Staff Payments are now real,
@@ -505,6 +506,21 @@ export interface StaffPaymentInput {
   amount: number;
   paymentMode: PaymentMode;
   notes?: string;
+}
+
+export async function getQuickStaffAdvanceDataAction(todayIso: string): Promise<{
+  staff: StaffOption[];
+  payments: StaffPayment[];
+}> {
+  if (!ISO_DATE.test(todayIso)) return { staff: [], payments: [] };
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "staff.manage");
+  if (!guard.ok) return { staff: [], payments: [] };
+  const [staff, payments] = await Promise.all([
+    getStaffOptions(supabase, { activeOnly: true }),
+    getStaffPayments(supabase, { fromIso: todayIso, toIso: todayIso }),
+  ]);
+  return { staff, payments };
 }
 
 export async function recordStaffPaymentAction(

@@ -7,6 +7,7 @@ import { paymentModes } from "@/lib/constants";
 import type { Order, Payment, PaymentMode } from "@/lib/types";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
+import type { StaffOption } from "@/lib/data/staff-db";
 
 // Centered modal, above OrderDetailsDrawer's z-50 — same layering convention
 // as GarmentMeasurementModal (z-[60]/z-[70] over a drawer). Client-side
@@ -19,10 +20,12 @@ export function RecordPaymentModal({
   order,
   onClose,
   onRecorded,
+  collectors,
 }: {
   order: Order;
   onClose: () => void;
   onRecorded: (result: { order: Order; payments: Payment[] }) => void;
+  collectors?: StaffOption[];
 }) {
   const { t } = useLanguage();
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -30,6 +33,7 @@ export function RecordPaymentModal({
   const [paymentDate, setPaymentDate] = useState(todayIso);
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
   const [notes, setNotes] = useState("");
+  const [collectorStaffId, setCollectorStaffId] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +51,7 @@ export function RecordPaymentModal({
     if (!paymentMode) {
       return t("orders.paymentModeRequired");
     }
+    if (collectors && !collectorStaffId) return "Select who collected the amount.";
     return null;
   }
 
@@ -65,6 +70,7 @@ export function RecordPaymentModal({
       paymentDate,
       paymentMode: paymentMode as PaymentMode,
       notes: notes.trim() || undefined,
+      collectorStaffId: collectorStaffId || undefined,
     });
     setSubmitting(false);
     if (!result.success) {
@@ -153,6 +159,16 @@ export function RecordPaymentModal({
               ))}
             </select>
           </div>
+
+          {collectors && (
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-ink-muted">Collected by</label>
+              <select value={collectorStaffId} onChange={(e) => setCollectorStaffId(e.target.value)} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-tint">
+                <option value="">Select staff</option>
+                {collectors.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name}</option>)}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-[13px] font-medium text-ink-muted">

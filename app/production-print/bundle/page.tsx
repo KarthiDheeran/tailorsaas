@@ -23,13 +23,14 @@ const PRODUCTION_BARCODE_OPTIONS = {
 
 function formatSlipDate(value: string | undefined) {
   if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
+}
+
+function orderHeading(slip: JobCardStageSlip) {
+  const number = slip.orderNumber.replace(/^ord(?:er)?[\s-]*/i, "");
+  const stage = slip.stage === "Cutting" ? "Cutting" : "Stitching";
+  return `${stage} - Ord ${number}`;
 }
 
 function tableWorkDetailLines(value: unknown): string[] {
@@ -172,16 +173,12 @@ function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
 function CuttingTicket({ slip }: { slip: JobCardStageSlip }) {
   return (
     <section className="production-ticket production-cutting">
-      <div className="production-stage">CUTTING</div>
-
       <div className="production-grid">
-        <strong>{slip.orderNumber}</strong>
+        <strong className="production-order-heading">{orderHeading(slip)}</strong>
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
         <span>Delivery: {formatSlipDate(slip.deliveryDate)}</span>
-        <span>
-          {slip.garmentType} · Qty {slip.quantity}
-        </span>
+        <strong>{slip.garmentType} - {slip.quantity}</strong>
       </div>
 
       <SlipBarcode slip={slip} />
@@ -205,16 +202,12 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
   );
   return (
     <section className="production-ticket production-stitching">
-      <div className="production-stage">STITCHING</div>
-
       <div className="production-grid">
-        <strong>{slip.orderNumber}</strong>
+        <strong className="production-order-heading">{orderHeading(slip)}</strong>
         <strong>{slip.customerSnapshot?.name ?? "Customer"}</strong>
         <span>{slip.customerSnapshot?.phone ?? ""}</span>
         <span>Delivery: {formatSlipDate(slip.deliveryDate)}</span>
-        <span>
-          {slip.garmentType} · Qty {slip.quantity}
-        </span>
+        <strong>{slip.garmentType} - {slip.quantity}</strong>
       </div>
 
       <div className="production-fields production-fixed-value-grid">
@@ -252,6 +245,17 @@ function ProductionPrintBundleContent() {
 
   const [slips, setSlips] = useState<JobCardStageSlip[] | null>(null);
 
+  const printSets = useMemo(() => {
+    const sets = new Map<string, JobCardStageSlip[]>();
+    for (const slip of slips ?? []) {
+      const key = `${slip.orderId}:${slip.orderItemSerialNo}:${slip.unitNo}:${slip.quantity}`;
+      const current = sets.get(key) ?? [];
+      current.push(slip);
+      sets.set(key, current);
+    }
+    return Array.from(sets.values());
+  }, [slips]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -275,13 +279,17 @@ function ProductionPrintBundleContent() {
         <p>Loading production bundle…</p>
       ) : (
         <div className="production-bundle">
-          {slips.map((slip) =>
-            slip.stage === "Cutting" ? (
-              <CuttingTicket key={slip.id} slip={slip} />
-            ) : (
-              <StitchingTicket key={slip.id} slip={slip} />
-            ),
-          )}
+          {printSets.map((set) => (
+            <div className="production-set" key={set.map((slip) => slip.id).join(":")}>
+              {set.map((slip) =>
+                slip.stage === "Cutting" ? (
+                  <CuttingTicket key={slip.id} slip={slip} />
+                ) : (
+                  <StitchingTicket key={slip.id} slip={slip} />
+                ),
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -296,36 +304,42 @@ function ProductionPrintBundleContent() {
           color: #000;
         }
 
-        .production-ticket {
-          position: relative;
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 4px 8px;
-          border: 1px solid #111;
-          border-bottom: 2px dashed #555;
-          padding: 5px 7px 7px;
+        .production-set {
           break-inside: avoid;
           page-break-inside: avoid;
         }
 
-        .production-ticket + .production-ticket {
-          margin-top: 5px;
+        .production-set + .production-set {
+          margin-top: 8px;
         }
 
-        .production-stage {
-          grid-column: 1 / -1;
-          font-weight: 800;
-          font-size: 12px;
-          letter-spacing: 0.14em;
-          border-bottom: 1px solid #111;
-          padding-bottom: 2px;
+        .production-ticket {
+          position: relative;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 6px 10px;
+          border: 1px solid #111;
+          border-bottom: 2px dashed #555;
+          padding: 8px 10px 10px;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        .production-set .production-ticket + .production-ticket {
+          margin-top: 7px;
+        }
+
+        .production-order-heading {
+          font-size: 17px;
+          font-weight: 900;
         }
 
         .production-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 2px 8px;
-          font-size: 10px;
+          gap: 4px 10px;
+          font-size: 14px;
+          line-height: 1.25;
           align-content: start;
         }
 
@@ -336,32 +350,32 @@ function ProductionPrintBundleContent() {
           grid-column: 1 / -1;
           border-top: 1px solid #aaa;
           padding-top: 4px;
-          font-size: 10px;
+          font-size: 16px;
         }
 
         .production-fixed-value-grid {
-          grid-template-rows: repeat(3, minmax(23px, auto));
+          grid-template-rows: repeat(3, minmax(36px, auto));
         }
 
         .production-fields div {
           border: 1px solid #777;
           display: flex;
-          min-height: 23px;
+          min-height: 36px;
           align-items: center;
           justify-content: center;
-          padding: 2px 4px;
+          padding: 5px 6px;
           text-align: center;
         }
 
         .production-fields strong {
-          font-size: 11px;
-          line-height: 1.18;
+          font-size: 17px;
+          line-height: 1.25;
           white-space: pre-line;
         }
 
         .production-barcode {
           grid-column: 2;
-          grid-row: 2;
+          grid-row: 1;
           text-align: center;
           align-self: center;
           justify-self: end;
@@ -387,7 +401,7 @@ function ProductionPrintBundleContent() {
         .production-barcode span {
           display: block;
           font-family: Arial, Helvetica, sans-serif;
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 700;
           line-height: 1.1;
           margin-top: 1px;
@@ -410,6 +424,11 @@ function ProductionPrintBundleContent() {
           .production-ticket {
             break-after: auto;
             page-break-after: auto;
+          }
+
+          .production-set {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
         }
       `}</style>

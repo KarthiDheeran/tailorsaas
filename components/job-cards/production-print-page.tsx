@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Printer, Search } from "lucide-react";
+import { History, Loader2, Printer, Search } from "lucide-react";
 import {
   createProductionPrintBundleAction,
+  createSequentialProductionPrintAction,
   getProductionPrintGarmentsAction,
+  getProductionPrintHistoryAction,
   getProductionPrintOrdersAction,
+  type ProductionPrintBatchSummary,
 } from "@/app/(shell)/job-cards/actions";
 import { JobCardTabs } from "@/components/job-cards/job-card-tabs";
 import { formatDate } from "@/components/orders/orders-table";
@@ -38,6 +41,8 @@ export function ProductionPrintPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
+  const [sequentialPrinting, setSequentialPrinting] = useState(false);
+  const [history, setHistory] = useState<ProductionPrintBatchSummary[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +52,9 @@ export function ProductionPrintPage() {
     getProductionPrintGarmentsAction()
       .then((result) => !cancelled && setGarments(result))
       .catch(() => !cancelled && setGarments([]));
+    getProductionPrintHistoryAction()
+      .then((result) => !cancelled && setHistory(result))
+      .catch(() => !cancelled && setHistory([]));
     return () => {
       cancelled = true;
     };
@@ -134,6 +142,33 @@ export function ProductionPrintPage() {
     else window.open(href, "_blank", "noopener,noreferrer");
   }
 
+  async function printNewOrders() {
+    if (ordersToPrint.length === 0) return;
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) previewWindow.opener = null;
+    setSequentialPrinting(true);
+    setError("");
+    const result = await createSequentialProductionPrintAction(
+      ordersToPrint.map((order) => order.id),
+      productionGroup
+    );
+    setSequentialPrinting(false);
+    if (!result.success) {
+      previewWindow?.close();
+      setError(result.error);
+      return;
+    }
+    setHistory((current) => [result.data.batch, ...current.filter((batch) => batch.id !== result.data.batch.id)].slice(0, 20));
+    const href = `/production-print/bundle?slipIds=${encodeURIComponent(result.data.batch.slipIds.join(","))}`;
+    if (previewWindow) previewWindow.location.href = href;
+    else window.open(href, "_blank", "noopener,noreferrer");
+  }
+
+  function reprintBatch(batch: ProductionPrintBatchSummary) {
+    const href = `/production-print/bundle?slipIds=${encodeURIComponent(batch.slipIds.join(","))}`;
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <div className="w-full p-2 sm:p-3 lg:p-4">
       <div className="mb-5">
@@ -162,7 +197,10 @@ export function ProductionPrintPage() {
           <p className="text-xs text-ink-muted">
             Range: {fromSequence || "1"} to {toSequence || "..."}. {productionGroup === "All" ? "All garment groups" : `${productionGroup} group only`}. Each item prints one quantity-based Cutting card, then one Stitching card.
           </p>
-          <button type="button" onClick={() => void printBundle()} disabled={printing || ordersToPrint.length === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print Production Bundle ({ordersToPrint.length})</button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void printNewOrders()} disabled={printing || sequentialPrinting || ordersToPrint.length === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-secondary px-4 text-sm font-semibold text-white transition hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-60">{sequentialPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Print New Orders</button>
+            <button type="button" onClick={() => void printBundle()} disabled={printing || sequentialPrinting || ordersToPrint.length === 0} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary bg-white px-4 text-sm font-semibold text-primary transition hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-60">{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Reprint Selected ({ordersToPrint.length})</button>
+          </div>
         </div>
         {error && <p className="mt-3 rounded-lg bg-chip-red px-3 py-2 text-sm font-medium text-chip-red-fg">{error}</p>}
         {orders === null ? <p className="py-12 text-center text-sm text-ink-muted">Loading orders...</p> : (
@@ -171,6 +209,14 @@ export function ProductionPrintPage() {
             {printableOrders.length === 0 && <p className="p-10 text-center text-sm text-ink-muted">No printable orders found.</p>}
           </div>
         )}
+      </section>
+      <section className="mt-5 rounded-2xl border border-border-soft bg-white p-4 shadow-soft sm:p-5">
+        <div className="flex items-center gap-2"><History className="h-5 w-5 text-primary" /><h2 className="text-lg font-bold text-ink">Sequential Print History</h2></div>
+        <p className="mt-1 text-xs text-ink-muted">Print New Orders skips every slip that already existed. Use Reprint for printer failures or another copy.</p>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-border-soft">
+          <table className="min-w-[680px] w-full text-left text-sm"><thead className="bg-surface-muted text-xs text-ink-muted"><tr><th className="px-3 py-2">Generated</th><th className="px-3 py-2">Section</th><th className="px-3 py-2">Group</th><th className="px-3 py-2 text-right">Orders</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{history.map((batch) => <tr key={batch.id} className="border-t border-border-soft"><td className="px-3 py-2">{new Date(batch.createdAt).toLocaleString("en-IN")}</td><td className="px-3 py-2">{batch.orderSection}</td><td className="px-3 py-2">{batch.productionGroup}</td><td className="px-3 py-2 text-right font-semibold">{batch.orderCount}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => reprintBatch(batch)} className="rounded-lg border border-primary px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary-tint">Reprint</button></td></tr>)}</tbody></table>
+          {history.length === 0 && <p className="p-6 text-center text-sm text-ink-muted">No sequential print batches yet.</p>}
+        </div>
       </section>
     </div>
   );

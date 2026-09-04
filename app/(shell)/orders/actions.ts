@@ -73,6 +73,7 @@ import {
   recordPayment,
   voidPayment,
 } from "@/lib/data/payments-db";
+import { getStaffById } from "@/lib/data/staff-db";
 import {
   getOrderFinancialAdjustmentsForOrder,
   isMissingOrderFinancialAdjustmentsSchemaError,
@@ -1606,7 +1607,8 @@ export async function recordPaymentAction(data: {
   orderId: string;
   amount: number;
   paymentDate: string;
-  paymentMode: PaymentMode;
+    paymentMode: PaymentMode;
+    collectorStaffId?: string;
   notes?: string;
 }): Promise<ActionResult<{ order: Order; payments: Payment[] }>> {
   const supabase = createServerClient();
@@ -1615,9 +1617,15 @@ export async function recordPaymentAction(data: {
   const operatorGuard = await requireActiveSharedDesktopOperator();
   if (!operatorGuard.ok) return { success: false, error: operatorGuard.error };
 
-  try {
-    const paymentId = await recordPayment(supabase, data);
-    await recordPaymentOperatorAttribution(createAdminClient(), paymentId, operatorGuard.operator);
+    try {
+      const selectedCollector = data.collectorStaffId
+        ? await getStaffById(supabase, data.collectorStaffId.trim())
+        : undefined;
+      if (data.collectorStaffId && (!selectedCollector || selectedCollector.status !== "Active")) {
+        return { success: false, error: "Select an active staff member who collected the amount." };
+      }
+      const paymentId = await recordPayment(supabase, data);
+      await recordPaymentOperatorAttribution(createAdminClient(), paymentId, selectedCollector ?? operatorGuard.operator);
     await recomputeOrderTotals(createAdminClient(), data.orderId);
   } catch (err) {
     return {

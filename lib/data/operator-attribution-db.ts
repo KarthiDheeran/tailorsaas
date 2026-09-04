@@ -41,7 +41,7 @@ export async function recordOrderOperatorAttribution(
 export async function recordPaymentOperatorAttribution(
   supabase: SupabaseClient,
   paymentId: string,
-  operator?: ActiveSharedDesktopOperator,
+  operator?: Pick<ActiveSharedDesktopOperator, "id" | "name">,
 ): Promise<void> {
   if (!operator) return;
   const { error } = await supabase

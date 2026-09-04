@@ -21,6 +21,7 @@ import {
   Users,
   Users2,
   Wallet,
+  BanknoteArrowUp,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -114,6 +115,7 @@ const navItems: NavItem[] = [
     anyOf: ["staff.view", "staff.manage"],
     children: [
       { href: "/staff/new", label: "Add Staff", icon: Users2, permission: "staff.manage" },
+      { href: "/staff/quick-advance", label: "Quick Staff Advance", icon: BanknoteArrowUp, permission: "staff.manage" },
       { href: "/staff", label: "View Staff", icon: Users2, permission: "staff.view", exact: true },
     ],
   },
