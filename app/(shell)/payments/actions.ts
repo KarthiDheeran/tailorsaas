@@ -24,11 +24,13 @@ import {
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { expenseCategories, paymentModes } from "@/lib/constants";
 import { hasPermission } from "@/lib/permissions";
+import { getStaffOptions, type StaffOption } from "@/lib/data/staff-db";
 import type {
   CustomerSnapshot,
   Expense,
   ExpenseCategory,
   ExpenseSource,
+  ExpenseScope,
   Order,
   OrderFinancialAdjustment,
   OrderFinancialAdjustmentType,
@@ -66,8 +68,11 @@ export interface DailyClosingModeRow {
 
 export interface DailyClosingSummary {
   date: string;
+  fromDate: string;
+  toDate: string;
   totalCollected: number;
   totalExpenses: number | null;
+  personalExpenses: number | null;
   netTotal: number | null;
   cashInHand: number | null;
   digitalNet: number | null;
@@ -96,11 +101,13 @@ export interface PaymentsPageInitialFilters {
   range: DateRange;
   paymentMode?: PaymentMode;
   paymentType?: PaymentType;
+  collectorStaffId?: string;
   customerQuery?: string;
   adjustmentType?: OrderFinancialAdjustmentType;
   adjustmentPaymentMode?: PaymentMode;
   adjustmentQuery?: string;
   expenseSource?: ExpenseSource;
+  expenseScope?: ExpenseScope;
   expenseCategory?: ExpenseCategory;
   expensePaymentMode?: PaymentMode;
   expenseQuery?: string;
@@ -114,6 +121,7 @@ export interface PaymentsPageInitialData {
   adjustments: FinancialAdjustmentLedgerRow[] | null;
   expenses: Expense[] | null;
   todayExpenses: number | null;
+  collectors: StaffOption[];
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +164,7 @@ export async function getPaymentsPageInitialDataAction(
     adjustments: null,
     expenses: null,
     todayExpenses: null,
+    collectors: [],
   };
 
   const supabase = createServerClient();
@@ -171,6 +180,7 @@ export async function getPaymentsPageInitialDataAction(
 
   const canViewPayments = hasPermission(permissions, "orders.viewPayments");
   const canViewExpenses = hasPermission(permissions, "expenses.view");
+  const canManageExpenses = hasPermission(permissions, "expenses.manage");
   const activeTab = filters.activeTab ?? (canViewPayments ? "collections" : "expenses");
   const admin = createAdminClient();
 
@@ -179,10 +189,11 @@ export async function getPaymentsPageInitialDataAction(
   let dailyClosing: DailyClosingSummary | null = null;
   let pendingDuesOrders: Order[] | null = null;
   let adjustments: FinancialAdjustmentLedgerRow[] | null = null;
+  const collectors = canViewPayments ? await getStaffOptions(supabase, { activeOnly: true }) : [];
 
   if (canViewPayments) {
     const todaySource = await getPaymentsReportSourceData(admin, {
-      range: { from: todayIso, to: todayIso },
+      range: filters.range,
     });
     if (activeTab === "collections") {
       const source = await getPaymentsReportSourceData(
@@ -191,6 +202,7 @@ export async function getPaymentsPageInitialDataAction(
           range: filters.range,
           paymentMode: filters.paymentMode,
           paymentType: filters.paymentType,
+          collectorStaffId: filters.collectorStaffId,
           customerQuery: filters.customerQuery,
         }
       );
@@ -200,6 +212,7 @@ export async function getPaymentsPageInitialDataAction(
           range: filters.range,
           paymentMode: filters.paymentMode,
           paymentType: filters.paymentType,
+          collectorStaffId: filters.collectorStaffId,
           customerQuery: filters.customerQuery,
         },
         todayIso
@@ -207,7 +220,7 @@ export async function getPaymentsPageInitialDataAction(
     }
     todayReport = buildPaymentsReportFromSource(
       todaySource,
-      { range: { from: todayIso, to: todayIso } },
+      { range: filters.range },
       todayIso
     );
     if (activeTab === "pending-dues") {
@@ -251,6 +264,7 @@ export async function getPaymentsPageInitialDataAction(
           from: filters.range.from,
           to: filters.range.to,
           source: filters.expenseSource,
+          expenseScope: canManageExpenses ? filters.expenseScope : "Business",
           category: filters.expenseCategory,
           paymentMode: filters.expensePaymentMode,
           query: filters.expenseQuery,
@@ -262,12 +276,13 @@ export async function getPaymentsPageInitialDataAction(
         filters.range.from === todayIso &&
         filters.range.to === todayIso &&
         !filters.expenseSource &&
+        !filters.expenseScope &&
         !filters.expenseCategory &&
         !filters.expensePaymentMode &&
         !filters.expenseQuery
           ? expenses
-          : await getExpenses(admin, { from: todayIso, to: todayIso });
-      const countedTodaysExpenses = todaysExpenseRows ?? [];
+          : await getExpenses(admin, { from: filters.range.from, to: filters.range.to });
+      const countedTodaysExpenses = (todaysExpenseRows ?? []).filter((expense) => expense.expenseScope === "Business");
       todayExpenses = countedTodaysExpenses.reduce(
         (sum, expense) => sum + Number(expense.amount),
         0
@@ -278,7 +293,7 @@ export async function getPaymentsPageInitialDataAction(
   }
 
   if (canViewPayments && todayReport) {
-    dailyClosing = buildDailyClosingSummary(todayIso, todayReport, todaysExpenseRows);
+    dailyClosing = buildDailyClosingSummary(filters.range.to, todayReport, todaysExpenseRows, filters.range.from);
   }
 
   return {
@@ -289,6 +304,7 @@ export async function getPaymentsPageInitialDataAction(
     adjustments,
     expenses,
     todayExpenses,
+    collectors,
   };
 }
 
@@ -315,7 +331,7 @@ export async function getDailyClosingAction(todayIso: string): Promise<DailyClos
 
   if (canViewExpenses) {
     try {
-      const expenses = await getExpenses(admin, { from: todayIso, to: todayIso });
+      const expenses = await getExpenses(admin, { from: todayIso, to: todayIso, expenseScope: "Business" });
       expensesByMode = new Map<PaymentMode, number>();
       for (const expense of expenses) {
         expensesByMode.set(
@@ -350,8 +366,11 @@ export async function getDailyClosingAction(todayIso: string): Promise<DailyClos
 
   return {
     date: todayIso,
+    fromDate: todayIso,
+    toDate: todayIso,
     totalCollected: payments.totalCollected,
     totalExpenses,
+    personalExpenses: expensesAvailable ? 0 : null,
     netTotal,
     cashInHand: cashRow?.net ?? null,
     digitalNet,
@@ -474,11 +493,14 @@ export async function getExpensesAction(filters: ExpenseFilters): Promise<Expens
 function buildDailyClosingSummary(
   todayIso: string,
   payments: PaymentsReport,
-  expenses: Expense[] | null
+  expenses: Expense[] | null,
+  fromIso = todayIso
 ): DailyClosingSummary {
+  const businessExpenses = expenses?.filter((expense) => expense.expenseScope === "Business" && !expense.voided) ?? null;
+  const personalExpenses = expenses?.filter((expense) => expense.expenseScope === "Personal" && !expense.voided) ?? null;
   const collectedByMode = new Map(payments.byMode.map((row) => [row.mode, row.amount]));
-  const expensesByMode = expenses
-    ? expenses.reduce((map, expense) => {
+  const expensesByMode = businessExpenses
+    ? businessExpenses.reduce((map, expense) => {
         map.set(
           expense.paymentMode,
           (map.get(expense.paymentMode) ?? 0) + Number(expense.amount)
@@ -487,9 +509,9 @@ function buildDailyClosingSummary(
       }, new Map<PaymentMode, number>())
     : null;
   const totalExpenses =
-    expenses === null
+    businessExpenses === null
       ? null
-      : expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+      : businessExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
 
   const byMode: DailyClosingModeRow[] = paymentModes.map((mode) => {
     const collected = collectedByMode.get(mode) ?? 0;
@@ -511,8 +533,11 @@ function buildDailyClosingSummary(
 
   return {
     date: todayIso,
+    fromDate: fromIso,
+    toDate: todayIso,
     totalCollected: payments.totalCollected,
     totalExpenses,
+    personalExpenses: personalExpenses === null ? null : personalExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0),
     netTotal,
     cashInHand: cashRow?.net ?? null,
     digitalNet,
@@ -569,10 +594,10 @@ function filterFinancialAdjustmentRows(
 
 export async function getExpenseTotalAction(filters: ExpenseFilters): Promise<number | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "expenses.view");
+  const guard = await requireServerPermission(supabase, filters.expenseScope === "Personal" ? "expenses.manage" : "expenses.view");
   if (!guard.ok) return null;
   try {
-    const expenses = await getExpenses(supabase, filters);
+    const expenses = await getExpenses(supabase, { ...filters, expenseScope: filters.expenseScope ?? "Business" });
     return expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
   } catch (error) {
     if (isMissingExpensesSchemaError(error)) return null;
@@ -583,6 +608,7 @@ export async function getExpenseTotalAction(filters: ExpenseFilters): Promise<nu
 export async function createExpenseAction(data: {
   expenseDate: string;
   source?: ExpenseSource;
+  expenseScope?: ExpenseScope;
   reference?: string;
   category: ExpenseCategory;
   vendor?: string;
@@ -641,6 +667,7 @@ export async function voidExpenseAction(
 function validateExpenseInput(data: {
   expenseDate: string;
   source?: ExpenseSource;
+  expenseScope?: ExpenseScope;
   category: ExpenseCategory;
   description: string;
   amount: number;
@@ -650,6 +677,7 @@ function validateExpenseInput(data: {
   if (!ISO_DATE.test(data.expenseDate)) return "A valid expense date is required.";
   if (data.expenseDate > todayIso) return "Expense date cannot be in the future.";
   if (data.source && !VALID_EXPENSE_SOURCES.has(data.source)) return "Invalid expense source.";
+  if (data.expenseScope && data.expenseScope !== "Business" && data.expenseScope !== "Personal") return "Invalid expense type.";
   if (!VALID_EXPENSE_CATEGORIES.has(data.category)) return "Invalid expense category.";
   if (!data.description.trim()) return "Description is required.";
   if (!Number.isFinite(data.amount) || data.amount <= 0) {

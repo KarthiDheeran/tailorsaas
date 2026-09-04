@@ -17,6 +17,7 @@ export function FilterDropdown<T extends string>({
   options,
   onChange,
   minWidthClass,
+  controlClassName = "",
 }: {
   prefix: string;
   value: T;
@@ -25,6 +26,7 @@ export function FilterDropdown<T extends string>({
   // A floor, not a cap: the button has no fixed `w-*`, so it grows past this
   // to fit longer selected values instead of truncating them.
   minWidthClass: string;
+  controlClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const currentLabel = options.find((o) => o.value === value)?.label ?? value;
@@ -39,7 +41,7 @@ export function FilterDropdown<T extends string>({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`${FILTER_CONTROL_CLASS} ${minWidthClass} flex items-center justify-between gap-2`}
+        className={`${FILTER_CONTROL_CLASS} ${minWidthClass} ${controlClassName} flex items-center justify-between gap-2`}
       >
         <span className="whitespace-nowrap">
           {prefix}: {currentLabel}

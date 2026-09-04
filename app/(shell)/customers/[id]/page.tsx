@@ -56,30 +56,30 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
 
   if (!loaded || !customer || !detail) {
     return (
-      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <div className="w-full max-w-none bg-[#f5f8ff] p-2 sm:px-3 sm:py-2 lg:px-4">
         <LoadingState label="Loading customer profile..." />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
       <button
         onClick={() => {
           setReturningToCustomers(true);
           router.push("/customers");
         }}
         disabled={returningToCustomers}
-        className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
+        className="mb-2 flex h-8 items-center gap-1 text-xs font-semibold text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"
       >
         <ChevronLeft className="h-4 w-4" />
         {returningToCustomers ? "Opening..." : t("customers.backToCustomers")}
       </button>
 
-      <div className="mb-6 flex items-start justify-between rounded-xl border border-border-soft bg-white p-5 shadow-soft">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[#c9d7ea] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-semibold text-ink">
+            <h1 className="text-lg font-bold text-ink">
               {customer.name}
             </h1>
             {canViewPayments && detail.outstandingBalance > 0 && (
@@ -88,17 +88,17 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-ink-muted">
+          <p className="mt-0.5 text-xs text-ink-muted">
             {customer.customerNumber} · {customer.phone} · {customer.area}{" "}
             · {customer.gender}
           </p>
-          <p className="mt-1 text-sm text-ink-muted">{customer.address}</p>
+          <p className="mt-0.5 text-xs text-ink-muted">{customer.address}</p>
         </div>
         <div className="flex items-center gap-2">
           {canCreateOrder && (
             <Link
               href={`/orders/new?customerId=${customer.id}`}
-              className="flex items-center gap-1.5 rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
+              className="flex h-9 items-center gap-1.5 rounded-md bg-secondary px-3 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
             >
               <Plus className="h-4 w-4" />
               <span>{t("customers.newOrder")}</span>
@@ -134,15 +134,16 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-2">
           <div>
-            <h2 className="mb-3 text-[17px] font-semibold text-ink">
+            <h2 className="mb-1 px-1 text-sm font-bold text-ink">
               {t("customers.orderHistory")}
             </h2>
             <OrdersTable
               orders={detail.orders}
               customersById={{ [customer.id]: customer }}
+              compact
             />
           </div>
           {canViewMeasurements && (
@@ -153,7 +154,7 @@ function CustomerProfilePageContent({ params }: { params: { id: string } }) {
             />
           )}
         </div>
-        <div className="space-y-5">
+        <div className="space-y-2">
           <TailoringProfileCard customer={customer} />
           {canViewPayments && <PaymentSummaryCard detail={detail} />}
         </div>

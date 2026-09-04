@@ -38,18 +38,19 @@ export function StaffFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
       <div className="relative w-full max-w-xs">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
         <input
           value={filters.nameQuery}
           onChange={(e) => set("nameQuery", e.target.value)}
           placeholder={t("staff.searchByName")}
-          className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+          className="h-9 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
         />
       </div>
       <div className="w-full sm:w-52">
         <Select
+          className="h-9"
           value={filters.role}
           onChange={(e) => set("role", e.target.value as StaffRole | "")}
         >
@@ -63,6 +64,7 @@ export function StaffFilters({
       </div>
       <div className="w-full sm:w-44">
         <Select
+          className="h-9"
           value={filters.status}
           onChange={(e) => set("status", e.target.value as StaffStatus | "")}
         >

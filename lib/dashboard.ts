@@ -386,6 +386,7 @@ async function getDashboardExpenseStats(
     const expenses = await getExpenses(supabase, {
       from: todayIso,
       to: todayIso,
+      expenseScope: "Business",
     });
     return {
       todayTotal: expenses.reduce((sum, expense) => sum + Number(expense.amount), 0),

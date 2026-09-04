@@ -71,7 +71,7 @@ export function CustomerFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
       <div className="relative w-full sm:w-[450px]">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
         <input
@@ -79,7 +79,7 @@ export function CustomerFilters({
           value={filters.query}
           onChange={(e) => set("query", e.target.value)}
           placeholder={t("customers.searchPlaceholder")}
-          className="h-11 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
+          className="h-9 w-full rounded-lg border border-border bg-white pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-tint"
         />
       </div>
 
@@ -89,6 +89,7 @@ export function CustomerFilters({
         options={areaOptions}
         onChange={(v) => set("area", v)}
         minWidthClass="min-w-[170px]"
+        controlClassName="h-9"
       />
 
       <FilterDropdown
@@ -97,6 +98,7 @@ export function CustomerFilters({
         options={balanceOptions}
         onChange={(v) => set("balance", v)}
         minWidthClass="min-w-[170px]"
+        controlClassName="h-9"
       />
 
       <FilterDropdown
@@ -105,13 +107,14 @@ export function CustomerFilters({
         options={activityOptions}
         onChange={(v) => set("activity", v)}
         minWidthClass="min-w-[170px]"
+        controlClassName="h-9"
       />
 
       {hasActiveFilters && (
         <button
           type="button"
           onClick={handleClear}
-          className="flex h-11 items-center px-1 text-sm font-medium text-primary hover:text-primary-dark hover:underline"
+          className="flex h-9 items-center px-1 text-sm font-medium text-primary hover:text-primary-dark hover:underline"
         >
           {t("common.clearFilters")}
         </button>

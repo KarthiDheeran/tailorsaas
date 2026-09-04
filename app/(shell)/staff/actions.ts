@@ -505,20 +505,21 @@ export interface StaffPaymentInput {
   description: string;
   amount: number;
   paymentMode: PaymentMode;
+  entryType?: "Advance" | "Tea";
   notes?: string;
 }
 
-export async function getQuickStaffAdvanceDataAction(todayIso: string): Promise<{
+export async function getQuickStaffAdvanceDataAction(range: { from: string; to: string }): Promise<{
   staff: StaffOption[];
   payments: StaffPayment[];
 }> {
-  if (!ISO_DATE.test(todayIso)) return { staff: [], payments: [] };
+  if (!ISO_DATE.test(range.from) || !ISO_DATE.test(range.to) || range.from > range.to) return { staff: [], payments: [] };
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "staff.manage");
   if (!guard.ok) return { staff: [], payments: [] };
   const [staff, payments] = await Promise.all([
     getStaffOptions(supabase, { activeOnly: true }),
-    getStaffPayments(supabase, { fromIso: todayIso, toIso: todayIso }),
+    getStaffPayments(supabase, { fromIso: range.from, toIso: range.to }),
   ]);
   return { staff, payments };
 }
@@ -539,6 +540,9 @@ export async function recordStaffPaymentAction(
   if (!Number.isFinite(data.amount) || data.amount <= 0) {
     return { success: false, error: "Amount must be greater than zero." };
   }
+  if (data.entryType && data.entryType !== "Advance" && data.entryType !== "Tea") {
+    return { success: false, error: "Invalid staff payment type." };
+  }
   if (!VALID_PAYMENT_MODES.has(data.paymentMode)) {
     return { success: false, error: "Invalid payment mode." };
   }
@@ -547,11 +551,11 @@ export async function recordStaffPaymentAction(
   try {
     await createExpense(createAdminClient(), {
       expenseDate: data.date,
-      category: "Salary",
+      category: data.entryType === "Tea" ? "Other" : "Salary",
       source: "Staff Payment",
       reference: payment.id,
       vendor: staffMember.name,
-      description: `Staff payment - ${staffMember.name}`,
+      description: data.entryType === "Tea" ? `Staff tea - ${staffMember.name}` : `Staff payment - ${staffMember.name}`,
       amount: data.amount,
       paymentMode: data.paymentMode,
       notes: [

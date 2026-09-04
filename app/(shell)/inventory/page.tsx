@@ -7,8 +7,15 @@ import {
   createCustomerFabricAction,
   createInventoryItemAction,
   getCustomerFabricsAction,
+  getInventoryConsumptionMasterDataAction,
   getInventoryPageDataAction,
+  saveInventoryConsumptionRuleAction,
+  saveInventoryItemTypeAction,
+  setInventoryConsumptionRuleActiveAction,
   updateCustomerFabricStatusAction,
+  type InventoryConsumptionMasterData,
+  type InventoryConsumptionRule,
+  type InventoryRuleRange,
 } from "@/app/(shell)/inventory/actions";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
@@ -37,7 +44,7 @@ import { Select } from "@/components/ui/select";
 import { downloadCsv } from "@/lib/csv";
 import { formatCurrency } from "@/lib/currency";
 
-type InventoryTab = "stock" | "customer-fabric";
+type InventoryTab = "stock" | "customer-fabric" | "masters";
 const STOCK_ITEM_LIMIT = 300;
 const CUSTOMER_FABRIC_LIMIT = 200;
 
@@ -71,6 +78,8 @@ function InventoryContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStockLoading, setIsStockLoading] = useState(false);
   const [isFabricLoading, setIsFabricLoading] = useState(false);
+  const [masterData, setMasterData] = useState<InventoryConsumptionMasterData | null | undefined>(undefined);
+  const [masterRefreshKey, setMasterRefreshKey] = useState(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -157,6 +166,15 @@ function InventoryContent() {
       cancelled = true;
     };
   }, [debouncedFabricQuery, fabricRefreshKey, tab]);
+
+  useEffect(() => {
+    if (tab !== "masters" && masterData !== undefined) return;
+    let cancelled = false;
+    getInventoryConsumptionMasterDataAction().then((result) => {
+      if (!cancelled) setMasterData(result);
+    });
+    return () => { cancelled = true; };
+  }, [masterData, masterRefreshKey, tab]);
 
   const filteredItems = useMemo(() => {
     const rows = items ?? [];
@@ -246,16 +264,16 @@ function InventoryContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
-        <h1 className="text-[26px] font-semibold text-ink">Inventory</h1>
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
+      <div className="mb-2 rounded-lg border border-border-soft bg-white px-3 py-2">
+        <h1 className="text-xl font-semibold text-ink">Inventory</h1>
         <p className="text-sm text-ink-muted">
           Track shop-owned stock separately from customer-provided fabric.
         </p>
       </div>
 
       {loadError && (
-        <div className="mb-5">
+        <div className="mb-2">
           <LoadError
             message={loadError}
             onRetry={() => {
@@ -273,20 +291,20 @@ function InventoryContent() {
         <LoadingState label="Loading inventory..." />
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Stat label="Stock Items" value={itemStats.stockItemsCount.toString()} icon={Package} />
             <Stat label="Low Stock" value={lowStockCount.toString()} icon={AlertTriangle} tone="warning" />
             <Stat label="Stock Value" value={money(stockValue)} icon={Shirt} />
           </div>
 
           {inventoryMigrationMissing && (
-            <div className="mb-5 rounded-xl border border-border-soft bg-white p-4 text-sm text-ink-muted shadow-soft">
+            <div className="mb-2 rounded-lg border border-border-soft bg-white p-2 text-sm text-ink-muted">
               Inventory is ready in the app, but the database migration has not been applied yet.
               Apply <span className="font-semibold text-ink">supabase/migrations/0011_inventory.sql</span> to start saving stock and customer fabric records.
             </div>
           )}
 
-          <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
+          <div className="mb-2 flex items-center gap-1 border-b border-border-soft bg-white px-2">
             <TabButton label="Shop Stock" active={tab === "stock"} onClick={() => setTab("stock")} />
             <TabButton
               label={
@@ -297,11 +315,12 @@ function InventoryContent() {
               active={tab === "customer-fabric"}
               onClick={() => setTab("customer-fabric")}
             />
+            {canManage && <TabButton label="Inventory Masters" active={tab === "masters"} onClick={() => setTab("masters")} />}
           </div>
 
           {tab === "stock" && (
             <>
-              <div className="mb-5 flex flex-wrap items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -351,7 +370,7 @@ function InventoryContent() {
 
           {tab === "customer-fabric" && (
             <>
-              <div className="mb-5 flex flex-wrap items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
                 <input
                   value={fabricQuery}
                   onChange={(e) => setFabricQuery(e.target.value)}
@@ -392,11 +411,21 @@ function InventoryContent() {
               )}
             </>
           )}
+
+          {tab === "masters" && canManage && (
+            masterData === undefined ? <LoadingState label="Loading inventory masters..." /> :
+            masterData === null ? (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-ink">Apply <span className="font-semibold">supabase/migrations/0093_inventory_consumption_masters.sql</span> to enable configurable item types and consumption rules.</div>
+            ) : (
+              <InventoryMasters data={masterData} items={items ?? []} onSaved={() => { setMasterData(undefined); setMasterRefreshKey((key) => key + 1); }} />
+            )
+          )}
         </>
       )}
 
       {showItemDrawer && (
         <StockItemDrawer
+          itemTypes={(masterData?.itemTypes.filter((type) => type.isActive).map((type) => type.name) ?? inventoryItemTypes)}
           onClose={() => setShowItemDrawer(false)}
           onSaved={() => {
             setShowItemDrawer(false);
@@ -443,8 +472,8 @@ function Stat({
   tone?: "default" | "warning";
 }) {
   return (
-    <div className="rounded-xl border border-border-soft bg-white p-5 shadow-soft">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="rounded-lg border border-border-soft bg-white px-3 py-2">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-ink-muted">{label}</span>
         <div
           className={cn(
@@ -455,7 +484,7 @@ function Stat({
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className={cn("text-[26px] font-semibold", tone === "warning" ? "text-chip-red-fg" : "text-ink")}>
+      <div className={cn("text-xl font-semibold", tone === "warning" ? "text-chip-red-fg" : "text-ink")}>
         {value}
       </div>
     </div>
@@ -476,7 +505,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+        "-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition-colors",
         active
           ? "border-primary text-primary"
           : "border-transparent text-ink-muted hover:text-ink"
@@ -501,7 +530,7 @@ function StockTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+    <div className="overflow-x-auto rounded-lg border border-border-soft bg-white">
       <table className="w-full text-left">
         <thead className="text-[13px] font-semibold text-ink-muted">
           <tr className="border-b border-border-soft">
@@ -594,7 +623,7 @@ function CustomerFabricTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-soft bg-white shadow-soft">
+    <div className="overflow-x-auto rounded-lg border border-border-soft bg-white">
       <table className="w-full text-left">
         <thead className="text-[13px] font-semibold text-ink-muted">
           <tr className="border-b border-border-soft">
@@ -665,16 +694,75 @@ function StatusBadge({ status }: { status: CustomerFabricStatus }) {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-soft py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border-soft bg-white py-12 text-center">
       <p className="text-sm text-ink-muted">{message}</p>
     </div>
   );
 }
 
+function InventoryMasters({ data, items, onSaved }: { data: InventoryConsumptionMasterData; items: InventoryItem[]; onSaved: () => void }) {
+  const [typeName, setTypeName] = useState("");
+  const [editing, setEditing] = useState<InventoryConsumptionRule | null>(null);
+  const [showRule, setShowRule] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function addType(event: FormEvent) {
+    event.preventDefault(); setBusy(true);
+    const result = await saveInventoryItemTypeAction({ name: typeName });
+    setBusy(false);
+    if (!result.success) return window.alert(result.error);
+    setTypeName(""); onSaved();
+  }
+
+  async function toggleRule(rule: InventoryConsumptionRule) {
+    const result = await setInventoryConsumptionRuleActiveAction(rule.id, !rule.isActive);
+    if (!result.success) return window.alert(result.error);
+    onSaved();
+  }
+
+  async function toggleType(type: InventoryConsumptionMasterData["itemTypes"][number]) {
+    const result = await saveInventoryItemTypeAction({ id: type.id, name: type.name, isActive: !type.isActive });
+    if (!result.success) return window.alert(result.error);
+    onSaved();
+  }
+
+  return <div className="grid gap-2 xl:grid-cols-[minmax(260px,0.7fr)_minmax(700px,2fr)]">
+    <section className="rounded-lg border border-border-soft bg-white p-3">
+      <h2 className="font-semibold text-ink">Stock Item Types</h2>
+      <p className="mb-3 text-xs text-ink-muted">Types used while creating stock items.</p>
+      <form onSubmit={addType} className="mb-3 flex gap-2"><input value={typeName} onChange={(event) => setTypeName(event.target.value)} placeholder="Example: Belt Patti" className="h-9 min-w-0 flex-1 rounded-lg border border-border px-3 text-sm" /><button disabled={busy || !typeName.trim()} className="h-9 rounded-lg bg-primary px-3 text-sm font-semibold text-white disabled:opacity-50">Add</button></form>
+      <div className="space-y-1">{data.itemTypes.map((type) => <div key={type.id} className="flex items-center justify-between rounded-lg border border-border-soft px-2.5 py-1.5"><span className={cn("text-sm font-semibold", type.isActive ? "text-ink" : "text-ink-faint")}>{type.name}</span><button type="button" onClick={() => toggleType(type)} className="text-xs font-semibold text-primary">{type.isActive ? "Disable" : "Enable"}</button></div>)}</div>
+    </section>
+    <section className="rounded-lg border border-border-soft bg-white p-3">
+      <div className="mb-2 flex items-start justify-between gap-2"><div><h2 className="font-semibold text-ink">Garment Consumption Rules</h2><p className="text-xs text-ink-muted">Stock automatically reduces when garment quantities are delivered.</p></div><button type="button" onClick={() => { setEditing(null); setShowRule(true); }} className="flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-sm font-semibold text-white"><Plus className="h-4 w-4" /> Add Rule</button></div>
+      {data.rules.length === 0 ? <EmptyState message="No consumption rules configured yet." /> : <div className="overflow-x-auto rounded-lg border border-border-soft"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border-soft bg-surface-muted"><th className="px-2 py-2">Garment</th><th className="px-2 py-2">Stock Item</th><th className="px-2 py-2">Consumption</th><th className="px-2 py-2">Status</th><th className="px-2 py-2 text-right">Actions</th></tr></thead><tbody>{data.rules.map((rule) => <tr key={rule.id} className="border-t border-border-soft"><td className="px-2 py-2 font-semibold">{rule.garmentName}</td><td className="px-2 py-2">{rule.inventoryItemName}</td><td className="px-2 py-2 text-ink-muted">{rule.calculationType === "Fixed" ? `${numberValue(rule.fixedQuantity ?? 0)} per garment` : `${rule.measurementFieldName ?? rule.measurementFieldCode} · ${rule.ranges.length} ranges`}</td><td className="px-2 py-2"><span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", rule.isActive ? "bg-chip-mint text-chip-mint-fg" : "bg-surface-muted text-ink-muted")}>{rule.isActive ? "Active" : "Inactive"}</span></td><td className="space-x-2 px-2 py-2 text-right"><button type="button" onClick={() => { setEditing(rule); setShowRule(true); }} className="text-xs font-semibold text-primary">Edit</button><button type="button" onClick={() => toggleRule(rule)} className="text-xs font-semibold text-ink-muted">{rule.isActive ? "Disable" : "Enable"}</button></td></tr>)}</tbody></table></div>}
+    </section>
+    {showRule && <ConsumptionRuleDrawer data={data} items={items.filter((item) => item.active)} rule={editing} onClose={() => setShowRule(false)} onSaved={() => { setShowRule(false); onSaved(); }} />}
+  </div>;
+}
+
+function ConsumptionRuleDrawer({ data, items, rule, onClose, onSaved }: { data: InventoryConsumptionMasterData; items: InventoryItem[]; rule: InventoryConsumptionRule | null; onClose: () => void; onSaved: () => void }) {
+  const [garmentTypeId, setGarmentTypeId] = useState(rule?.garmentTypeId ?? data.garments[0]?.id ?? "");
+  const [inventoryItemId, setInventoryItemId] = useState(rule?.inventoryItemId ?? items[0]?.id ?? "");
+  const [calculationType, setCalculationType] = useState<"Fixed" | "Measurement Range">(rule?.calculationType ?? "Fixed");
+  const [measurementFieldCode, setMeasurementFieldCode] = useState(rule?.measurementFieldCode ?? data.measurementFields[0]?.code ?? "");
+  const [fixedQuantity, setFixedQuantity] = useState(String(rule?.fixedQuantity ?? 1));
+  const [ranges, setRanges] = useState<InventoryRuleRange[]>(rule?.ranges.length ? rule.ranges : [{ fromValue: 25, toValue: 30, quantity: 1.5 }]);
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setSaving(true);
+    const result = await saveInventoryConsumptionRuleAction({ id: rule?.id, garmentTypeId, inventoryItemId, calculationType, measurementFieldCode: calculationType === "Measurement Range" ? measurementFieldCode : undefined, fixedQuantity: calculationType === "Fixed" ? Number(fixedQuantity) : undefined, ranges: calculationType === "Measurement Range" ? ranges : [] });
+    setSaving(false); if (!result.success) return window.alert(result.error); onSaved();
+  }
+  return <div className="fixed inset-0 z-50 flex justify-end bg-black/30"><form onSubmit={submit} className="flex h-full w-full max-w-xl flex-col bg-white shadow-xl"><div className="flex items-center justify-between border-b border-border-soft px-5 py-4"><div><h2 className="text-lg font-semibold">{rule ? "Edit" : "Add"} Consumption Rule</h2><p className="text-xs text-ink-muted">Configure stock used per delivered garment.</p></div><button type="button" onClick={onClose}><X className="h-5 w-5" /></button></div><div className="flex-1 space-y-4 overflow-y-auto p-5"><div className="grid gap-3 sm:grid-cols-2"><SelectField label="Garment" value={garmentTypeId} onChange={setGarmentTypeId} options={data.garments.map((item) => item.id)} optionLabels={Object.fromEntries(data.garments.map((item) => [item.id, item.name]))} /><SelectField label="Stock Item" value={inventoryItemId} onChange={setInventoryItemId} options={items.map((item) => item.id)} optionLabels={Object.fromEntries(items.map((item) => [item.id, `${item.name} (${item.unit})`]))} /></div><SelectField label="Calculation" value={calculationType} onChange={(value) => setCalculationType(value as "Fixed" | "Measurement Range")} options={["Fixed", "Measurement Range"]} />{calculationType === "Fixed" ? <Field label="Quantity per garment"><input type="number" min="0.001" step="0.001" value={fixedQuantity} onChange={(event) => setFixedQuantity(event.target.value)} className="h-10 w-full rounded-lg border border-border px-3" /></Field> : <><SelectField label="Customer measurement" value={measurementFieldCode} onChange={setMeasurementFieldCode} options={data.measurementFields.map((field) => field.code)} optionLabels={Object.fromEntries(data.measurementFields.map((field) => [field.code, field.name]))} /><div><div className="mb-2 flex items-center justify-between"><span className="text-sm font-semibold">Measurement ranges</span><button type="button" onClick={() => setRanges((current) => [...current, { fromValue: (current.at(-1)?.toValue ?? 24) + 1, toValue: (current.at(-1)?.toValue ?? 24) + 5, quantity: 1 }])} className="text-xs font-semibold text-primary">+ Add range</button></div><div className="space-y-2">{ranges.map((range, index) => <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2"><input aria-label="From measurement" type="number" step="0.01" value={range.fromValue} onChange={(event) => setRanges((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, fromValue: Number(event.target.value) } : item))} className="h-9 rounded-lg border border-border px-2" /><input aria-label="To measurement" type="number" step="0.01" value={range.toValue} onChange={(event) => setRanges((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, toValue: Number(event.target.value) } : item))} className="h-9 rounded-lg border border-border px-2" /><input aria-label="Consumption quantity" type="number" min="0.001" step="0.001" value={range.quantity} onChange={(event) => setRanges((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Number(event.target.value) } : item))} className="h-9 rounded-lg border border-border px-2" /><button type="button" aria-label="Remove range" onClick={() => setRanges((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="text-chip-red-fg"><X className="h-4 w-4" /></button></div>)}</div><p className="mt-1 text-[11px] text-ink-muted">From · To · stock quantity per garment</p></div></>}</div><div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4"><button type="button" onClick={onClose} className="h-9 rounded-lg border border-border px-4 text-sm font-semibold">Cancel</button><button disabled={saving} className="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Save Rule"}</button></div></form></div>;
+}
+
 function StockItemDrawer({
+  itemTypes,
   onClose,
   onSaved,
 }: {
+  itemTypes: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -738,7 +826,7 @@ function StockItemDrawer({
   return (
     <InventoryDrawerShell title="Add Stock Item" onClose={onClose} onSubmit={handleSubmit} saving={saving}>
       <div className="grid grid-cols-2 gap-3">
-        <SelectField label="Type" value={itemType} onChange={(value) => setItemType(value as InventoryItemType)} options={inventoryItemTypes} />
+        <SelectField label="Type" value={itemType} onChange={(value) => setItemType(value as InventoryItemType)} options={itemTypes} />
         <SelectField label="Unit" value={unit} onChange={(value) => setUnit(value as InventoryUnit)} options={inventoryUnits} />
       </div>
       <TextField label="Item Name" value={name} onChange={setName} placeholder="Premium cotton, black buttons..." />
@@ -1054,11 +1142,13 @@ function SelectField({
   value,
   onChange,
   options,
+  optionLabels,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
+  optionLabels?: Record<string, string>;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -1069,12 +1159,16 @@ function SelectField({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabels?.[option] ?? option}
           </option>
         ))}
       </Select>
     </label>
   );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-ink-muted">{label}</span>{children}</label>;
 }
 
 function TextareaField({

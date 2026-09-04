@@ -35,7 +35,7 @@ export type GarmentFieldDraft = {
 
 export function createGarmentFieldDraft(
   values: Record<string, unknown>,
-  knownFields: ReadonlyArray<Pick<RuntimeGarmentField, "code" | "inputType"> & Partial<Pick<RuntimeGarmentField, "options">>>
+  knownFields: ReadonlyArray<Pick<RuntimeGarmentField, "code" | "inputType"> & Partial<Pick<RuntimeGarmentField, "options" | "tableConfig">>>
 ): GarmentFieldDraft {
   const fieldByCode = new Map(knownFields.map((field) => [field.code, field]));
   const typedValues: GarmentFieldValues = {};
@@ -46,7 +46,9 @@ export function createGarmentFieldDraft(
       passthroughValues[code] = value;
       continue;
     }
-    const normalized = normalizeGarmentFieldValue(value, field.inputType);
+    const normalized = field.inputType === "table"
+      ? normalizeGarmentTableValue(value, field.tableConfig ?? null, true)
+      : normalizeGarmentFieldValue(value, field.inputType);
     const options = field.options ?? [];
     // Historical/customer defaults can outlive catalog option changes. Never
     // keep an invisible stale selection in a new order draft: the control
@@ -254,12 +256,25 @@ export function computeGarmentTableCell(
 
 function normalizeGarmentTableValue(
   value: unknown,
-  config: GarmentTableConfig | null
+  config: GarmentTableConfig | null,
+  clearRowsWithInvalidSelections = false
 ): GarmentTableValue {
   if (!Array.isArray(value)) return [];
   const columns = config?.columns ?? [];
   return value.flatMap((rawRow): GarmentTableRow[] => {
     const row = asObject(rawRow);
+    const rowIndex = Array.isArray(value) ? value.indexOf(rawRow) : -1;
+    if (clearRowsWithInvalidSelections && config) {
+      const rowConfig = rowIndex >= 0 ? config.rowConfigs[rowIndex] : undefined;
+      const hasInvalidSelection = config.columns.some((column) => {
+        if (column.type !== "select") return false;
+        const cell = row[column.key];
+        if (cell === null || cell === undefined || cell === "") return false;
+        const options = garmentTableColumnOptions(column, rowConfig);
+        return options.length > 0 && !options.includes(String(cell));
+      });
+      if (hasInvalidSelection) return [{}];
+    }
     const normalized: GarmentTableRow = {};
     let hasAnyValue = false;
     const metadataKeys = ["workerStage", "itemTa", "labelTa", "nameTa"].filter((key) => key in row);
@@ -281,7 +296,10 @@ function normalizeGarmentTableValue(
       if (cell !== null && cell !== "") hasAnyValue = true;
       normalized[key] = cell;
     }
-    return hasAnyValue ? [normalized] : [];
+    // Row-specific dropdown options depend on the original paper row number.
+    // Keep blank placeholders whenever a table config exists so row 7 cannot
+    // accidentally be validated against row 5 after blank rows are removed.
+    return hasAnyValue || config ? [normalized] : [];
   });
 }
 

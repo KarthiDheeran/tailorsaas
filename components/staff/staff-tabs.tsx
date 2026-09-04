@@ -25,14 +25,14 @@ export function StaffTabs({
   const tabs = canManage ? TABS : TABS.filter((tab) => tab.key === "work-queue");
 
   return (
-    <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
+    <div className="mb-2 flex items-center gap-1 border-b border-border-soft bg-white px-2">
       {tabs.map((tab) => (
         <button
           key={tab.key}
           type="button"
           onClick={() => onChange(tab.key)}
           className={cn(
-            "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+            "-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition-colors",
             active === tab.key
               ? "border-primary text-primary"
               : "border-transparent text-ink-muted hover:text-ink"

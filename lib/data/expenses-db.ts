@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Expense, ExpenseCategory, ExpenseSource, PaymentMode } from "@/lib/types";
+import type { Expense, ExpenseCategory, ExpenseScope, ExpenseSource, PaymentMode } from "@/lib/types";
 
 const EXPENSE_COLUMNS =
-  "id, expense_date, category, source, reference, vendor, description, amount, payment_mode, notes, recorded_by, voided, voided_at, voided_by, void_reason, created_at";
+  "id, expense_date, category, expense_scope, source, reference, vendor, description, amount, payment_mode, notes, recorded_by, voided, voided_at, voided_by, void_reason, created_at";
 const LEGACY_EXPENSE_COLUMNS =
   "id, expense_date, category, vendor, description, amount, payment_mode, notes, recorded_by, voided, voided_at, voided_by, void_reason, created_at";
 
@@ -10,6 +10,7 @@ interface ExpenseRow {
   id: string;
   expense_date: string;
   category: ExpenseCategory;
+  expense_scope?: ExpenseScope | null;
   source?: ExpenseSource | null;
   reference?: string | null;
   vendor: string | null;
@@ -40,7 +41,7 @@ export function isMissingExpensesSchemaError(error: unknown): boolean {
 function isMissingExpenseSourceColumnError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
-  return candidate.code === "PGRST204" || message.includes("source") || message.includes("reference");
+  return candidate.code === "PGRST204" || message.includes("source") || message.includes("reference") || message.includes("expense_scope");
 }
 
 export interface ExpenseFilters {
@@ -49,6 +50,7 @@ export interface ExpenseFilters {
   category?: ExpenseCategory;
   paymentMode?: PaymentMode;
   source?: ExpenseSource;
+  expenseScope?: ExpenseScope;
   query?: string;
   includeVoided?: boolean;
 }
@@ -56,6 +58,7 @@ export interface ExpenseFilters {
 export interface ExpenseInput {
   expenseDate: string;
   category: ExpenseCategory;
+  expenseScope?: ExpenseScope;
   source?: ExpenseSource;
   reference?: string;
   vendor?: string;
@@ -71,6 +74,7 @@ function mapExpense(row: ExpenseRow): Expense {
     id: row.id,
     expenseDate: row.expense_date,
     category: row.category,
+    expenseScope: row.expense_scope ?? "Business",
     source: row.source ?? "Manual Expense",
     reference: row.reference ?? undefined,
     vendor: row.vendor ?? undefined,
@@ -102,6 +106,7 @@ export async function getExpenses(
   if (filters.category) query = query.eq("category", filters.category);
   if (filters.paymentMode) query = query.eq("payment_mode", filters.paymentMode);
   if (filters.source) query = query.eq("source", filters.source);
+  if (filters.expenseScope) query = query.eq("expense_scope", filters.expenseScope);
   const searchText = filters.query?.trim().replace(/[%,]/g, " ");
   if (searchText) {
     const pattern = `%${searchText}%`;
@@ -151,8 +156,8 @@ export async function getExpenses(
 
   const expenses = ((data as unknown as ExpenseRow[]) ?? []).map(mapExpense);
   return filters.source
-    ? expenses.filter((expense) => expense.source === filters.source)
-    : expenses;
+    ? expenses.filter((expense) => expense.source === filters.source && (!filters.expenseScope || expense.expenseScope === filters.expenseScope))
+    : filters.expenseScope ? expenses.filter((expense) => expense.expenseScope === filters.expenseScope) : expenses;
 }
 
 export async function createExpense(
@@ -164,6 +169,7 @@ export async function createExpense(
     .insert({
       expense_date: data.expenseDate,
       category: data.category,
+      expense_scope: data.expenseScope ?? "Business",
       source: data.source ?? "Manual Expense",
       reference: data.reference?.trim() || null,
       vendor: data.vendor?.trim() || null,
@@ -176,6 +182,7 @@ export async function createExpense(
     .select(EXPENSE_COLUMNS)
     .single();
   if (error && isMissingExpenseSourceColumnError(error)) {
+    if (data.expenseScope === "Personal") throw new Error("Apply migration 0091 before saving personal expenses.");
     const retry = await supabase
       .from("expenses")
       .insert({

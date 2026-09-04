@@ -26,7 +26,6 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import {
   customerFabricStatuses,
-  inventoryItemTypes,
   inventoryMovementTypes,
   inventoryUnits,
   paymentModes,
@@ -48,7 +47,6 @@ type ActionResult<T = undefined> =
   | { success: false; error: string };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const VALID_ITEM_TYPES = new Set<InventoryItemType>(inventoryItemTypes);
 const VALID_UNITS = new Set<InventoryUnit>(inventoryUnits);
 const VALID_MOVEMENT_TYPES = new Set<InventoryMovementType>(inventoryMovementTypes);
 const VALID_FABRIC_STATUSES = new Set<CustomerFabricStatus>(customerFabricStatuses);
@@ -60,6 +58,141 @@ export interface InventoryPageData {
   items: InventoryItem[] | null;
   itemStats: InventoryItemStats | null;
   customerFabrics?: CustomerFabric[] | null;
+}
+
+export interface InventoryItemTypeMaster { id: string; name: string; isActive: boolean }
+export interface InventoryRuleRange { id?: string; fromValue: number; toValue: number; quantity: number }
+export interface InventoryConsumptionRule {
+  id: string;
+  garmentTypeId: string;
+  garmentName: string;
+  inventoryItemId: string;
+  inventoryItemName: string;
+  calculationType: "Fixed" | "Measurement Range";
+  measurementFieldCode?: string;
+  measurementFieldName?: string;
+  fixedQuantity?: number;
+  isActive: boolean;
+  ranges: InventoryRuleRange[];
+}
+export interface InventoryConsumptionMasterData {
+  itemTypes: InventoryItemTypeMaster[];
+  garments: Array<{ id: string; name: string }>;
+  measurementFields: Array<{ code: string; name: string }>;
+  rules: InventoryConsumptionRule[];
+}
+
+function isMissingConsumptionMaster(error: unknown) {
+  const candidate = error as { code?: string; message?: string };
+  return candidate.code === "42P01" || candidate.code === "PGRST205" || `${candidate.message ?? ""}`.includes("inventory_consumption");
+}
+
+export async function getInventoryConsumptionMasterDataAction(): Promise<InventoryConsumptionMasterData | null> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.view");
+  if (!guard.ok) return { itemTypes: [], garments: [], measurementFields: [], rules: [] };
+  const admin = createAdminClient();
+  try {
+    const [typesResult, garmentsResult, fieldsResult, rulesResult, rangesResult] = await Promise.all([
+      admin.from("inventory_item_types").select("id,name,is_active").order("name"),
+      admin.from("catalog_garment_types").select("id,name").eq("is_active", true).order("name"),
+      admin.from("catalog_fields").select("code,name").eq("field_type", "measurement").eq("is_active", true).order("display_order"),
+      admin.from("inventory_consumption_rules").select("id,garment_type_id,inventory_item_id,calculation_type,measurement_field_code,fixed_quantity,is_active,catalog_garment_types(name),inventory_items(name)").order("created_at"),
+      admin.from("inventory_consumption_ranges").select("id,rule_id,from_value,to_value,quantity").order("from_value"),
+    ]);
+    const error = typesResult.error || garmentsResult.error || fieldsResult.error || rulesResult.error || rangesResult.error;
+    if (error) throw error;
+    const fieldNames = new Map((fieldsResult.data ?? []).map((field) => [field.code, field.name]));
+    const rangesByRule = new Map<string, InventoryRuleRange[]>();
+    for (const range of rangesResult.data ?? []) {
+      const list = rangesByRule.get(range.rule_id) ?? [];
+      list.push({ id: range.id, fromValue: Number(range.from_value), toValue: Number(range.to_value), quantity: Number(range.quantity) });
+      rangesByRule.set(range.rule_id, list);
+    }
+    return {
+      itemTypes: (typesResult.data ?? []).map((row) => ({ id: row.id, name: row.name, isActive: row.is_active })),
+      garments: garmentsResult.data ?? [],
+      measurementFields: fieldsResult.data ?? [],
+      rules: (rulesResult.data ?? []).map((row) => ({
+        id: row.id,
+        garmentTypeId: row.garment_type_id,
+        garmentName: (row.catalog_garment_types as unknown as { name?: string } | null)?.name ?? "Garment",
+        inventoryItemId: row.inventory_item_id,
+        inventoryItemName: (row.inventory_items as unknown as { name?: string } | null)?.name ?? "Stock item",
+        calculationType: row.calculation_type as "Fixed" | "Measurement Range",
+        measurementFieldCode: row.measurement_field_code ?? undefined,
+        measurementFieldName: row.measurement_field_code ? fieldNames.get(row.measurement_field_code) : undefined,
+        fixedQuantity: row.fixed_quantity == null ? undefined : Number(row.fixed_quantity),
+        isActive: row.is_active,
+        ranges: rangesByRule.get(row.id) ?? [],
+      })),
+    };
+  } catch (error) {
+    if (isMissingConsumptionMaster(error)) return null;
+    throw error;
+  }
+}
+
+export async function saveInventoryItemTypeAction(input: { id?: string; name: string; isActive?: boolean }): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const name = input.name.trim();
+  if (!name) return { success: false, error: "Item type name is required." };
+  const query = input.id
+    ? supabase.from("inventory_item_types").update({ name, is_active: input.isActive ?? true, updated_at: new Date().toISOString() }).eq("id", input.id)
+    : supabase.from("inventory_item_types").insert({ name, is_active: true });
+  const { error } = await query;
+  return error ? { success: false, error: error.message } : { success: true, data: undefined };
+}
+
+export async function saveInventoryConsumptionRuleAction(input: {
+  id?: string; garmentTypeId: string; inventoryItemId: string;
+  calculationType: "Fixed" | "Measurement Range"; measurementFieldCode?: string;
+  fixedQuantity?: number; ranges: InventoryRuleRange[];
+}): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (!input.garmentTypeId || !input.inventoryItemId) return { success: false, error: "Select garment and stock item." };
+  if (input.calculationType === "Fixed" && (!Number.isFinite(input.fixedQuantity) || Number(input.fixedQuantity) <= 0)) return { success: false, error: "Enter a fixed quantity greater than zero." };
+  if (input.calculationType === "Measurement Range") {
+    if (!input.measurementFieldCode) return { success: false, error: "Select a measurement." };
+    if (!input.ranges.length) return { success: false, error: "Add at least one measurement range." };
+    const sorted = [...input.ranges].sort((a, b) => a.fromValue - b.fromValue);
+    for (let index = 0; index < sorted.length; index += 1) {
+      const range = sorted[index];
+      if (![range.fromValue, range.toValue, range.quantity].every(Number.isFinite) || range.fromValue > range.toValue || range.quantity <= 0) return { success: false, error: "Enter valid, positive measurement ranges." };
+      if (index > 0 && range.fromValue <= sorted[index - 1].toValue) return { success: false, error: "Measurement ranges cannot overlap." };
+    }
+  }
+  const payload = {
+    garment_type_id: input.garmentTypeId, inventory_item_id: input.inventoryItemId,
+    calculation_type: input.calculationType,
+    measurement_field_code: input.calculationType === "Measurement Range" ? input.measurementFieldCode : null,
+    fixed_quantity: input.calculationType === "Fixed" ? input.fixedQuantity : null,
+    is_active: true, updated_at: new Date().toISOString(),
+  };
+  const result = input.id
+    ? await supabase.from("inventory_consumption_rules").update(payload).eq("id", input.id).select("id").single()
+    : await supabase.from("inventory_consumption_rules").insert(payload).select("id").single();
+  if (result.error) return { success: false, error: result.error.message };
+  const ruleId = result.data.id;
+  const { error: deleteError } = await supabase.from("inventory_consumption_ranges").delete().eq("rule_id", ruleId);
+  if (deleteError) return { success: false, error: deleteError.message };
+  if (input.calculationType === "Measurement Range") {
+    const { error } = await supabase.from("inventory_consumption_ranges").insert(input.ranges.map((range) => ({ rule_id: ruleId, from_value: range.fromValue, to_value: range.toValue, quantity: range.quantity })));
+    if (error) return { success: false, error: error.message };
+  }
+  return { success: true, data: undefined };
+}
+
+export async function setInventoryConsumptionRuleActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const { error } = await supabase.from("inventory_consumption_rules").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", id);
+  return error ? { success: false, error: error.message } : { success: true, data: undefined };
 }
 
 export interface OrderInventoryData {
@@ -331,7 +464,7 @@ export async function updateCustomerFabricStatusAction(
 }
 
 function validateInventoryItem(input: InventoryItemInput): string | null {
-  if (!VALID_ITEM_TYPES.has(input.itemType)) return "Invalid item type.";
+  if (!input.itemType.trim()) return "Item type is required.";
   if (!input.name.trim()) return "Item name is required.";
   if (!VALID_UNITS.has(input.unit)) return "Invalid unit.";
   if (!Number.isFinite(input.quantityOnHand) || input.quantityOnHand < 0) {

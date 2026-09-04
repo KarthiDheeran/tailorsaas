@@ -15,7 +15,7 @@ import type { Payment, PaymentMode, PaymentType } from "@/lib/types";
 // ---------------------------------------------------------------------------
 
 const PAYMENT_COLUMNS =
-  "id, order_id, amount, payment_date, payment_mode, payment_type, notes, recorded_by, received_by_operator_name, voided, voided_at, voided_by, void_reason, created_at";
+  "id, order_id, amount, payment_date, payment_mode, payment_type, notes, recorded_by, received_by_operator_id, received_by_operator_name, voided, voided_at, voided_by, void_reason, created_at";
 
 interface PaymentRow {
   id: string;
@@ -26,6 +26,7 @@ interface PaymentRow {
   payment_type: PaymentType;
   notes: string | null;
   recorded_by: string | null;
+  received_by_operator_id?: string | null;
   received_by_operator_name?: string | null;
   voided: boolean;
   voided_at: string | null;
@@ -44,6 +45,7 @@ function mapPayment(row: PaymentRow): Payment {
     paymentType: row.payment_type,
     notes: row.notes ?? undefined,
     recordedBy: row.recorded_by ?? undefined,
+    receivedByOperatorId: row.received_by_operator_id ?? undefined,
     receivedByOperatorName: row.received_by_operator_name?.trim() ? row.received_by_operator_name : undefined,
     voided: row.voided,
     voidedAt: row.voided_at ?? undefined,
@@ -97,7 +99,7 @@ export async function getPaymentsForOrders(
 
 export async function getPayments(
   supabase: SupabaseClient,
-  filters: { from?: string; to?: string; paymentMode?: PaymentMode; paymentType?: PaymentType } = {}
+  filters: { from?: string; to?: string; paymentMode?: PaymentMode; paymentType?: PaymentType; collectorStaffId?: string } = {}
 ): Promise<Payment[]> {
   let query = supabase
     .from("payments")
@@ -108,6 +110,7 @@ export async function getPayments(
   if (filters.to) query = query.lte("payment_date", filters.to);
   if (filters.paymentMode) query = query.eq("payment_mode", filters.paymentMode);
   if (filters.paymentType) query = query.eq("payment_type", filters.paymentType);
+  if (filters.collectorStaffId) query = query.eq("received_by_operator_id", filters.collectorStaffId);
   const { data, error } = await query;
   if (error) throw error;
   return ((data as unknown as PaymentRow[]) ?? []).map(mapPayment);

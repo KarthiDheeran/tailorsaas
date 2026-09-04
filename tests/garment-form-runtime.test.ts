@@ -183,6 +183,31 @@ test("server validation handles falsy values, type coercion, options, precision,
   assert.equal(unknown.fieldErrors?.unknown, "Unknown field: unknown");
 });
 
+test("row-specific work-detail options retain paper row positions and stale hidden selections are cleared", () => {
+  const workDetails = field({
+    code: "work_details",
+    name: "Work Details",
+    inputType: "table",
+    unit: null,
+    tableConfig: {
+      rows: 3,
+      rowConfigs: [
+        { itemOptions: [{ name: "Lining" }] },
+        { itemOptions: [{ name: "Zip" }] },
+        { itemOptions: [{ name: "Hook" }] },
+      ],
+      columns: [{ key: "item", label: "Item Name", type: "select", optionsSource: "row.itemOptions" }],
+    },
+  });
+  const draft = createGarmentFieldDraft({ work_details: [{}, {}, { item: "Hook" }] }, [workDetails]);
+  assert.deepEqual(draft.typedValues.work_details, [{ item: null }, { item: null }, { item: "Hook" }]);
+  assert.equal(validateGarmentFieldValues([workDetails], serializeGarmentFieldDraft(draft)).error, undefined);
+
+  const staleDraft = createGarmentFieldDraft({ work_details: [{}, { item: "Old Zip" }, { item: "Hook" }] }, [workDetails]);
+  assert.deepEqual(staleDraft.typedValues.work_details, [{ item: null }, {}, { item: "Hook" }]);
+  assert.equal(validateGarmentFieldValues([workDetails], serializeGarmentFieldDraft(staleDraft)).error, undefined);
+});
+
 test("server-built snapshots retain trusted metadata, stable ordering, and native saved values", () => {
   const schema = [
     field({ code: "waist", name: "Waist", displayOrder: 2, sectionOrder: 1, unit: "inch" }),

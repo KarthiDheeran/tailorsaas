@@ -33,12 +33,14 @@ export function PaymentLedgerTable({
   renderActions,
   showNotes = true,
   showRecordedBy = true,
+  showCollectedBy = false,
 }: {
   rows: PaymentRow[];
   emptyMessage: string;
   renderActions?: (row: PaymentRow) => ReactNode;
   showNotes?: boolean;
   showRecordedBy?: boolean;
+  showCollectedBy?: boolean;
 }) {
   const { t } = useLanguage();
 
@@ -61,6 +63,7 @@ export function PaymentLedgerTable({
             <th className="whitespace-nowrap px-5 py-3 text-right">{t("common.amount")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("orders.paymentMode")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("reports.paymentType")}</th>
+            {showCollectedBy && <th className="whitespace-nowrap px-5 py-3">Collected By</th>}
             {showNotes && <th className="px-5 py-3">{t("common.notes")}</th>}
             <th className="whitespace-nowrap px-5 py-3">{t("common.status")}</th>
             {showRecordedBy && (
@@ -100,6 +103,7 @@ export function PaymentLedgerTable({
               <td className="whitespace-nowrap px-5 py-3">
                 <PaymentTypeChip type={row.payment.paymentType} />
               </td>
+              {showCollectedBy && <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{row.payment.receivedByOperatorName ?? "—"}</td>}
               {showNotes && (
                 <td className="px-5 py-3 text-ink-muted">
                   {row.payment.notes || "—"}

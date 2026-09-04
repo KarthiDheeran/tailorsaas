@@ -464,7 +464,7 @@ function ConfigureItemModal({
     [legacyRuntimeFields, metadataFields]
   );
   const runtimeDraftFields = useMemo(
-    () => runtimeFields.map((field) => ({ code: field.code, inputType: field.inputType, options: field.options })),
+    () => runtimeFields.map((field) => ({ code: field.code, inputType: field.inputType, options: field.options, tableConfig: field.tableConfig })),
     [runtimeFields]
   );
   const [typedFieldDraft, setTypedFieldDraft] = useState<GarmentFieldDraft>(() =>

@@ -468,7 +468,8 @@ export async function updateWorkAssignment(
   return row ? mapWorkAssignment(row as unknown as WorkAssignmentRow) : undefined;
 }
 
-const STAFF_PAYMENT_COLUMNS = "id, staff_id, date, description, amount, payment_mode, notes";
+const STAFF_PAYMENT_COLUMNS = "id, staff_id, date, description, amount, payment_mode, notes, entry_type, created_at";
+const LEGACY_STAFF_PAYMENT_COLUMNS = "id, staff_id, date, description, amount, payment_mode, notes, created_at";
 const STAFF_WORK_EARNING_COLUMNS =
   "id, staff_id, job_card_id, order_id, job_card_number, task_type, completed_date, wage_rate, wage_amount, created_at";
 
@@ -479,7 +480,9 @@ interface StaffPaymentRow {
   description: string;
   amount: number;
   payment_mode: PaymentMode;
+  entry_type?: "Advance" | "Tea" | null;
   notes: string | null;
+  created_at: string;
 }
 
 interface StaffWorkEarningRow {
@@ -503,7 +506,9 @@ function mapStaffPayment(row: StaffPaymentRow): StaffPayment {
     description: row.description,
     amount: row.amount,
     paymentMode: row.payment_mode,
+    entryType: row.entry_type ?? "Advance",
     notes: row.notes ?? undefined,
+    createdAt: row.created_at,
   };
 }
 
@@ -536,7 +541,16 @@ export async function getStaffPayments(
   let query = supabase.from("staff_payments").select(STAFF_PAYMENT_COLUMNS);
   if (options.fromIso) query = query.gte("date", options.fromIso);
   if (options.toIso) query = query.lte("date", options.toIso);
-  const { data, error } = await query;
+  query = query.order("date", { ascending: false }).order("created_at", { ascending: false });
+  let { data, error } = await query;
+  if (error && (error.code === "PGRST204" || error.message?.toLowerCase().includes("entry_type"))) {
+    let fallback = supabase.from("staff_payments").select(LEGACY_STAFF_PAYMENT_COLUMNS);
+    if (options.fromIso) fallback = fallback.gte("date", options.fromIso);
+    if (options.toIso) fallback = fallback.lte("date", options.toIso);
+    const result = await fallback.order("date", { ascending: false }).order("created_at", { ascending: false });
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
   if (error) throw error;
   return ((data as unknown as StaffPaymentRow[]) ?? []).map(mapStaffPayment);
 }
@@ -545,10 +559,15 @@ export async function getStaffPaymentsForStaff(
   supabase: SupabaseClient,
   staffId: string
 ): Promise<StaffPayment[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("staff_payments")
     .select(STAFF_PAYMENT_COLUMNS)
     .eq("staff_id", staffId);
+  if (error && (error.code === "PGRST204" || error.message?.toLowerCase().includes("entry_type"))) {
+    const result = await supabase.from("staff_payments").select(LEGACY_STAFF_PAYMENT_COLUMNS).eq("staff_id", staffId);
+    data = result.data as unknown as typeof data;
+    error = result.error;
+  }
   if (error) throw error;
   return ((data as unknown as StaffPaymentRow[]) ?? []).map(mapStaffPayment);
 }
@@ -613,6 +632,7 @@ export interface StaffPaymentInput {
   description: string;
   amount: number;
   paymentMode: PaymentMode;
+  entryType?: "Advance" | "Tea";
   notes?: string;
 }
 
@@ -628,10 +648,17 @@ export async function recordStaffPayment(
       description: data.description,
       amount: data.amount,
       payment_mode: data.paymentMode,
+      entry_type: data.entryType ?? "Advance",
       notes: data.notes ?? null,
     })
     .select(STAFF_PAYMENT_COLUMNS)
     .single();
+  if (error && (error.code === "PGRST204" || error.message?.toLowerCase().includes("entry_type"))) {
+    if (data.entryType === "Tea") throw new Error("Apply migration 0092 before recording Tea payments.");
+    const retry = await supabase.from("staff_payments").insert({ staff_id: data.staffId, date: data.date, description: data.description, amount: data.amount, payment_mode: data.paymentMode, notes: data.notes ?? null }).select(LEGACY_STAFF_PAYMENT_COLUMNS).single();
+    if (retry.error) throw retry.error;
+    return mapStaffPayment(retry.data as unknown as StaffPaymentRow);
+  }
   if (error) throw error;
   return mapStaffPayment(row as unknown as StaffPaymentRow);
 }

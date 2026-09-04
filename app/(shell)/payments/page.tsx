@@ -24,14 +24,11 @@ import { PendingDuesTable } from "@/components/payments/pending-dues-table";
 import { FinancialAdjustmentsTable } from "@/components/payments/financial-adjustments-table";
 import { PaymentsTabs, type PaymentsTab } from "@/components/payments/payments-tabs";
 import { formatDate } from "@/components/orders/orders-table";
-import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import {
-  getDateRangeForPreset,
   type DateRange,
-  type DateRangePreset,
   type PaymentsReport,
 } from "@/lib/reports";
 import { expenseCategories, paymentModes } from "@/lib/constants";
@@ -39,6 +36,7 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseSource,
+  ExpenseScope,
   Order,
   OrderFinancialAdjustmentType,
   PaymentMode,
@@ -50,6 +48,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { downloadCsv } from "@/lib/csv";
 import { formatCurrency } from "@/lib/currency";
+import type { StaffOption } from "@/lib/data/staff-db";
 
 const PAYMENT_TYPES: PaymentType[] = ["Advance", "Partial", "Final"];
 const ADJUSTMENT_TYPES: OrderFinancialAdjustmentType[] = [
@@ -65,8 +64,6 @@ const EXPENSE_SOURCES: ExpenseSource[] = [
 // Phase 7G: a deliberately simpler date-filter set than Reports' full
 // six-preset range — this page is a daily operational ledger, not an
 // analysis tool, so "All Time" and a custom range don't belong here.
-const PAYMENT_PAGE_PRESETS: DateRangePreset[] = ["today", "yesterday", "thisWeek", "thisMonth"];
-
 const EMPTY_REPORT: PaymentsReport = {
   totalCollected: 0,
   byMode: [],
@@ -77,6 +74,13 @@ const EMPTY_REPORT: PaymentsReport = {
 
 function money(n: number) {
   return formatCurrency(n);
+}
+
+function FinanceDateRange({ range, onChange }: { range: DateRange; onChange: (range: DateRange) => void }) {
+  return <div className="flex h-9 items-center gap-2">
+    <label className="flex h-9 items-center overflow-hidden rounded-lg border border-border bg-white"><span className="border-r border-border bg-surface-muted px-2 text-xs font-semibold text-ink-muted">From</span><input aria-label="Income from date" type="date" value={range.from} max={range.to} onChange={(event) => onChange({ ...range, from: event.target.value })} className="h-full border-0 bg-white px-2 text-sm text-ink outline-none" /></label>
+    <label className="flex h-9 items-center overflow-hidden rounded-lg border border-border bg-white"><span className="border-r border-border bg-surface-muted px-2 text-xs font-semibold text-ink-muted">To</span><input aria-label="Income to date" type="date" value={range.to} min={range.from} onChange={(event) => onChange({ ...range, to: event.target.value })} className="h-full border-0 bg-white px-2 text-sm text-ink outline-none" /></label>
+  </div>;
 }
 
 // Phase 7F/7G: a dedicated, day-to-day operational screen — separate from
@@ -98,13 +102,14 @@ function PaymentsPageContent() {
   const canPrintPaymentReceipts = hasPermission("orders.printCustomerReceipt");
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [preset, setPreset] = useState<DateRangePreset>("today");
   const [customRange, setCustomRange] = useState<DateRange>({
     from: todayIso,
     to: todayIso,
   });
   const [paymentMode, setPaymentMode] = useState<PaymentMode | "">("");
   const [paymentType, setPaymentType] = useState<PaymentType | "">("");
+  const [collectorStaffId, setCollectorStaffId] = useState("");
+  const [collectors, setCollectors] = useState<StaffOption[]>([]);
   const [query, setQuery] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
   const [report, setReport] = useState<PaymentsReport>(EMPTY_REPORT);
@@ -124,6 +129,7 @@ function PaymentsPageContent() {
   const [adjustmentsMigrationMissing, setAdjustmentsMigrationMissing] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseSource, setExpenseSource] = useState<ExpenseSource | "">("");
+  const [expenseScope, setExpenseScope] = useState<ExpenseScope | "">("");
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory | "">("");
   const [expenseMode, setExpenseMode] = useState<PaymentMode | "">("");
   const [expenseQuery, setExpenseQuery] = useState("");
@@ -134,24 +140,23 @@ function PaymentsPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // First paint is bundled into one server action; later filter changes refresh in place.
   const [initialLoaded, setInitialLoaded] = useState(false);
+  const [loadingResults, setLoadingResults] = useState(false);
 
-  const range = getDateRangeForPreset(preset, todayIso, customRange);
+  const range = customRange;
   const rangeFrom = range.from;
   const rangeTo = range.to;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (
-      tabParam === "collections" ||
-      tabParam === "pending-dues" ||
-      tabParam === "adjustments" ||
-      tabParam === "expenses"
-    ) {
+    if (tabParam === "collections" || tabParam === "expenses") {
       setTab(tabParam);
       window.history.replaceState({}, "", "/payments");
+    } else if (tabParam) {
+      setTab(canViewPayments ? "collections" : "expenses");
+      window.history.replaceState({}, "", "/payments");
     }
-  }, []);
+  }, [canViewPayments]);
 
   useEffect(() => {
     if (!canViewPayments && canViewExpenses && tab !== "expenses") {
@@ -164,17 +169,20 @@ function PaymentsPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadingResults(true);
     getPaymentsPageInitialDataAction(
       {
         activeTab: tab,
         range: { from: rangeFrom, to: rangeTo },
         paymentMode: paymentMode || undefined,
         paymentType: paymentType || undefined,
+        collectorStaffId: collectorStaffId || undefined,
         customerQuery: query,
         adjustmentType: adjustmentType || undefined,
         adjustmentPaymentMode: adjustmentMode || undefined,
         adjustmentQuery,
         expenseSource: expenseSource || undefined,
+        expenseScope: expenseScope || undefined,
         expenseCategory: expenseCategory || undefined,
         expensePaymentMode: expenseMode || undefined,
         expenseQuery,
@@ -185,6 +193,7 @@ function PaymentsPageContent() {
         if (cancelled) return;
         if (tab === "collections") setReport(result.report ?? EMPTY_REPORT);
         if (result.dailyClosing) setDailyClosing(result.dailyClosing);
+        setCollectors(result.collectors);
         if (tab === "pending-dues") setPendingDuesOrders(result.pendingDuesOrders ?? []);
         if (tab === "adjustments") {
           setAdjustmentsMigrationMissing(canViewPayments && result.adjustments === null);
@@ -202,7 +211,10 @@ function PaymentsPageContent() {
         }
       })
       .finally(() => {
-        if (!cancelled) setInitialLoaded(true);
+        if (!cancelled) {
+          setInitialLoaded(true);
+          setLoadingResults(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -215,11 +227,13 @@ function PaymentsPageContent() {
     rangeTo,
     paymentMode,
     paymentType,
+    collectorStaffId,
     query,
     adjustmentType,
     adjustmentMode,
     adjustmentQuery,
     expenseSource,
+    expenseScope,
     expenseCategory,
     expenseMode,
     expenseQuery,
@@ -240,6 +254,7 @@ function PaymentsPageContent() {
         "Amount",
         "Payment Mode",
         "Payment Type",
+        "Collected By",
         "Status",
         "Void Reason",
       ],
@@ -250,6 +265,7 @@ function PaymentsPageContent() {
         row.payment.amount,
         row.payment.paymentMode,
         row.payment.paymentType,
+        row.payment.receivedByOperatorName ?? "",
         row.payment.voided ? "Voided" : "Active",
         row.payment.voidReason ?? "",
       ])
@@ -347,10 +363,13 @@ function PaymentsPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 pb-6 sm:p-6 sm:pb-6 lg:p-7 lg:pb-6">
-      <div className="mb-[18px]">
-        <h1 className="text-[30px] font-bold tracking-tight text-ink">{t("payments.title")}</h1>
-        <p className="mt-1 text-[16px] text-ink-muted">{t("payments.subtitle")}</p>
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#c9d7ea] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-ink">{t("payments.title")}</h1>
+          <p className="mt-0.5 text-xs font-medium text-ink-muted">{t("payments.subtitle")}</p>
+        </div>
+        <span className="rounded-md border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary">Classic Compact View</span>
       </div>
 
       {loadError && (
@@ -380,9 +399,13 @@ function PaymentsPageContent() {
             canViewExpenses={canViewExpenses}
           />
 
+          <div className={cn("mb-2 overflow-hidden rounded-full transition-all", loadingResults ? "h-5 bg-primary-tint" : "h-0")} aria-live="polite" aria-label={loadingResults ? "Loading finance results" : undefined}>
+            {loadingResults && <div className="flex h-full items-center gap-2 px-2"><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-primary/15"><span className="block h-full w-2/5 animate-pulse rounded-full bg-primary" /></span><span className="text-[11px] font-semibold text-primary">Loading results…</span></div>}
+          </div>
+
           {tab === "pending-dues" && (
             <>
-              <div className="mb-5 flex justify-end">
+              <div className="mb-2 flex justify-end">
                 <ExportCsvButton
                   onClick={handleExportPendingDues}
                   disabled={pendingDuesOrders.length === 0}
@@ -402,14 +425,8 @@ function PaymentsPageContent() {
                 </div>
               )}
 
-              <div className="mb-5 flex flex-wrap items-center gap-2">
-                <DateRangeFilter
-                  preset={preset}
-                  custom={customRange}
-                  onPresetChange={setPreset}
-                  onCustomChange={setCustomRange}
-                  presets={PAYMENT_PAGE_PRESETS}
-                />
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
+                <FinanceDateRange range={customRange} onChange={setCustomRange} />
                 <SelectShell className="w-56" size="sm">
                   <select
                     value={adjustmentType}
@@ -460,14 +477,8 @@ function PaymentsPageContent() {
 
           {tab === "collections" && (
             <>
-              <div className="mb-5 flex flex-wrap items-center gap-2">
-                <DateRangeFilter
-                  preset={preset}
-                  custom={customRange}
-                  onPresetChange={setPreset}
-                  onCustomChange={setCustomRange}
-                  presets={PAYMENT_PAGE_PRESETS}
-                />
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
+                <FinanceDateRange range={customRange} onChange={setCustomRange} />
                 <SelectShell className="w-56" size="sm">
                   <select
                     value={paymentMode}
@@ -496,6 +507,12 @@ function PaymentsPageContent() {
                     ))}
                   </select>
                 </SelectShell>
+                <SelectShell className="w-56" size="sm">
+                  <select value={collectorStaffId} onChange={(event) => setCollectorStaffId(event.target.value)} className={selectClassName("h-9 text-sm leading-9")}>
+                    <option value="">All Staff Collectors</option>
+                    {collectors.map((member) => <option key={member.id} value={member.id}>{member.staffNumber} — {member.name}</option>)}
+                  </select>
+                </SelectShell>
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -510,11 +527,28 @@ function PaymentsPageContent() {
                 />
               </div>
 
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-white px-3 py-2 shadow-[0_1px_4px_rgba(30,64,175,0.05)]">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Filtered Income Total</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {collectorStaffId
+                      ? collectors.find((member) => member.id === collectorStaffId)?.name ?? "Selected staff"
+                      : "All staff collectors"}
+                    {" · "}{formatDate(customRange.from)} to {formatDate(customRange.to)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-5 text-right">
+                  <div><p className="text-[11px] font-semibold text-ink-muted">Transactions</p><p className="text-base font-bold text-ink">{report.rows.filter((row) => !row.payment.voided).length}</p></div>
+                  <div><p className="text-[11px] font-semibold text-primary">Collected Amount</p><p className="text-xl font-bold text-primary">{money(report.totalCollected)}</p></div>
+                </div>
+              </div>
+
               <PaymentLedgerTable
                 rows={report.rows}
                 emptyMessage={t("payments.noEntriesMatch")}
                 showNotes={false}
                 showRecordedBy={false}
+                showCollectedBy
                 renderActions={(row) => (
                   <div className="flex items-center justify-end gap-3">
                     {canPrintPaymentReceipts && !row.payment.voided && (
@@ -547,14 +581,15 @@ function PaymentsPageContent() {
                 </div>
               )}
 
-              <div className="mb-5 flex flex-wrap items-center gap-2">
-                <DateRangeFilter
-                  preset={preset}
-                  custom={customRange}
-                  onPresetChange={setPreset}
-                  onCustomChange={setCustomRange}
-                  presets={PAYMENT_PAGE_PRESETS}
-                />
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border-soft bg-white p-2">
+                <FinanceDateRange range={customRange} onChange={setCustomRange} />
+                {canManageExpenses && <SelectShell className="w-40" size="sm">
+                  <select value={expenseScope} onChange={(event) => setExpenseScope(event.target.value as ExpenseScope | "")} className={selectClassName("h-9 text-sm leading-9")}>
+                    <option value="">All Expense Types</option>
+                    <option value="Business">Business</option>
+                    <option value="Personal">Personal</option>
+                  </select>
+                </SelectShell>}
                 <SelectShell className="w-44" size="sm">
                   <select
                     value={expenseSource}
@@ -621,6 +656,21 @@ function PaymentsPageContent() {
                 )}
               </div>
 
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-white px-3 py-2 shadow-[0_1px_4px_rgba(30,64,175,0.05)]">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Filtered Expense Total</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {expenseScope || "All expense types"}{" · "}{expenseSource || "All sources"}{expenseCategory ? ` · ${expenseCategory}` : ""}{" · "}{formatDate(customRange.from)} to {formatDate(customRange.to)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-5 text-right">
+                  <div><p className="text-[11px] font-semibold text-ink-muted">Transactions</p><p className="text-base font-bold text-ink">{expenses.filter((expense) => !expense.voided).length}</p></div>
+                  <div><p className="text-[11px] font-semibold text-primary">Business</p><p className="text-lg font-bold text-primary">{money(expenses.filter((expense) => !expense.voided && expense.expenseScope === "Business").reduce((sum, expense) => sum + Number(expense.amount), 0))}</p></div>
+                  {canManageExpenses && <div><p className="text-[11px] font-semibold text-violet-700">Personal</p><p className="text-lg font-bold text-violet-700">{money(expenses.filter((expense) => !expense.voided && expense.expenseScope === "Personal").reduce((sum, expense) => sum + Number(expense.amount), 0))}</p></div>}
+                  <div><p className="text-[11px] font-semibold text-ink">{canManageExpenses ? "Combined" : "Total"}</p><p className="text-xl font-bold text-ink">{money(expenses.filter((expense) => !expense.voided).reduce((sum, expense) => sum + Number(expense.amount), 0))}</p></div>
+                </div>
+              </div>
+
               <ExpenseLedgerTable
                 rows={expenses}
                 canManage={canManageExpenses && !expensesMigrationMissing}
@@ -653,20 +703,20 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
   );
 
   return (
-    <section className="mb-[18px] rounded-2xl border border-border bg-white shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+    <section className="mb-2 rounded-lg border border-[#c9d7ea] bg-white shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2">
         <div>
-          <h2 className="text-[17px] font-semibold text-ink">Daily Closing</h2>
-          <p className="text-sm text-ink-muted">
-            Cash, digital collections, expenses, and net position for today.
+          <h2 className="text-sm font-bold text-ink">Period Summary</h2>
+          <p className="text-xs text-ink-muted">
+            Income, business expenses, personal expenses, and net business position for the selected period.
           </p>
         </div>
         <div className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm font-semibold text-ink-muted">
-          {formatDate(summary.date)}
+          {formatDate(summary.fromDate)} to {formatDate(summary.toDate)}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-2 xl:grid-cols-6">
         <ClosingMetric
           icon={IndianRupee}
           label="Total Received"
@@ -684,13 +734,19 @@ function DailyClosingPanel({ summary }: { summary: DailyClosingSummary }) {
         />
         <ClosingMetric
           icon={Banknote}
-          label="Expenses"
+          label="Business Expenses"
           value={summary.totalExpenses === null ? "Pending" : money(summary.totalExpenses)}
           warning={(summary.totalExpenses ?? 0) > 0}
         />
         <ClosingMetric
+          icon={Banknote}
+          label="Personal Expenses"
+          value={summary.personalExpenses === null ? "Pending" : money(summary.personalExpenses)}
+          warning={(summary.personalExpenses ?? 0) > 0}
+        />
+        <ClosingMetric
           icon={Calculator}
-          label="Net After Expenses"
+          label="Net Business Amount"
           value={summary.netTotal === null ? "Pending" : money(summary.netTotal)}
           warning={summary.netTotal !== null && summary.netTotal < 0}
         />
@@ -755,20 +811,20 @@ function ClosingMetric({
   warning?: boolean;
 }) {
   return (
-    <div className="flex gap-2.5 border-b border-border-soft px-4 py-3.5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+    <div className="flex gap-2 border-b border-border-soft px-3 py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
       <span
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
           warning ? "bg-warning-soft text-warning" : "bg-primary-tint text-primary"
         )}
       >
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-ink-muted">{label}</div>
+        <div className="text-xs font-medium text-ink-muted">{label}</div>
         <div
           className={cn(
-            "text-[21px] font-bold",
+            "text-lg font-bold",
             warning ? "text-warning" : "text-ink"
           )}
         >
@@ -816,7 +872,7 @@ function ExpenseLedgerTable({
           <tr className="border-b border-border-soft">
             <th className="whitespace-nowrap px-5 py-3">{t("common.date")}</th>
             <th className="whitespace-nowrap px-5 py-3">Source</th>
-            <th className="whitespace-nowrap px-5 py-3">Reference</th>
+            <th className="whitespace-nowrap px-5 py-3">Type</th>
             <th className="whitespace-nowrap px-5 py-3">{t("payments.expenseCategory")}</th>
             <th className="whitespace-nowrap px-5 py-3">{t("payments.vendor")}</th>
             <th className="px-5 py-3">{t("payments.description")}</th>
@@ -840,9 +896,7 @@ function ExpenseLedgerTable({
               <td className="whitespace-nowrap px-5 py-3 text-ink">
                 {expense.source ?? "Manual Expense"}
               </td>
-              <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
-                {expense.reference || "-"}
-              </td>
+              <td className="whitespace-nowrap px-5 py-3"><span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", expense.expenseScope === "Personal" ? "bg-violet-100 text-violet-700" : "bg-primary-tint text-primary")}>{expense.expenseScope}</span></td>
               <td className="whitespace-nowrap px-5 py-3 text-ink">{expense.category}</td>
               <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                 {expense.vendor || "-"}
@@ -902,6 +956,7 @@ function ExpenseDrawer({
   const { t } = useLanguage();
   const [expenseDate, setExpenseDate] = useState(todayIso);
   const [category, setCategory] = useState<ExpenseCategory>("Fabric");
+  const [expenseScope, setExpenseScope] = useState<ExpenseScope>("Business");
   const [vendor, setVendor] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -927,6 +982,7 @@ function ExpenseDrawer({
     const result = await createExpenseAction({
       expenseDate,
       source: "Manual Expense",
+      expenseScope,
       category,
       vendor,
       description,
@@ -965,6 +1021,11 @@ function ExpenseDrawer({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-muted">Expense Type</span>
+            <SelectShell><select value={expenseScope} onChange={(event) => setExpenseScope(event.target.value as ExpenseScope)} className={selectClassName("h-11 text-sm leading-[44px]")}><option value="Business">Business</option><option value="Personal">Personal</option></select></SelectShell>
+            <span className="text-xs text-ink-muted">Personal expenses are tracked separately and excluded from business closing totals.</span>
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-ink-muted">{t("common.date")}</span>

@@ -182,13 +182,13 @@ function StaffPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
+      <div className="mb-2 flex items-center justify-between rounded-lg border border-[#c9d7ea] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">
+          <h1 className="text-lg font-bold text-ink">
             {canManage ? t("staff.title") : t("nav.myTasks")}
           </h1>
-          <p className="text-sm text-ink-muted">
+          <p className="text-xs text-ink-muted">
             {canManage
               ? `${allRows.length} ${t("staff.onRecord")}`
               : t("staff.workQueue")}
@@ -197,7 +197,7 @@ function StaffPageContent() {
         {tab === "list" && canManage && (
           <Link
             href="/staff/new"
-            className="flex items-center gap-1.5 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
+            className="flex h-9 items-center gap-1.5 rounded-md bg-secondary px-3 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
           >
             <UserPlus className="h-4 w-4" />
             {t("staff.addStaff")}
@@ -588,6 +588,7 @@ function StaffPayablesTable({
           .filter(
             (payment) =>
               payment.staffId === staff.id &&
+              payment.entryType === "Advance" &&
               isWithinPayablePeriod(payment.date, period, todayIso)
           )
           .reduce((sum, payment) => sum + Number(payment.amount), 0);
@@ -747,6 +748,7 @@ function StaffPayableDetailsDrawer({
         .filter(
           (payment) =>
             payment.staffId === staff.id &&
+            payment.entryType === "Advance" &&
             isWithinPayablePeriod(payment.date, period, todayIso)
         )
         .sort((a, b) => b.date.localeCompare(a.date)),

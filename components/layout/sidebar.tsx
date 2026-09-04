@@ -101,8 +101,6 @@ const navItems: NavItem[] = [
     anyOf: ["orders.viewPayments", "expenses.view"],
     children: [
       { href: "/payments?tab=collections", label: "Income", icon: Wallet, permission: "orders.viewPayments" },
-      { href: "/payments?tab=pending-dues", label: "Pending Due", icon: Wallet, permission: "orders.viewPayments" },
-      { href: "/payments?tab=adjustments", label: "Adjustments", icon: Wallet, permission: "orders.viewPayments" },
       { href: "/payments?tab=expenses", label: "Expenses", icon: Wallet, permission: "expenses.view" },
     ],
   },

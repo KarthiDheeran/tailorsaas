@@ -150,13 +150,13 @@ function CustomersPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#c9d7ea] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">
+          <h1 className="text-lg font-bold text-ink">
             {t("customers.title")}
           </h1>
-          <p className="text-sm text-ink-muted">
+          <p className="text-xs text-ink-muted">
             {countLabel}
           </p>
         </div>

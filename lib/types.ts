@@ -206,14 +206,7 @@ export type ExpenseSource =
   | "Staff Payment"
   | "Inventory Purchase";
 
-export type InventoryItemType =
-  | "Fabric"
-  | "Button"
-  | "Lining"
-  | "Thread"
-  | "Zip"
-  | "Accessory"
-  | "Other";
+export type InventoryItemType = string;
 
 export type InventoryUnit = "meter" | "piece" | "roll" | "packet" | "kg";
 
@@ -248,6 +241,7 @@ export interface Payment {
   paymentType: PaymentType;
   notes?: string;
   recordedBy?: string;
+  receivedByOperatorId?: string;
   receivedByOperatorName?: string;
   voided: boolean;
   voidedAt?: string;
@@ -275,10 +269,13 @@ export interface OrderFinancialAdjustment {
   createdAt: string;
 }
 
+export type ExpenseScope = "Business" | "Personal";
+
 export interface Expense {
   id: string;
   expenseDate: string;
   category: ExpenseCategory;
+  expenseScope: ExpenseScope;
   source?: ExpenseSource;
   reference?: string;
   vendor?: string;
@@ -488,7 +485,9 @@ export interface StaffPayment {
   description: string;
   amount: number;
   paymentMode: PaymentMode;
+  entryType: "Advance" | "Tea";
   notes?: string;
+  createdAt: string;
 }
 
 export interface StaffWorkEarning {

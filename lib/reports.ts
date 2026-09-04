@@ -320,6 +320,7 @@ export interface PaymentsFilters {
   range: DateRange;
   paymentMode?: PaymentMode;
   paymentType?: PaymentType;
+  collectorStaffId?: string;
   customerQuery?: string;
   pendingOnly?: boolean;
   overdueOnly?: boolean;
@@ -342,6 +343,7 @@ export async function getPaymentsReportSourceData(
     to: filters.range.to,
     paymentMode: filters.paymentMode,
     paymentType: filters.paymentType,
+    collectorStaffId: filters.collectorStaffId,
   });
   const [allOrders, allUsers] = await Promise.all([
     getOrderListRowsByIds(supabase, allPayments.map((payment) => payment.orderId)),
@@ -388,7 +390,7 @@ export async function getExpensesTotal(
   range: DateRange
 ): Promise<number | null> {
   try {
-    const expenses = await getExpenses(supabase, { from: range.from, to: range.to });
+    const expenses = await getExpenses(supabase, { from: range.from, to: range.to, expenseScope: "Business" });
     return expenses.reduce((sum, e) => sum + Number(e.amount), 0);
   } catch (error) {
     if (isMissingExpensesSchemaError(error)) return null;
@@ -426,6 +428,9 @@ export function buildPaymentsReportFromSource(
   }
   if (filters.paymentType) {
     filtered = filtered.filter((p) => p.paymentType === filters.paymentType);
+  }
+  if (filters.collectorStaffId) {
+    filtered = filtered.filter((p) => p.receivedByOperatorId === filters.collectorStaffId);
   }
   if (filters.customerQuery?.trim()) {
     // Matches customer name/phone OR order number — Phase 7F's Payments
