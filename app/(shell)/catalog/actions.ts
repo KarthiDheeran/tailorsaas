@@ -184,18 +184,17 @@ export async function getGarmentTypesAction(): Promise<CatalogGarmentType[]> {
 
 export async function getActiveGarmentTypesAction(): Promise<CatalogGarmentType[]> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "catalog.view");
-  if (!guard.ok) return [];
-  const garments = await getActiveGarmentTypes(supabase);
   const caller = await getServerCallerContext(supabase);
-  if (!caller || caller.permissions.includes("catalog.manage")) return garments;
+  if (!caller || (!caller.permissions.includes("catalog.view") && !caller.permissions.includes("orders.create"))) return [];
+  const garments = await getActiveGarmentTypes(supabase);
+  if (caller.permissions.includes("catalog.manage")) return garments;
   return garments.filter((garment) => caller.allowedOrderSections.includes(garment.section));
 }
 
 export async function getAddOnsAction(): Promise<CatalogAddOn[]> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "catalog.view");
-  if (!guard.ok) return [];
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || (!caller.permissions.includes("catalog.view") && !caller.permissions.includes("orders.create"))) return [];
   return getAllAddOns(supabase);
 }
 
@@ -685,11 +684,10 @@ export async function getGarmentTypeConfigurationAction(
   garmentTypeId: string
 ): Promise<GarmentTypeConfiguration | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "catalog.view");
-  if (!guard.ok) return null;
-  const configuration = await getGarmentTypeConfiguration(supabase, garmentTypeId);
   const caller = await getServerCallerContext(supabase);
-  if (!configuration || !caller || caller.permissions.includes("catalog.manage")) return configuration;
+  if (!caller || (!caller.permissions.includes("catalog.view") && !caller.permissions.includes("orders.create"))) return null;
+  const configuration = await getGarmentTypeConfiguration(supabase, garmentTypeId);
+  if (!configuration || caller.permissions.includes("catalog.manage")) return configuration;
   return caller.allowedOrderSections.includes(configuration.garment.section) ? configuration : null;
 }
 
@@ -698,11 +696,10 @@ export async function getGarmentTypeConfigurationsAction(
   garmentTypeIds: string[]
 ): Promise<GarmentTypeConfiguration[]> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "catalog.view");
-  if (!guard.ok) return [];
-  const configurations = await getGarmentTypeConfigurations(supabase, garmentTypeIds);
   const caller = await getServerCallerContext(supabase);
-  if (!caller || caller.permissions.includes("catalog.manage")) return configurations;
+  if (!caller || (!caller.permissions.includes("catalog.view") && !caller.permissions.includes("orders.create"))) return [];
+  const configurations = await getGarmentTypeConfigurations(supabase, garmentTypeIds);
+  if (caller.permissions.includes("catalog.manage")) return configurations;
   return configurations.filter((configuration) =>
     caller.allowedOrderSections.includes(configuration.garment.section)
   );
