@@ -15,7 +15,7 @@ export default function Home() {
     (hasPermission("orders.view") && "/orders") ||
     (hasPermission("staff.view") && "/staff") ||
     (hasPermission("customers.view") && "/customers") ||
-    (hasAnyPermission(["orders.viewPayments", "expenses.view"]) && "/payments") ||
+    (hasAnyPermission(["finance.income.view", "expenses.view"]) && "/payments") ||
     (hasPermission("inventory.view") && "/inventory") ||
     (hasPermission("reports.view") && "/reports") ||
     (hasPermission("communications.view") && "/communications") ||

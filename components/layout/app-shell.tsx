@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useGlobalNewOrderShortcut(!isLoading && hasPermission("orders.create"));
   useGlobalNavigationShortcuts([
     { key: "F2", href: "/orders/new", enabled: !isLoading && hasPermission("orders.create"), modifier: "none" },
-    { key: "F3", href: "/delivery", enabled: !isLoading && hasPermission("orders.view"), modifier: "none" },
+    { key: "F3", href: "/delivery", enabled: !isLoading && hasPermission("delivery.view"), modifier: "none" },
     {
       key: "F4",
       href: "/job-cards/tally",
@@ -44,12 +44,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       href: "/job-cards/tally",
       enabled: !isLoading && (hasPermission("orders.view") || hasPermission("staff.view")),
     },
-    { key: "d", href: "/delivery", enabled: !isLoading && hasPermission("orders.view") },
+    { key: "d", href: "/delivery", enabled: !isLoading && hasPermission("delivery.view") },
     { key: "c", href: "/customers", enabled: !isLoading && hasPermission("customers.view") },
     {
       key: "f",
       href: "/payments",
-      enabled: !isLoading && (hasPermission("orders.viewPayments") || hasPermission("expenses.view")),
+      enabled: !isLoading && (hasPermission("finance.income.view") || hasPermission("expenses.view")),
     },
     { key: "i", href: "/inventory", enabled: !isLoading && hasPermission("inventory.view") },
     { key: "w", href: "/staff", enabled: !isLoading && hasPermission("staff.view") },

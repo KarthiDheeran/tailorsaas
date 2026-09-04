@@ -147,7 +147,7 @@ export async function getPaymentsLedgerAction(
   todayIso: string
 ): Promise<PaymentsReport | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  const guard = await requireServerPermission(supabase, "finance.income.view");
   if (!guard.ok) return null;
   return getPaymentsReport(createAdminClient(), filters, todayIso);
 }
@@ -178,7 +178,7 @@ export async function getPaymentsPageInitialDataAction(
     throw new Error("A valid date range is required.");
   }
 
-  const canViewPayments = hasPermission(permissions, "orders.viewPayments");
+  const canViewPayments = hasPermission(permissions, "finance.income.view");
   const canViewExpenses = hasPermission(permissions, "expenses.view");
   const canManageExpenses = hasPermission(permissions, "expenses.manage");
   const activeTab = filters.activeTab ?? (canViewPayments ? "collections" : "expenses");
@@ -310,7 +310,7 @@ export async function getPaymentsPageInitialDataAction(
 
 export async function getDailyClosingAction(todayIso: string): Promise<DailyClosingSummary | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  const guard = await requireServerPermission(supabase, "finance.income.view");
   if (!guard.ok) return null;
   if (!ISO_DATE.test(todayIso)) throw new Error("A valid date is required.");
 
@@ -394,7 +394,7 @@ async function getPendingDuesOrders(
 // "Pending Dues" summary card total.
 export async function getPendingDuesAction(): Promise<number | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  const guard = await requireServerPermission(supabase, "finance.income.view");
   if (!guard.ok) return null;
   const orders = await getPendingDuesOrders(supabase);
   return orders.reduce((sum, o) => sum + Number(o.balance), 0);
@@ -403,7 +403,7 @@ export async function getPendingDuesAction(): Promise<number | null> {
 // Pending Dues tab's table rows.
 export async function getPendingDuesOrdersAction(): Promise<Order[] | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  const guard = await requireServerPermission(supabase, "finance.income.view");
   if (!guard.ok) return null;
   return getPendingDuesOrders(supabase);
 }
@@ -412,7 +412,7 @@ export async function getFinancialAdjustmentsAction(
   filters: FinancialAdjustmentFilters
 ): Promise<FinancialAdjustmentLedgerRow[] | null> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.viewPayments");
+  const guard = await requireServerPermission(supabase, "finance.income.view");
   if (!guard.ok) return null;
   if (!ISO_DATE.test(filters.from) || !ISO_DATE.test(filters.to)) {
     throw new Error("A valid date range is required.");

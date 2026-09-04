@@ -47,7 +47,7 @@ function sortDeliveryDeskOrders(a: Order, b: Order): number {
 export async function getDeliveryDeskOrdersAction(): Promise<DeliveryDeskOrder[]> {
   return withPerformanceContext("getDeliveryDeskOrdersAction", async () => {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
+  const guard = await requireServerPermission(supabase, "delivery.view");
   if (!guard.ok) return [];
 
   const orders = await profileDataFunction(
@@ -102,7 +102,7 @@ export async function markOrderDeliveredAction(
 
 export async function getDeliveryCollectorsAction(): Promise<StaffOption[]> {
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
+  const guard = await requireServerPermission(supabase, "delivery.view");
   if (!guard.ok) return [];
   return getStaffOptions(supabase, { activeOnly: true });
 }
@@ -238,7 +238,7 @@ export async function getQuickDeliveryOrderAction(
   const code = rawCode.trim().toUpperCase();
   if (!code) return { success: false, error: "Scan an order receipt barcode." };
   const supabase = createServerClient();
-  const guard = await requireServerPermission(supabase, "orders.view");
+  const guard = await requireServerPermission(supabase, "delivery.view");
   if (!guard.ok) return { success: false, error: guard.error };
 
   const isReceiptToken = code.startsWith("TS|ORD|");

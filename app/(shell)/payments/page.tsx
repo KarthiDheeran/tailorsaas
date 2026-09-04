@@ -96,7 +96,7 @@ function FinanceDateRange({ range, onChange }: { range: DateRange; onChange: (ra
 function PaymentsPageContent() {
   const { t } = useLanguage();
   const { hasPermission } = useCurrentUser();
-  const canViewPayments = hasPermission("orders.viewPayments");
+  const canViewPayments = hasPermission("finance.income.view");
   const canViewExpenses = hasPermission("expenses.view");
   const canManageExpenses = hasPermission("expenses.manage");
   const canPrintPaymentReceipts = hasPermission("orders.printCustomerReceipt");
@@ -1174,7 +1174,7 @@ function selectClassName(extra?: string): string {
 
 export default function PaymentsPage() {
   return (
-    <RequirePermission anyOf={["orders.viewPayments", "expenses.view"]}>
+    <RequirePermission anyOf={["finance.income.view", "expenses.view"]}>
       <PaymentsPageContent />
     </RequirePermission>
   );

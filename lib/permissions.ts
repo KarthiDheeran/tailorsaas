@@ -24,6 +24,8 @@ export type Permission =
   | "orders.voidPayment"
   | "orders.printCustomerReceipt"
   | "orders.printJobCard"
+  | "delivery.view"
+  | "finance.income.view"
   | "expenses.view"
   | "expenses.manage"
   | "inventory.view"
@@ -62,12 +64,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "orders.edit", label: "Edit orders", group: "Orders" },
   { key: "orders.cancel", label: "Cancel orders", group: "Orders" },
   { key: "orders.changeStatus", label: "Change order status", group: "Orders" },
-  { key: "orders.viewPayments", label: "View payment details", group: "Orders" },
+  { key: "orders.viewPayments", label: "View order payment details", group: "Orders" },
   { key: "orders.recordPayment", label: "Record a payment", group: "Orders" },
   { key: "orders.voidPayment", label: "Void a payment", group: "Orders" },
   { key: "orders.printCustomerReceipt", label: "Print customer receipt", group: "Orders" },
   { key: "orders.printJobCard", label: "Print tailor job card", group: "Orders" },
 
+  { key: "delivery.view", label: "View Delivery page", group: "Delivery" },
+
+  { key: "finance.income.view", label: "View Finance Income", group: "Finance" },
   { key: "expenses.view", label: "View expenses", group: "Finance" },
   { key: "expenses.manage", label: "Manage expenses", group: "Finance" },
 
@@ -174,6 +179,7 @@ export const PERMISSION_PARENT: Partial<Record<Permission, Permission>> = {
   "orders.changeStatus": "orders.view",
   "orders.printCustomerReceipt": "orders.view",
   "orders.printJobCard": "orders.view",
+  "delivery.view": "orders.view",
   "expenses.manage": "expenses.view",
   "inventory.manage": "inventory.view",
   "orders.viewPayments": "orders.view",

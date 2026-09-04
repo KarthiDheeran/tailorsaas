@@ -745,7 +745,7 @@ function DeliveryDeskContent() {
 
 export default function DeliveryPage() {
   return (
-    <RequirePermission permission="orders.view">
+    <RequirePermission permission="delivery.view">
       <DeliveryDeskContent />
     </RequirePermission>
   );

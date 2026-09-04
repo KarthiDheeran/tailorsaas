@@ -81,7 +81,7 @@ const navItems: NavItem[] = [
       { href: "/job-cards/production-print", label: "Production Print", icon: FileText, shortcut: "F6", permission: "orders.printJobCard" },
     ],
   },
-  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "F3", permission: "orders.view" },
+  { href: "/delivery", labelKey: "nav.delivery", icon: Truck, shortcut: "F3", permission: "delivery.view" },
   {
     href: "/customers",
     labelKey: "nav.customers",
@@ -98,9 +98,9 @@ const navItems: NavItem[] = [
     labelKey: "nav.payments",
     icon: Wallet,
     shortcut: "Alt F",
-    anyOf: ["orders.viewPayments", "expenses.view"],
+    anyOf: ["finance.income.view", "expenses.view"],
     children: [
-      { href: "/payments?tab=collections", label: "Income", icon: Wallet, permission: "orders.viewPayments" },
+      { href: "/payments?tab=collections", label: "Income", icon: Wallet, permission: "finance.income.view" },
       { href: "/payments?tab=expenses", label: "Expenses", icon: Wallet, permission: "expenses.view" },
     ],
   },
