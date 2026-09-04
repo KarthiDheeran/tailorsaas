@@ -219,6 +219,7 @@ export interface CatalogGarmentType {
   bodyMeasurementLayout: BodyMeasurementLayout;
   productionPrintGroup: ProductionPrintGroup;
   customerPrintName: string | null;
+  showWorkDetailsOnCustomerPrint: boolean;
   isActive: boolean;
 }
 
@@ -464,6 +465,7 @@ export type GarmentTypeInput = {
   bodyMeasurementLayout: BodyMeasurementLayout;
   productionPrintGroup: ProductionPrintGroup;
   customerPrintName: string | null;
+  showWorkDetailsOnCustomerPrint: boolean;
   isActive: boolean;
 };
 

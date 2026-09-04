@@ -176,7 +176,7 @@ const GARMENT_FIELD_SELECT = `
 `;
 
 const GARMENT_CONFIGURATION_SELECT = `
-  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, is_active,
+  id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, show_work_details_customer_print, is_active,
   garment_type_fields(${GARMENT_FIELD_SELECT})
 `;
 
@@ -192,6 +192,7 @@ type GarmentConfigurationRow = {
   body_measurement_layout?: BodyMeasurementLayout | null;
   production_print_group?: string | null;
   customer_print_name?: string | null;
+  show_work_details_customer_print?: boolean | null;
   is_active: boolean;
   garment_type_fields: GarmentFieldRow[] | null;
 };
@@ -213,6 +214,7 @@ function mapConfigurationGarment(row: GarmentConfigurationRow): CatalogGarmentTy
       ? row.production_print_group
       : defaultProductionPrintGroupForName(row.name),
     customerPrintName: row.customer_print_name?.trim() || null,
+    showWorkDetailsOnCustomerPrint: row.show_work_details_customer_print === true,
     isActive: row.is_active,
   };
 }
@@ -389,5 +391,11 @@ export async function saveGarmentTypeConfiguration(
     })),
   });
   if (error) throw error;
-  return data as string;
+  const garmentTypeId = data as string;
+  const { error: printSettingError } = await supabase
+    .from("catalog_garment_types")
+    .update({ show_work_details_customer_print: garment.showWorkDetailsOnCustomerPrint })
+    .eq("id", garmentTypeId);
+  if (printSettingError) throw printSettingError;
+  return garmentTypeId;
 }

@@ -348,7 +348,7 @@ export async function setAddOnActive(
 }
 
 const GARMENT_COLUMNS =
-  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, is_active";
+  "id, name, order_section, shortcut_code, base_price, measurement_field_ids, addon_ids, show_order_addons, body_measurement_layout, production_print_group, customer_print_name, show_work_details_customer_print, is_active";
 const LEGACY_GARMENT_COLUMNS =
   "id, name, base_price, measurement_field_ids, addon_ids, is_active";
 
@@ -364,6 +364,7 @@ interface GarmentRow {
   body_measurement_layout?: BodyMeasurementLayout | null;
   production_print_group?: string | null;
   customer_print_name?: string | null;
+  show_work_details_customer_print?: boolean | null;
   is_active: boolean;
 }
 
@@ -395,6 +396,7 @@ function mapGarment(row: GarmentRow): CatalogGarmentType {
       ? row.production_print_group
       : defaultProductionPrintGroupForName(row.name),
     customerPrintName: row.customer_print_name?.trim() || null,
+    showWorkDetailsOnCustomerPrint: row.show_work_details_customer_print === true,
     isActive: row.is_active,
   };
 }
@@ -486,6 +488,7 @@ export async function createGarmentType(
       body_measurement_layout: data.bodyMeasurementLayout,
       production_print_group: data.productionPrintGroup,
       customer_print_name: data.customerPrintName?.trim() || null,
+      show_work_details_customer_print: data.showWorkDetailsOnCustomerPrint,
       is_active: data.isActive,
     })
     .select(GARMENT_COLUMNS)
@@ -512,6 +515,7 @@ export async function updateGarmentType(
       body_measurement_layout: data.bodyMeasurementLayout,
       production_print_group: data.productionPrintGroup,
       customer_print_name: data.customerPrintName?.trim() || null,
+      show_work_details_customer_print: data.showWorkDetailsOnCustomerPrint,
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     })

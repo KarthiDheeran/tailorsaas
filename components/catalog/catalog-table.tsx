@@ -12,12 +12,14 @@ export function CatalogTable({
   canManage = true,
   onEdit,
   onToggleActive,
+  onToggleCustomerWorkDetails,
 }: {
   garmentTypes: CatalogGarmentType[];
   metadataFieldCounts?: Record<string, number>;
   canManage?: boolean;
   onEdit: (garment: CatalogGarmentType) => void;
   onToggleActive: (garment: CatalogGarmentType) => void;
+  onToggleCustomerWorkDetails: (garment: CatalogGarmentType) => void;
 }) {
   const { t } = useLanguage();
 
@@ -51,6 +53,7 @@ export function CatalogTable({
             <th className="whitespace-nowrap px-5 py-3">
               {t("catalog.addOns")}
             </th>
+            <th className="whitespace-nowrap px-5 py-3">Customer Work Details</th>
             <th className="whitespace-nowrap px-5 py-3">
               {t("common.status")}
             </th>
@@ -98,6 +101,21 @@ export function CatalogTable({
                 {garment.addOnIds.length === 1
                   ? t("catalog.addOnCount")
                   : t("catalog.addOnsCount")}
+              </td>
+              <td className="whitespace-nowrap px-5 py-3">
+                <button
+                  type="button"
+                  disabled={!canManage}
+                  onClick={() => onToggleCustomerWorkDetails(garment)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-default",
+                    garment.showWorkDetailsOnCustomerPrint
+                      ? "bg-chip-mint text-chip-mint-fg"
+                      : "bg-chip-info text-chip-info-fg"
+                  )}
+                >
+                  {garment.showWorkDetailsOnCustomerPrint ? "Shown" : "Hidden"}
+                </button>
               </td>
               <td className="whitespace-nowrap px-5 py-3">
                 <span

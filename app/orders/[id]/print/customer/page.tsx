@@ -36,7 +36,10 @@ type ReceiptRow = {
   qty: number;
   rate: number | "Mixed";
   total: number;
+  workDetails: WorkDetail[];
 };
+
+type WorkDetail = { name: string; quantity: number | null };
 
 const ROWS_PER_RECEIPT_PAGE = 12;
 const RECEIPT_PRINT_PAGE_WIDTH_MM = 210;
@@ -73,6 +76,51 @@ function paymentModeLabel(summary: PaymentModeSummary) {
   return "Multiple";
 }
 
+function customerWorkDetails(item: Order["items"][number], garment: CatalogGarmentType | undefined): WorkDetail[] {
+  if (!garment?.showWorkDetailsOnCustomerPrint) return [];
+  const measurements = item.measurements ?? {};
+  const snapshotFields = Array.isArray((item.fieldSchemaSnapshot as { fields?: unknown } | undefined)?.fields)
+    ? ((item.fieldSchemaSnapshot as { fields: Array<{ code?: string; name?: string }> }).fields)
+    : [];
+  const workField = snapshotFields.find((field) => field.name?.trim().toLowerCase() === "work details");
+  const candidateKeys = [workField?.code, "work_details", "workDetails"].filter((key): key is string => Boolean(key));
+  const raw = candidateKeys.map((key) => measurements[key]).find(Array.isArray);
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const row = value as Record<string, unknown>;
+    const display = typeof row.display === "string" ? row.display.trim() : "";
+    const nameValue = row.item ?? row.name ?? row.itemName;
+    let name = typeof nameValue === "string" ? nameValue.trim() : "";
+    let displayQuantity: number | null = null;
+    if (!name && display && display !== "-" && display !== "0") {
+      const match = display.match(/^(.*?)\s+-\s+([0-9]+(?:\.[0-9]+)?)$/);
+      name = (match?.[1] ?? display).trim();
+      displayQuantity = match ? Number(match[2]) : null;
+    }
+    if (!name) return [];
+    const quantityValue = row.qty ?? row.quantity;
+    const parsedQuantity = typeof quantityValue === "number" || typeof quantityValue === "string"
+      ? Number(quantityValue)
+      : displayQuantity;
+    const quantity = parsedQuantity !== null && Number.isFinite(parsedQuantity) && parsedQuantity > 0
+      ? parsedQuantity * item.qty
+      : null;
+    return [{ name, quantity }];
+  });
+}
+
+function mergeWorkDetails(existing: WorkDetail[], incoming: WorkDetail[]): WorkDetail[] {
+  const merged = new Map(existing.map((detail) => [detail.name.trim().toLocaleLowerCase(), { ...detail }]));
+  for (const detail of incoming) {
+    const key = detail.name.trim().toLocaleLowerCase();
+    const current = merged.get(key);
+    if (!current) merged.set(key, { ...detail });
+    else if (current.quantity !== null && detail.quantity !== null) current.quantity += detail.quantity;
+  }
+  return Array.from(merged.values());
+}
+
 function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptRow[] {
   const garmentsById = new Map(garmentTypes.map((garment) => [garment.id, garment]));
   const garmentsByName = new Map(
@@ -88,7 +136,7 @@ function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptR
     let group = groups.get(groupKey);
     if (!group) {
       group = {
-        item: { type: "item", key: `item-${groupKey}`, particular: displayParticular, qty: 0, rate: item.rate, total: 0 },
+        item: { type: "item", key: `item-${groupKey}`, particular: displayParticular, qty: 0, rate: item.rate, total: 0, workDetails: [] },
         rates: new Set(),
       };
       groups.set(groupKey, group);
@@ -99,15 +147,26 @@ function receiptRows(order: Order, garmentTypes: CatalogGarmentType[]): ReceiptR
     group.item.total += itemTotalWithAddOns;
     group.rates.add(itemRateWithAddOns);
     group.item.rate = group.rates.size === 1 ? itemRateWithAddOns : "Mixed";
+    group.item.workDetails = mergeWorkDetails(group.item.workDetails, customerWorkDetails(item, garment));
   }
   return Array.from(groups.values()).map((group) => group.item);
 }
 
 function paginateRows(rows: ReceiptRow[]) {
   const pages: ReceiptRow[][] = [];
-  for (let i = 0; i < rows.length; i += ROWS_PER_RECEIPT_PAGE) {
-    pages.push(rows.slice(i, i + ROWS_PER_RECEIPT_PAGE));
+  let page: ReceiptRow[] = [];
+  let usedSpace = 0;
+  for (const row of rows) {
+    const rowSpace = 1 + row.workDetails.length * 0.55;
+    if (page.length > 0 && usedSpace + rowSpace > ROWS_PER_RECEIPT_PAGE) {
+      pages.push(page);
+      page = [];
+      usedSpace = 0;
+    }
+    page.push(row);
+    usedSpace += rowSpace;
   }
+  if (page.length > 0) pages.push(page);
   return pages.length > 0 ? pages : [[]];
 }
 
@@ -194,7 +253,7 @@ function ReceiptPage({
             <tbody>
               {rows.map((row) => (
                 <tr key={row.key}>
-                  <td>{row.particular}</td>
+                  <td><div>{row.particular}</div>{row.workDetails.length > 0 && <div className="receipt-work-details"><b>Work Details</b>{row.workDetails.map((detail) => <div key={detail.name}>• {detail.name}{detail.quantity !== null ? ` - ${detail.quantity}` : ""}</div>)}</div>}</td>
                   <td className="num">{row.qty}</td>
                   <td className="num">{row.rate === "Mixed" ? "Mixed" : formatCurrency(row.rate)}</td>
                   <td className="num">{formatCurrency(row.total)}</td>
@@ -531,6 +590,22 @@ function CustomerReceiptPrintPageContent({
         .receipt-items td:first-child {
           font-weight: 650;
           white-space: normal;
+        }
+
+        .receipt-work-details {
+          margin-top: 1.2mm;
+          padding-left: 2mm;
+          color: #374151;
+          font-size: 9.6px;
+          font-weight: 500;
+          line-height: 1.28;
+        }
+
+        .receipt-work-details b {
+          display: block;
+          margin-bottom: 0.5mm;
+          color: #111827;
+          font-size: 9.8px;
         }
 
         .receipt-items .addon-row td {

@@ -202,6 +202,29 @@ function CatalogPageContent() {
     setRefreshKey((k) => k + 1);
   }
 
+  async function handleToggleCustomerWorkDetails(garment: CatalogGarmentType) {
+    const result = await updateGarmentTypeAction(garment.id, {
+      name: garment.name,
+      section: garment.section,
+      shortcutCode: garment.shortcutCode,
+      basePrice: garment.basePrice,
+      measurementFieldIds: garment.measurementFieldIds,
+      addOnIds: garment.addOnIds,
+      showOrderAddOns: garment.showOrderAddOns,
+      showWorkDetailsOnCustomerPrint: !garment.showWorkDetailsOnCustomerPrint,
+      bodyMeasurementLayout: garment.bodyMeasurementLayout,
+      productionPrintGroup: garment.productionPrintGroup,
+      customerPrintName: garment.customerPrintName,
+      isActive: garment.isActive,
+    });
+    if (!result.success) {
+      window.alert(result.error);
+      return;
+    }
+    clearNewOrderCatalogReference(currentUserId);
+    setRefreshKey((key) => key + 1);
+  }
+
   async function handleSaveAddOn(data: AddOnInput) {
     const result = editingAddOn
       ? await updateAddOnAction(editingAddOn.id, data)
@@ -337,6 +360,7 @@ function CatalogPageContent() {
             canManage={canManage}
             onEdit={metadataAvailable ? openGarmentEditor : setEditingGarment}
             onToggleActive={handleToggleGarmentActive}
+            onToggleCustomerWorkDetails={handleToggleCustomerWorkDetails}
           />
         </>
       ) : tab === "fields" ? (

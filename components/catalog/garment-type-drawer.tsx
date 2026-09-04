@@ -52,6 +52,10 @@ export function GarmentTypeDrawer({
   );
   const [basePrice, setBasePrice] = useState<number>(garment?.basePrice ?? 0);
   const [showOrderAddOns] = useState(garment?.showOrderAddOns ?? true);
+  const [showWorkDetailsOnCustomerPrint] = useState(
+    garment?.showWorkDetailsOnCustomerPrint ??
+      (garment?.section === "Chudidar" || garment?.section === "Blouse")
+  );
   const [bodyMeasurementLayout, setBodyMeasurementLayout] =
     useState<BodyMeasurementLayout>(garment?.bodyMeasurementLayout ?? "columns");
   const [productionPrintGroup, setProductionPrintGroup] = useState<ProductionPrintGroup>(
@@ -153,6 +157,7 @@ export function GarmentTypeDrawer({
       measurementFieldIds: selectedFieldIds,
       addOnIds: selectedAddOnIds,
       showOrderAddOns,
+      showWorkDetailsOnCustomerPrint,
       bodyMeasurementLayout,
       productionPrintGroup,
       customerPrintName: customerPrintName.trim() || null,
