@@ -436,14 +436,14 @@ function PaperRowsFieldControl({
   }
 
   const isInstructionField = field.fieldType === "instruction";
-  const inputClass = "h-9 w-full min-w-0 rounded-r-md border-0 border-l border-border-soft bg-white px-2.5 text-base text-ink outline-none focus:bg-primary-tint/40";
+  const inputClass = "h-10 w-full min-w-0 rounded-r-md border-0 border-l border-border-soft bg-white px-3 text-lg text-ink outline-none focus:bg-primary-tint/40";
   const rowClass = isInstructionField
-    ? "grid w-full min-w-0 grid-cols-[110px_minmax(420px,1fr)] items-stretch overflow-hidden rounded-md border border-border bg-white"
-    : "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_108px] items-stretch overflow-hidden rounded-md border border-border bg-white";
+    ? "grid w-full min-w-0 grid-cols-[140px_minmax(520px,1fr)] items-stretch overflow-hidden rounded-md border border-border bg-white"
+    : "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_150px] items-stretch overflow-hidden rounded-md border border-border bg-white";
 
   return (
     <label className={rowClass}>
-      <span className="truncate bg-surface-muted px-2.5 py-2 text-sm font-semibold text-ink-muted" title={field.name}>
+      <span className="truncate bg-surface-muted px-3 py-2.5 text-base font-semibold text-ink-muted" title={field.name}>
         {field.name}
         {field.required && <b className="ml-1 text-chip-red-fg">*</b>}
       </span>
@@ -602,7 +602,7 @@ export function GarmentFormFields({
       }>
         {usePaperRows ? (
           paperRowColumns.map((column, index) => (
-            <div className={cn("grid max-w-full grid-cols-1 content-start gap-2", isPaperInstructionGroup ? "w-full" : "w-[300px]")} key={index}>
+            <div className={cn("grid max-w-full grid-cols-1 content-start gap-2", isPaperInstructionGroup ? "w-full" : "w-[390px]")} key={index}>
               {column.map(renderControl)}
             </div>
           ))

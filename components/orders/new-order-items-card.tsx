@@ -1199,14 +1199,14 @@ function ConfigureItemModal({
                   {!metadataLoading && instructionFields.length > 0 && isPaperRowsLayout && (
                     <section
                       className="max-w-full flex-none overflow-hidden rounded-lg border border-border-soft bg-white p-4"
-                      style={{ width: 640 }}
+                      style={{ width: 820 }}
                     >
                       <h4 className="mb-3 text-[15px] font-semibold text-ink">Tailor Instructions</h4>
                       <GarmentFormFields fields={instructionFields} values={typedFieldDraft.typedValues} onChange={handleGarmentFieldChange} showSectionHeadings={false} layout={bodyMeasurementLayout} />
                     </section>
                   )}
 
-                  <section className={cn("min-w-0 overflow-hidden rounded-lg border border-border-soft bg-white p-4", isPaperRowsLayout && "w-[390px] max-w-full flex-none")}>
+                  <section className={cn("min-w-0 overflow-hidden rounded-lg border border-border-soft bg-white p-4", isPaperRowsLayout && "w-[430px] max-w-full flex-none")}>
                   {showOrderAddOns && (
                     <>
                       <h4 className="mb-1 text-[15px] font-semibold text-ink">Add-ons / Extras</h4>

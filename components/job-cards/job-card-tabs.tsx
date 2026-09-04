@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-type JobCardTab = "cards" | "tally" | "production-print";
+type JobCardTab = "cards" | "tally" | "production-print" | "work-assignment";
 
 const tabs: { label: string; href: string; value: JobCardTab }[] = [
   { label: "Tally Scans", href: "/job-cards/tally", value: "tally" },
   { label: "Order Ready", href: "/job-cards", value: "cards" },
   { label: "Production Print", href: "/job-cards/production-print", value: "production-print" },
+  { label: "Work Assignment", href: "/job-cards/work-assignment", value: "work-assignment" },
 ];
 
 export function JobCardTabs({ active }: { active: JobCardTab }) {

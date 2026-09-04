@@ -691,6 +691,17 @@ export async function confirmQuickTallyJobCardStageSlipAction(input: {
     const perUnitWageAmount = wageRate + labourAddOnsTotal;
     let tallySlip = slip;
     if (!slip.staffId) {
+      // The paper may have been printed before this unit was assigned in the
+      // optional Work Assignment flow. Check the live unit owner before
+      // binding that old unassigned slip, otherwise possession of the paper
+      // could overwrite the owner's assignment.
+      await assertJobCardAvailableForStageSlip(admin, {
+        orderId: slip.orderId,
+        orderItemSerialNo: slip.orderItemSerialNo,
+        unitNo: slip.unitNo,
+        taskType: slip.stage,
+        staffId: staff.id,
+      });
       const assignedSlip = await assignJobCardStageSlipForTally(admin, {
         id: slip.id,
         staffId: staff.id,
@@ -979,6 +990,63 @@ export async function getProductionPrintBundleAction(ids: string[]): Promise<Job
       ?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
     const color = item?.size?.trim();
     return color ? { ...slip, garmentType: `${item!.particular} · ${color}` } : slip;
+  });
+}
+
+export interface AssignedProductionUnitInput {
+  orderId: string;
+  orderItemSerialNo: number;
+  unitNo: number;
+  stage: TaskType;
+}
+
+export async function assignProductionUnitsAndCreateSlipsAction(
+  units: AssignedProductionUnitInput[],
+  staffId: string
+): Promise<ActionResult<JobCardStageSlip[]>> {
+  const normalizedStaffId = staffId.trim();
+  if (!normalizedStaffId) return { success: false, error: "Select a worker." };
+  if (units.length === 0) return { success: false, error: "Select at least one garment unit." };
+  if (units.length > 100) return { success: false, error: "Assign no more than 100 units at once." };
+
+  const slips: JobCardStageSlip[] = [];
+  for (const unit of units) {
+    const result = await createJobCardStageSlipAction({
+      orderId: unit.orderId,
+      orderItemSerialNo: unit.orderItemSerialNo,
+      unitNo: unit.unitNo,
+      quantity: 1,
+      stage: unit.stage,
+      staffId: normalizedStaffId,
+    });
+    if (!result.success) {
+      return {
+        success: false,
+        error: `Unit ${unit.unitNo}: ${result.error}`,
+      };
+    }
+    slips.push(result.data);
+  }
+  return { success: true, data: slips };
+}
+
+export async function transferProductionUnitAndCreateSlipAction(
+  input: AssignedProductionUnitInput & { jobCardId: string; newStaffId: string; reason: string }
+): Promise<ActionResult<JobCardStageSlip>> {
+  const transfer = await transferJobCardAction(input.jobCardId, {
+    newStaffId: input.newStaffId,
+    reason: input.reason,
+    recordAdvance: false,
+  });
+  if (!transfer.success) return transfer;
+  return createJobCardStageSlipAction({
+    orderId: input.orderId,
+    orderItemSerialNo: input.orderItemSerialNo,
+    unitNo: input.unitNo,
+    quantity: 1,
+    stage: input.stage,
+    staffId: input.newStaffId,
+    notes: `Replacement slip after transfer: ${input.reason.trim()}`,
   });
 }
 
