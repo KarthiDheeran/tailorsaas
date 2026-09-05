@@ -10,6 +10,7 @@ import {
 } from "@/lib/data/job-cards-db";
 import { getJobCardStageSlipsForOrders } from "@/lib/data/job-card-stage-slips-db";
 import {
+  getActiveUrgentOrderListRows,
   getOrderListRowsByIds,
   getOrderListRowsInDateRange,
   getReceivableOrderListRows,
@@ -54,6 +55,7 @@ export interface DashboardStat {
 export interface DashboardData {
   stats: DashboardStat[];
   todaysDeliveries: Order[];
+  urgentOrders: Order[];
   overdueOrders: (Order & { daysLate: number })[];
   paymentPending: Order[];
   productionQueue: ProductionQueueStage[];
@@ -94,6 +96,7 @@ export async function getDashboardData(
     receivableOrders,
     dashboardCards,
     expenseStats,
+    urgentOrders,
   ] = await Promise.all([
     getOrderListRowsInDateRange(supabase, "order_date", todayIso, todayIso),
     getOrderListRowsInDateRange(supabase, "order_date", yesterdayIso, yesterdayIso),
@@ -101,6 +104,7 @@ export async function getDashboardData(
     getReceivableOrderListRows(supabase),
     getDashboardJobCards(supabase, todayIso),
     getDashboardExpenseStats(supabase, todayIso),
+    getActiveUrgentOrderListRows(supabase),
   ]);
 
   const ordersToday = ordersTodaySource.filter(isActiveOrder);
@@ -239,6 +243,7 @@ export async function getDashboardData(
   return {
     stats,
     todaysDeliveries,
+    urgentOrders,
     overdueOrders,
     paymentPending,
     productionQueue: jobCardStats?.productionQueue ?? [],

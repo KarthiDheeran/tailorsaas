@@ -544,7 +544,7 @@ function EditMeasurementsPageContent({ params }: { params: { id: string } }) {
         ref={saveButtonRef}
         onClick={handleSave}
         disabled={saving || !selectedGarment}
-        className="mt-5 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving ? "Saving..." : t("customers.saveMeasurements")}
       </button>

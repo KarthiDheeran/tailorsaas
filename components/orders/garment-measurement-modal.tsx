@@ -199,7 +199,7 @@ export function GarmentMeasurementModal({
               <button
                 ref={saveButtonRef}
                 type="submit"
-                className="flex-1 rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
                 {t("customers.saveMeasurements")}
               </button>

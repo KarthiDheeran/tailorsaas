@@ -174,6 +174,24 @@ export function formatOptionalDate(iso?: string | null) {
   return iso && isIsoDateValue(iso) ? formatDate(iso) : "";
 }
 
+export function formatDateTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)?.value ?? "";
+  return `${part("day")}-${part("month")}-${part("year")} ${part("hour")}:${part("minute")}`;
+}
+
 export function BalanceBadge({ order, todayIso, compact = false }: { order: Order; todayIso: string; compact?: boolean }) {
   const { t } = useLanguage();
   const chipClass = compact
@@ -390,7 +408,14 @@ export function OrdersTable({
                 className={`cursor-pointer border-t border-border-soft transition-colors hover:bg-primary-tint/60 ${compact ? "h-7 border-t-0" : ""}`}
               >
                 <td className={`whitespace-nowrap px-5 py-3 font-semibold text-primary ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
-                  {order.orderNumber}
+                  <span className="inline-flex items-center gap-1.5">
+                    {order.orderNumber}
+                    {order.isUrgent && order.status !== "Delivered" && order.status !== "Cancelled" && (
+                      <span className={`${compact ? "px-1 py-0 text-[9px]" : "px-2 py-0.5 text-[10px]"} rounded bg-amber-100 font-extrabold text-amber-900`}>
+                        URGENT
+                      </span>
+                    )}
+                  </span>
                 </td>
                 <td className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   {customer && compact ? (
@@ -424,7 +449,12 @@ export function OrdersTable({
                   {formatDate(order.orderDate)}
                 </td>
                 <td className={`whitespace-nowrap px-5 py-3 font-medium text-ink-muted ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
-                  {formatDate(order.deliveryDate)}
+                  <div>{formatDate(order.deliveryDate)}</div>
+                  {order.isUrgent && order.urgentDueAt && order.status !== "Delivered" && order.status !== "Cancelled" && (
+                    <div className={`${compact ? "text-[9px] leading-3" : "mt-0.5 text-[11px]"} font-bold text-amber-700`}>
+                      Complete: {formatDateTime(order.urgentDueAt)}
+                    </div>
+                  )}
                 </td>
                 <td className={`px-5 py-3 font-medium text-ink-muted ${compact ? "max-w-[360px] truncate border border-[#aeb8c8] px-2 py-0.5" : ""}`} title={itemsSummary}>{itemsSummary}</td>
                 <td className={`whitespace-nowrap px-5 py-3 ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>

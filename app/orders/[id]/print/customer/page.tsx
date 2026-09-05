@@ -116,6 +116,7 @@ function customerWorkDetails(item: Order["items"][number], garment: CatalogGarme
     const parsedQuantity = typeof quantityValue === "number" || typeof quantityValue === "string"
       ? Number(quantityValue)
       : displayQuantity;
+    if (parsedQuantity === null || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return [];
     const quantity = parsedQuantity !== null && Number.isFinite(parsedQuantity) && parsedQuantity > 0
       ? parsedQuantity * item.qty
       : null;

@@ -24,6 +24,7 @@ import {
   type DeliveryCustomRange,
   type DeliveryFilter,
   type StatusFilter,
+  type UrgentFilter,
 } from "@/components/orders/order-list-filters";
 import {
   OrdersTable,
@@ -58,6 +59,7 @@ function OrdersPageContent() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery);
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [urgentFilter, setUrgentFilter] = useState<UrgentFilter>("all");
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
   const [deliveryCustomRange, setDeliveryCustomRange] =
     useState<DeliveryCustomRange>({ from: "", to: "" });
@@ -116,6 +118,7 @@ function OrdersPageContent() {
       orderDateTo: orderDateRange.to || undefined,
       balanceFilter,
       statusFilter,
+      urgentFilter,
       deliveryFilter,
       deliveryFrom: deliveryFilter === "custom" ? deliveryCustomRange.from || undefined : undefined,
       deliveryTo: deliveryFilter === "custom" ? deliveryCustomRange.to || undefined : undefined,
@@ -149,6 +152,7 @@ function OrdersPageContent() {
     orderDateRange.to,
     balanceFilter,
     statusFilter,
+    urgentFilter,
     deliveryFilter,
     deliveryCustomRange.from,
     deliveryCustomRange.to,
@@ -329,6 +333,11 @@ function OrdersPageContent() {
     setPage(1);
   }
 
+  function handleUrgentFilterChange(filter: UrgentFilter) {
+    setUrgentFilter(filter);
+    setPage(1);
+  }
+
   function handleDeliveryFilterChange(filter: DeliveryFilter) {
     setDeliveryFilter(filter);
     setPage(1);
@@ -343,6 +352,7 @@ function OrdersPageContent() {
     setSearchQuery("");
     setBalanceFilter("all");
     setStatusFilter("all");
+    setUrgentFilter("all");
     setDeliveryFilter("all");
     setDeliveryCustomRange({ from: "", to: "" });
     setOrderDateRange({ from: "", to: "" });
@@ -374,6 +384,7 @@ function OrdersPageContent() {
             orderDateTo: orderDateRange.to || undefined,
             balanceFilter,
             statusFilter,
+            urgentFilter,
             deliveryFilter,
             deliveryFrom: deliveryFilter === "custom" ? deliveryCustomRange.from || undefined : undefined,
             deliveryTo: deliveryFilter === "custom" ? deliveryCustomRange.to || undefined : undefined,
@@ -428,6 +439,7 @@ function OrdersPageContent() {
     setSearchQuery("");
     setBalanceFilter("all");
     setStatusFilter("all");
+    setUrgentFilter("all");
     setDeliveryFilter("all");
     setDeliveryCustomRange({ from: "", to: "" });
     setPage(1);
@@ -531,6 +543,8 @@ function OrdersPageContent() {
           onBalanceFilterChange={handleBalanceFilterChange}
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
+          urgentFilter={urgentFilter}
+          onUrgentFilterChange={handleUrgentFilterChange}
           deliveryFilter={deliveryFilter}
           onDeliveryFilterChange={handleDeliveryFilterChange}
           deliveryCustomRange={deliveryCustomRange}

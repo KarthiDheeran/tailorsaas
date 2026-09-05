@@ -48,6 +48,7 @@ import {
 } from "@/components/orders/garment-measurement-modal";
 import {
   NewOrderItemsCard,
+  clearMeasurementPickerCache,
   blankDraftItem,
   computeOrderItems,
   orderItemToDraftItem,
@@ -328,6 +329,9 @@ function NewOrderPageContent() {
   const [deliveryDate, setDeliveryDate] = useState("");
   const [defaultDeliveryLeadDays, setDefaultDeliveryLeadDays] = useState<number | null>(null);
   const deliveryPromiseNote = "";
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [urgentDueAt, setUrgentDueAt] = useState("");
+  const [urgentReason, setUrgentReason] = useState("");
 
   const [items, setItems] = useState<DraftItem[]>([blankDraftItem()]);
   const [queuedAttachments, setQueuedAttachments] = useState<QueuedOrderAttachment[]>([]);
@@ -1293,6 +1297,9 @@ function NewOrderPageContent() {
         paymentMode,
         measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
         createdByOperatorId: createdByOperatorId || undefined,
+        isUrgent,
+        urgentDueAt: isUrgent && urgentDueAt ? new Date(urgentDueAt).toISOString() : undefined,
+        urgentReason: isUrgent ? urgentReason.trim() || undefined : undefined,
       });
     } else {
       const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
@@ -1325,6 +1332,9 @@ function NewOrderPageContent() {
           paymentMode,
           measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
           createdByOperatorId: createdByOperatorId || undefined,
+          isUrgent,
+          urgentDueAt: isUrgent && urgentDueAt ? new Date(urgentDueAt).toISOString() : undefined,
+          urgentReason: isUrgent ? urgentReason.trim() || undefined : undefined,
         },
       });
     }
@@ -1385,6 +1395,7 @@ function NewOrderPageContent() {
     // Show the success state with print options rather than redirecting
     // immediately - the shopkeeper's very next step is usually printing the
     // receipt/job card, so don't force them back to the list first.
+    clearMeasurementPickerCache(created.data.customerId);
     setSavedOrder(created.data);
   }
 
@@ -2235,7 +2246,7 @@ function NewOrderPageContent() {
               disabled={saving}
               aria-keyshortcuts="Alt+S Control+Enter"
               title="Save order (Alt+S or Ctrl+Enter)"
-              className="h-12 min-w-[150px] rounded-lg bg-secondary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover disabled:opacity-60"
+              className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
               {saving ? "Saving…" : `${t("orders.saveOrder")} · Alt+S`}
             </button>
@@ -2264,13 +2275,15 @@ function NewOrderPageContent() {
               <label className="text-sm font-semibold text-ink">Created by <span className="text-chip-red-fg">*</span><select required value={createdByOperatorId} onChange={(event) => { setCreatedByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
               <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
               <label className="text-sm font-semibold text-ink sm:col-span-2">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3">{paymentModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
+              <label className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900 sm:col-span-2"><input type="checkbox" checked={isUrgent} onChange={(event) => setIsUrgent(event.target.checked)} />Urgent order</label>
+              {isUrgent && <><label className="text-sm font-semibold text-ink">Complete by <span className="text-chip-red-fg">*</span><input required type="datetime-local" value={urgentDueAt} onChange={(event) => setUrgentDueAt(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-amber-400 px-3" /></label><label className="text-sm font-semibold text-ink">Urgent reason<input value={urgentReason} onChange={(event) => setUrgentReason(event.target.value)} placeholder="Function, travel..." className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label></>}
             </div>
             {finalizeError && (
               <p className="mt-4 rounded-lg bg-chip-red px-3 py-2 text-sm font-semibold text-chip-red-fg">
                 {finalizeError}
               </p>
             )}
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-secondary px-6 font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setFinalizeOpen(false)} className="h-11 rounded-lg border border-border px-5 font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void handleSave()} className="h-11 rounded-lg bg-primary px-6 font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Creating…" : "Confirm & Create Order"}</button></div>
           </div>
         </div>
       )}

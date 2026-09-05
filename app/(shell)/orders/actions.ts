@@ -21,6 +21,7 @@ import {
   updateOrder,
   updateOrderNotes,
   updateOrderStatus,
+  updateOrderUrgency,
 } from "@/lib/data/orders-db";
 import { recomputeOrderTotals } from "@/lib/data/order-totals-db";
 import {
@@ -507,6 +508,7 @@ export async function getOrdersListPageAction(input: {
   orderDateTo?: string;
   balanceFilter?: "all" | "paid" | "due" | "overdue";
   statusFilter?: Order["status"] | "all";
+  urgentFilter?: "all" | "urgent" | "normal";
   deliveryFilter?: "all" | "dueToday" | "dueTomorrow" | "dueWeek" | "overdue" | "custom";
   deliveryFrom?: string;
   deliveryTo?: string;
@@ -534,6 +536,7 @@ export async function getOrdersListPageAction(input: {
             orderDateTo: input.orderDateTo,
             balanceFilter: input.balanceFilter,
             statusFilter: input.statusFilter,
+            urgentFilter: input.urgentFilter,
             deliveryFilter: input.deliveryFilter,
             deliveryFrom: input.deliveryFrom,
             deliveryTo: input.deliveryTo,
@@ -976,6 +979,9 @@ export async function createOrderAction(data: {
   paymentMode: PaymentMode;
   measurementTakenByOperatorId?: string;
   createdByOperatorId?: string;
+  isUrgent?: boolean;
+  urgentDueAt?: string;
+  urgentReason?: string;
 }): Promise<ActionResult<Order>> {
   const workflow = "existing-customer";
   const supabase = createServerClient();
@@ -1007,6 +1013,11 @@ export async function createOrderAction(data: {
   }
   const dateError = validateOrderDates(data);
   if (dateError) return { success: false, error: dateError };
+  if (data.isUrgent && !data.urgentDueAt) return { success: false, error: "Urgent completion date and time are required." };
+  if (data.isUrgent) {
+    const urgencyGuard = await requireServerPermission(supabase, "orders.edit");
+    if (!urgencyGuard.ok) return { success: false, error: "You need order edit access to create an urgent order." };
+  }
   const prepared = await timeOrderSaveStep(workflow, "validateAndSnapshotOrderItems", () =>
     validateAndSnapshotOrderItems(supabase, data.items, [], data.orderSection)
   );
@@ -1031,6 +1042,7 @@ export async function createOrderAction(data: {
       trySyncJobCardsForOrder(supabase, order.id)
     ),
   ]);
+  if (data.isUrgent) await updateOrderUrgency(supabase, order.id, { isUrgent: true, urgentDueAt: data.urgentDueAt, urgentReason: data.urgentReason });
   const finalOrder = await timeOrderSaveStep(workflow, "finalGetOrderById", () =>
     getOrderById(createAdminClient(), order.id)
   );
@@ -1056,6 +1068,9 @@ export async function createOrderForNewCustomerAction(data: {
     paymentMode: PaymentMode;
     measurementTakenByOperatorId?: string;
     createdByOperatorId?: string;
+    isUrgent?: boolean;
+    urgentDueAt?: string;
+    urgentReason?: string;
   };
 }): Promise<ActionResult<Order>> {
   const workflow = "new-customer";
@@ -1097,6 +1112,11 @@ export async function createOrderForNewCustomerAction(data: {
   }
   const dateError = validateOrderDates(data.order);
   if (dateError) return { success: false, error: dateError };
+  if (data.order.isUrgent && !data.order.urgentDueAt) return { success: false, error: "Urgent completion date and time are required." };
+  if (data.order.isUrgent) {
+    const urgencyGuard = await requireServerPermission(supabase, "orders.edit");
+    if (!urgencyGuard.ok) return { success: false, error: "You need order edit access to create an urgent order." };
+  }
 
   const existing = await timeOrderSaveStep(workflow, "checkDuplicateCustomer", () =>
     getCustomerByNameAndPhone(
@@ -1169,6 +1189,7 @@ export async function createOrderForNewCustomerAction(data: {
       recomputeOrderTotals(createAdminClient(), order.id)
     ),
   ]);
+  if (data.order.isUrgent) await updateOrderUrgency(supabase, order.id, { isUrgent: true, urgentDueAt: data.order.urgentDueAt, urgentReason: data.order.urgentReason });
   const finalOrder = await timeOrderSaveStep(workflow, "finalGetOrderById", () =>
     getOrderById(createAdminClient(), order.id)
   );
@@ -1246,6 +1267,24 @@ export async function getPrintableGarmentTypesAction(): Promise<CatalogGarmentTy
     return [];
   }
   return getActiveGarmentTypes(supabase);
+}
+
+export async function updateOrderUrgencyAction(
+  id: string,
+  input: { isUrgent: boolean; urgentDueAt?: string; urgentReason?: string }
+): Promise<ActionResult<Order>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "orders.edit");
+  if (!guard.ok) return { success: false, error: guard.error };
+  if (input.isUrgent && !input.urgentDueAt) {
+    return { success: false, error: "Urgent completion date and time are required." };
+  }
+  try {
+    const order = await updateOrderUrgency(supabase, id, input);
+    return order ? { success: true, data: order } : { success: false, error: "Order not found." };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not update urgent priority." };
+  }
 }
 
 export async function updateOrderNotesAction(

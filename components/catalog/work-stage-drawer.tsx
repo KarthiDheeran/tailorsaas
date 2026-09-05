@@ -115,7 +115,7 @@ export function WorkStageDrawer({
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-secondary-hover disabled:opacity-60"
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-primary-dark disabled:opacity-60"
             >
               {submitting ? "Saving..." : isEdit ? "Save Changes" : "Add Work Stage"}
             </button>

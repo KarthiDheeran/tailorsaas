@@ -47,8 +47,19 @@ import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatCurrency } from "@/lib/currency";
 
-const measurementPickerCache = new Map<string, MeasurementPickerData>();
+const MEASUREMENT_PICKER_CACHE_MS = 15_000;
+const measurementPickerCache = new Map<string, { data: MeasurementPickerData; cachedAt: number }>();
 const measurementPickerRequests = new Map<string, Promise<MeasurementPickerData>>();
+
+export function clearMeasurementPickerCache(customerId?: string) {
+  if (!customerId) {
+    measurementPickerCache.clear();
+    return;
+  }
+  for (const key of Array.from(measurementPickerCache.keys())) {
+    if (key.startsWith(`${customerId}:`)) measurementPickerCache.delete(key);
+  }
+}
 
 function measurementPickerCacheKey(
   customerId: string,
@@ -229,11 +240,11 @@ function billableTableAddOns(it: DraftItem): OrderItemAddOn[] {
       const itemTa = typeof record.itemTa === "string" ? record.itemTa.trim() : "";
       if (!item) return [];
       const qty = numberFromUnknown(record.qty);
+      if (qty <= 0) return [];
       const itemPrice = numberFromUnknown(record.itemPrice);
       const tailorAmount = numberFromUnknown(record.tailorAmount);
       const workerStage = typeof record.workerStage === "string" ? record.workerStage.trim() : "";
       const total = numberFromUnknown(record.total) || qty * itemPrice;
-      if (qty <= 0 && total <= 0) return [];
       const display =
         typeof record.display === "string" && record.display.trim()
           ? record.display.trim()
@@ -295,13 +306,12 @@ function formatGarmentCodeName(garment: CatalogGarmentType): string {
 
 function formatOrderDate(date: string): string {
   if (!date) return "";
-  const parsed = new Date(`${date}T00:00:00`);
+  const dateOnly = date.slice(0, 10);
+  const isoMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return `${isoMatch[3]}-${isoMatch[2]}-${isoMatch[1]}`;
+  const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return date;
-  return parsed.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return `${String(parsed.getDate()).padStart(2, "0")}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${parsed.getFullYear()}`;
 }
 
 type ItemModalMode = "add" | "edit";
@@ -581,7 +591,7 @@ function ConfigureItemModal({
       const id = snapshot.itemId ?? `${snapshot.orderId}-${snapshot.serialNo}`;
       options.push({
         id: `history:${id}`,
-        label: `${snapshot.orderNumber} · ${formatOrderDate(snapshot.orderDate)}`,
+        label: `Ord: ${snapshot.orderNumber} - Date: ${formatOrderDate(snapshot.orderDate)}`,
         values: snapshot.measurements,
         addOnIds: snapshot.addOnIds,
       });
@@ -771,7 +781,11 @@ function ConfigureItemModal({
     let cancelled = false;
     setLoadingHistory(true);
     const cacheKey = measurementPickerCacheKey(customerId, garment.id, excludeOrderId);
-    const cached = measurementPickerCache.get(cacheKey);
+    const cachedEntry = measurementPickerCache.get(cacheKey);
+    const cached = cachedEntry && Date.now() - cachedEntry.cachedAt < MEASUREMENT_PICKER_CACHE_MS
+      ? cachedEntry.data
+      : undefined;
+    if (cachedEntry && !cached) measurementPickerCache.delete(cacheKey);
     let request: Promise<MeasurementPickerData>;
     if (cached) {
       request = Promise.resolve(cached);
@@ -784,7 +798,7 @@ function ConfigureItemModal({
           excludeOrderId
         )
           .then((data) => {
-            measurementPickerCache.set(cacheKey, data);
+            measurementPickerCache.set(cacheKey, { data, cachedAt: Date.now() });
             return data;
           })
           .finally(() => measurementPickerRequests.delete(cacheKey));
@@ -1280,7 +1294,7 @@ function ConfigureItemModal({
               <button
                 ref={saveItemButtonRef}
                 type="submit"
-                className="min-w-48 rounded-lg bg-secondary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover"
+                className="min-w-48 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
               >
                 {mode === "add" ? "Save Item Details" : "Update Item Details"}
               </button>

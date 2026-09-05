@@ -290,7 +290,7 @@ export async function getInventoryItemStats(
     lowStockCount: rows.filter(
       (row) => row.active && Number(row.quantity_on_hand) <= Number(row.reorder_level)
     ).length,
-    stockValue: rows.reduce(
+    stockValue: rows.filter((row) => row.active).reduce(
       (sum, row) => sum + Number(row.quantity_on_hand) * Number(row.cost_per_unit ?? 0),
       0
     ),
@@ -345,6 +345,46 @@ export async function createInventoryItem(
     .single();
   if (error) throw error;
   return mapInventoryItem(data as unknown as InventoryItemRow);
+}
+
+export async function updateInventoryItem(
+  supabase: SupabaseClient,
+  id: string,
+  input: InventoryItemInput
+): Promise<InventoryItem> {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .update({
+      item_type: input.itemType,
+      name: input.name.trim(),
+      sku: input.sku?.trim() || null,
+      color: input.color?.trim() || null,
+      unit: input.unit,
+      reorder_level: input.reorderLevel,
+      cost_per_unit: input.costPerUnit ?? null,
+      vendor_name: input.vendorName?.trim() || "",
+      purchase_date: input.purchaseDate || null,
+      purchase_cost: input.purchaseCost ?? null,
+      notes: input.notes?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select(INVENTORY_ITEM_COLUMNS)
+    .single();
+  if (error) throw error;
+  return mapInventoryItem(data as unknown as InventoryItemRow);
+}
+
+export async function setInventoryItemActive(
+  supabase: SupabaseClient,
+  id: string,
+  active: boolean
+): Promise<void> {
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ active, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
 }
 
 export async function adjustInventoryStock(

@@ -6,6 +6,8 @@ import {
   adjustInventoryStock,
   createCustomerFabric,
   createInventoryItem,
+  updateInventoryItem,
+  setInventoryItemActive,
   getInventoryItemsByIds,
   getCustomerFabrics,
   getInventoryItemStats,
@@ -315,6 +317,37 @@ export async function createInventoryItemAction(
       success: false,
       error: error instanceof Error ? error.message : "Failed to create inventory item.",
     };
+  }
+}
+
+export async function updateInventoryItemAction(
+  id: string,
+  input: InventoryItemInput
+): Promise<ActionResult<InventoryItem>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const validationError = validateInventoryItem(input);
+  if (validationError) return { success: false, error: validationError };
+  try {
+    return { success: true, data: await updateInventoryItem(supabase, id, input) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update inventory item." };
+  }
+}
+
+export async function setInventoryItemActiveAction(
+  id: string,
+  active: boolean
+): Promise<ActionResult> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "inventory.manage");
+  if (!guard.ok) return { success: false, error: guard.error };
+  try {
+    await setInventoryItemActive(supabase, id, active);
+    return { success: true, data: undefined };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update inventory item status." };
   }
 }
 

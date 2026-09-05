@@ -87,6 +87,24 @@ function TableFieldControl({
       current?.rowIndex === rowIndex && current.columnKey === columnKey ? null : current
     );
   };
+  const handleWorkEntryEnter = (
+    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    rowIndex: number,
+    role: "item" | "qty"
+  ) => {
+    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextRow = role === "item" ? rowIndex : rowIndex + 1;
+    const nextRole = role === "item" ? "qty" : "item";
+    const next = event.currentTarget
+      .closest("table")
+      ?.querySelector<HTMLElement>(
+        `[data-work-entry-row="${nextRow}"][data-work-entry-role="${nextRole}"]`
+      );
+    next?.focus({ preventScroll: true });
+    if (next instanceof HTMLInputElement) next.select();
+  };
   const focusableCellClass = (rowIndex: number, key: string) =>
     `h-8 w-full min-w-0 rounded border px-2 text-xs text-ink outline-none transition-colors ${
       activeCell?.rowIndex === rowIndex && activeCell.columnKey === key
@@ -133,6 +151,10 @@ function TableFieldControl({
                         value={String(cellValue ?? "")}
                         onFocus={() => markActive(rowIndex, column.key)}
                         onBlur={() => clearActive(rowIndex, column.key)}
+                        data-enter-next-skip={column.key === "item" ? "true" : undefined}
+                        data-work-entry-row={column.key === "item" ? rowIndex : undefined}
+                        data-work-entry-role={column.key === "item" ? "item" : undefined}
+                        onKeyDown={column.key === "item" ? (event) => handleWorkEntryEnter(event, rowIndex, "item") : undefined}
                         onChange={(event) => {
                           const nextValue = event.target.value || null;
                           const metadata = nextValue
@@ -162,6 +184,10 @@ function TableFieldControl({
                         value={cellValue === null ? "" : String(cellValue)}
                         onFocus={() => markActive(rowIndex, column.key)}
                         onBlur={() => clearActive(rowIndex, column.key)}
+                        data-enter-next-skip={column.key === "qty" ? "true" : undefined}
+                        data-work-entry-row={column.key === "qty" ? rowIndex : undefined}
+                        data-work-entry-role={column.key === "qty" ? "qty" : undefined}
+                        onKeyDown={column.key === "qty" ? (event) => handleWorkEntryEnter(event, rowIndex, "qty") : undefined}
                         onChange={(event) =>
                           updateCell(
                             rowIndex,

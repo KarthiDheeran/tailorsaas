@@ -17,6 +17,7 @@ import {
   getOrderDetailsBootstrapAction,
   deleteUntouchedOrderAction,
   updateOrderNotesAction,
+  updateOrderUrgencyAction,
 } from "@/app/(shell)/orders/actions";
 import { getJobCardsForOrderAction } from "@/app/(shell)/job-cards/actions";
 import { getGarmentMeasurementDraftSeedAction } from "@/app/(shell)/customers/actions";
@@ -67,6 +68,14 @@ const LONG_MEASUREMENT_FIELD_COUNT = 9;
 
 function money(value: number) {
   return formatCurrency(value);
+}
+
+function dateTimeLocalValue(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function customerFabricsForJobCards(cards: JobCard[], fabrics: CustomerFabric[]) {
@@ -376,6 +385,10 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
   const [orderNotesDraft, setOrderNotesDraft] = useState("");
   const [savingOrderNotes, setSavingOrderNotes] = useState(false);
   const [orderNotesMessage, setOrderNotesMessage] = useState<string | null>(null);
+  const [urgentEnabled, setUrgentEnabled] = useState(false);
+  const [urgentDueAt, setUrgentDueAt] = useState("");
+  const [urgentReason, setUrgentReason] = useState("");
+  const [savingUrgency, setSavingUrgency] = useState(false);
 
   async function refreshOrder() {
     const refreshed = await getOrderByIdAction(params.id);
@@ -448,6 +461,12 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
     setOrderNotesMessage(null);
   }, [order?.id, order?.orderNotes]);
 
+  useEffect(() => {
+    setUrgentEnabled(order?.isUrgent ?? false);
+    setUrgentDueAt(dateTimeLocalValue(order?.urgentDueAt));
+    setUrgentReason(order?.urgentReason ?? "");
+  }, [order?.id, order?.isUrgent, order?.urgentDueAt, order?.urgentReason]);
+
   const inventoryItemsById = useMemo(
     () => new Map(inventoryItems.map((item) => [item.id, item])),
     [inventoryItems]
@@ -506,6 +525,20 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
     setOrderNotesMessage("Order notes saved.");
   }
 
+  async function handleSaveUrgency() {
+    if (!order) return;
+    if (urgentEnabled && !urgentDueAt) return window.alert("Select the urgent completion date and time.");
+    setSavingUrgency(true);
+    const result = await updateOrderUrgencyAction(order.id, {
+      isUrgent: urgentEnabled,
+      urgentDueAt: urgentEnabled ? new Date(urgentDueAt).toISOString() : undefined,
+      urgentReason: urgentEnabled ? urgentReason : undefined,
+    });
+    setSavingUrgency(false);
+    if (!result.success) return window.alert(result.error);
+    setOrder(result.data);
+  }
+
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <button
@@ -529,6 +562,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 {order.orderNumber}
               </h1>
               <OrderStatusEditor order={order} onStatusChange={refreshOrder} />
+              {order.isUrgent && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-extrabold text-amber-900">URGENT</span>}
             </div>
             <p className="mt-1 text-sm text-ink-muted">
               {customerName}
@@ -649,6 +683,13 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
                   {order.deliveryPromiseNote}
                 </p>
+              </div>
+            )}
+            {canEdit && (
+              <div className="mt-4 grid gap-3 border-t border-border-soft pt-4 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-amber-900"><input type="checkbox" checked={urgentEnabled} onChange={(event) => setUrgentEnabled(event.target.checked)} />Urgent order</label>
+                {urgentEnabled && <><label className="text-sm font-semibold text-ink">Complete by<input required type="datetime-local" value={urgentDueAt} onChange={(event) => setUrgentDueAt(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-amber-400 px-3" /></label><label className="text-sm font-semibold text-ink sm:col-start-2">Reason<input value={urgentReason} onChange={(event) => setUrgentReason(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-border px-3" /></label></>}
+                <button type="button" disabled={savingUrgency} onClick={handleSaveUrgency} className="h-10 rounded-lg bg-amber-600 px-4 text-sm font-bold text-white disabled:opacity-50 sm:col-start-2">{savingUrgency ? "Saving..." : order.isUrgent ? "Update Urgency" : "Save Urgency"}</button>
               </div>
             )}
           </Section>

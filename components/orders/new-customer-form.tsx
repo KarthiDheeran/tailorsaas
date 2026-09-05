@@ -399,7 +399,7 @@ export function NewCustomerForm({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70"
             >
               {pendingAction === "primary" ? "Saving..." : submitLabel}
             </button>
@@ -409,7 +409,7 @@ export function NewCustomerForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="mt-5 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70"
         >
           {pendingAction === "primary" ? "Saving..." : submitLabel}
         </button>

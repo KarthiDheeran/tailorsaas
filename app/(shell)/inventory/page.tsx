@@ -6,6 +6,8 @@ import {
   adjustInventoryStockAction,
   createCustomerFabricAction,
   createInventoryItemAction,
+  updateInventoryItemAction,
+  setInventoryItemActiveAction,
   getCustomerFabricsAction,
   getInventoryConsumptionMasterDataAction,
   getInventoryPageDataAction,
@@ -45,6 +47,7 @@ import { downloadCsv } from "@/lib/csv";
 import { formatCurrency } from "@/lib/currency";
 
 type InventoryTab = "stock" | "customer-fabric" | "masters";
+type StockStatusFilter = "Active" | "Disabled" | "All";
 const STOCK_ITEM_LIMIT = 300;
 const CUSTOMER_FABRIC_LIMIT = 200;
 
@@ -69,9 +72,11 @@ function InventoryContent() {
   const [fabricQuery, setFabricQuery] = useState("");
   const [debouncedFabricQuery, setDebouncedFabricQuery] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [stockStatus, setStockStatus] = useState<StockStatusFilter>("Active");
   const [stockRefreshKey, setStockRefreshKey] = useState(0);
   const [fabricRefreshKey, setFabricRefreshKey] = useState(0);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [showCustomerFabricDrawer, setShowCustomerFabricDrawer] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -179,10 +184,18 @@ function InventoryContent() {
   const filteredItems = useMemo(() => {
     const rows = items ?? [];
     return rows.filter((item) => {
-      if (lowStockOnly && item.quantityOnHand > item.reorderLevel) return false;
+      if (stockStatus === "Active" && !item.active) return false;
+      if (stockStatus === "Disabled" && item.active) return false;
+      if (lowStockOnly && (!item.active || item.quantityOnHand > item.reorderLevel)) return false;
       return true;
     });
-  }, [items, lowStockOnly]);
+  }, [items, lowStockOnly, stockStatus]);
+
+  async function handleToggleItemActive(item: InventoryItem) {
+    const result = await setInventoryItemActiveAction(item.id, !item.active);
+    if (!result.success) return window.alert(result.error);
+    setStockRefreshKey((key) => key + 1);
+  }
 
   const filteredCustomerFabrics = customerFabrics ?? [];
 
@@ -339,6 +352,15 @@ function InventoryContent() {
                 >
                   Low stock only
                 </button>
+                <Select
+                  value={stockStatus}
+                  onChange={(event) => setStockStatus(event.target.value as StockStatusFilter)}
+                  className="h-9 w-32"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Disabled">Disabled</option>
+                  <option value="All">All</option>
+                </Select>
                 <ExportCsvButton
                   onClick={handleExportStock}
                   disabled={filteredItems.length === 0}
@@ -364,7 +386,13 @@ function InventoryContent() {
                 </p>
               )}
 
-              <StockTable items={filteredItems} canManage={canUseInventoryMutations} onAdjust={setAdjustingItem} />
+              <StockTable
+                items={filteredItems}
+                canManage={canUseInventoryMutations}
+                onAdjust={setAdjustingItem}
+                onEdit={setEditingItem}
+                onToggleActive={handleToggleItemActive}
+              />
             </>
           )}
 
@@ -417,7 +445,7 @@ function InventoryContent() {
             masterData === null ? (
               <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-ink">Apply <span className="font-semibold">supabase/migrations/0093_inventory_consumption_masters.sql</span> to enable configurable item types and consumption rules.</div>
             ) : (
-              <InventoryMasters data={masterData} items={items ?? []} onSaved={() => { setMasterData(undefined); setMasterRefreshKey((key) => key + 1); }} />
+              <InventoryMasters data={masterData} items={(items ?? []).filter((item) => item.active)} onSaved={() => { setMasterData(undefined); setMasterRefreshKey((key) => key + 1); }} />
             )
           )}
         </>
@@ -429,6 +457,18 @@ function InventoryContent() {
           onClose={() => setShowItemDrawer(false)}
           onSaved={() => {
             setShowItemDrawer(false);
+            setStockRefreshKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {editingItem && (
+        <StockItemDrawer
+          item={editingItem}
+          itemTypes={Array.from(new Set([editingItem.itemType, ...(masterData?.itemTypes.filter((type) => type.isActive).map((type) => type.name) ?? inventoryItemTypes)]))}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => {
+            setEditingItem(null);
             setStockRefreshKey((key) => key + 1);
           }}
         />
@@ -520,10 +560,14 @@ function StockTable({
   items,
   canManage,
   onAdjust,
+  onEdit,
+  onToggleActive,
 }: {
   items: InventoryItem[];
   canManage: boolean;
   onAdjust: (item: InventoryItem) => void;
+  onEdit: (item: InventoryItem) => void;
+  onToggleActive: (item: InventoryItem) => void;
 }) {
   if (items.length === 0) {
     return <EmptyState message="No stock items match this view." />;
@@ -548,10 +592,11 @@ function StockTable({
           {items.map((item) => {
             const low = item.active && item.quantityOnHand <= item.reorderLevel;
             return (
-              <tr key={item.id} className="border-t border-border-soft hover:bg-surface-muted">
+              <tr key={item.id} className={cn("border-t border-border-soft hover:bg-surface-muted", !item.active && "opacity-60")}>
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="font-semibold text-ink">{item.name}</div>
                   <div className="text-xs text-ink-muted">{item.sku || "No SKU"}</div>
+                  {!item.active && <div className="text-xs font-semibold text-chip-red-fg">Disabled</div>}
                 </td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{item.itemType}</td>
                 <td className="whitespace-nowrap px-5 py-3 text-ink-muted">{item.color || "-"}</td>
@@ -580,13 +625,16 @@ function StockTable({
                 </td>
                 {canManage && (
                   <td className="whitespace-nowrap px-5 py-3 text-right">
+                    <button type="button" onClick={() => onEdit(item)} className="mr-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary-tint">Edit</button>
                     <button
                       type="button"
                       onClick={() => onAdjust(item)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint"
+                      disabled={!item.active}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Adjust Stock
                     </button>
+                    <button type="button" onClick={() => onToggleActive(item)} className="ml-2 text-xs font-semibold text-ink-muted hover:text-ink">{item.active ? "Disable" : "Enable"}</button>
                   </td>
                 )}
               </tr>
@@ -758,28 +806,30 @@ function ConsumptionRuleDrawer({ data, items, rule, onClose, onSaved }: { data: 
 }
 
 function StockItemDrawer({
+  item,
   itemTypes,
   onClose,
   onSaved,
 }: {
+  item?: InventoryItem;
   itemTypes: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [itemType, setItemType] = useState<InventoryItemType>("Fabric");
-  const [name, setName] = useState("");
-  const [sku, setSku] = useState("");
-  const [color, setColor] = useState("");
-  const [unit, setUnit] = useState<InventoryUnit>("meter");
-  const [quantity, setQuantity] = useState("0");
-  const [reorderLevel, setReorderLevel] = useState("0");
-  const [costPerUnit, setCostPerUnit] = useState("");
-  const [vendorName, setVendorName] = useState("");
-  const [purchaseDate, setPurchaseDate] = useState("");
-  const [purchaseCost, setPurchaseCost] = useState("");
-  const [purchaseCostTouched, setPurchaseCostTouched] = useState(false);
+  const [itemType, setItemType] = useState<InventoryItemType>(item?.itemType ?? "Fabric");
+  const [name, setName] = useState(item?.name ?? "");
+  const [sku, setSku] = useState(item?.sku ?? "");
+  const [color, setColor] = useState(item?.color ?? "");
+  const [unit, setUnit] = useState<InventoryUnit>(item?.unit ?? "meter");
+  const [quantity, setQuantity] = useState(String(item?.quantityOnHand ?? 0));
+  const [reorderLevel, setReorderLevel] = useState(String(item?.reorderLevel ?? 0));
+  const [costPerUnit, setCostPerUnit] = useState(item?.costPerUnit == null ? "" : String(item.costPerUnit));
+  const [vendorName, setVendorName] = useState(item?.vendorName ?? "");
+  const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? "");
+  const [purchaseCost, setPurchaseCost] = useState(item?.purchaseCost == null ? "" : String(item.purchaseCost));
+  const [purchaseCostTouched, setPurchaseCostTouched] = useState(Boolean(item));
   const [purchasePaymentMode, setPurchasePaymentMode] = useState<PaymentMode>("Cash");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(item?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const estimatedStockValue =
@@ -800,7 +850,7 @@ function StockItemDrawer({
       return;
     }
     setSaving(true);
-    const result = await createInventoryItemAction({
+    const input = {
       itemType,
       name,
       sku,
@@ -814,7 +864,10 @@ function StockItemDrawer({
       purchaseCost: purchaseCost ? Number(purchaseCost) : undefined,
       purchasePaymentMode,
       notes,
-    });
+    };
+    const result = item
+      ? await updateInventoryItemAction(item.id, input)
+      : await createInventoryItemAction(input);
     setSaving(false);
     if (!result.success) {
       setError(result.error);
@@ -824,7 +877,7 @@ function StockItemDrawer({
   }
 
   return (
-    <InventoryDrawerShell title="Add Stock Item" onClose={onClose} onSubmit={handleSubmit} saving={saving}>
+    <InventoryDrawerShell title={item ? "Edit Stock Item" : "Add Stock Item"} onClose={onClose} onSubmit={handleSubmit} saving={saving}>
       <div className="grid grid-cols-2 gap-3">
         <SelectField label="Type" value={itemType} onChange={(value) => setItemType(value as InventoryItemType)} options={itemTypes} />
         <SelectField label="Unit" value={unit} onChange={(value) => setUnit(value as InventoryUnit)} options={inventoryUnits} />
@@ -834,8 +887,9 @@ function StockItemDrawer({
         <TextField label="SKU" value={sku} onChange={setSku} placeholder="optional" />
         <TextField label="Color" value={color} onChange={setColor} placeholder="optional" />
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        <TextField label="Qty" type="number" value={quantity} onChange={setQuantity} />
+      {item && <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-ink-muted">Current stock: <span className="font-semibold text-ink">{numberValue(item.quantityOnHand)} {item.unit}</span>. Use Adjust Stock to change quantity.</div>}
+      <div className={cn("grid gap-3", item ? "grid-cols-2" : "grid-cols-3")}>
+        {!item && <TextField label="Qty" type="number" value={quantity} onChange={setQuantity} />}
         <TextField label="Reorder" type="number" value={reorderLevel} onChange={setReorderLevel} />
         <TextField label="Cost/Unit" type="number" value={costPerUnit} onChange={setCostPerUnit} />
       </div>
@@ -843,7 +897,7 @@ function StockItemDrawer({
       <div className="grid grid-cols-2 gap-3">
         <TextField label="Purchase Date" type="date" value={purchaseDate} onChange={setPurchaseDate} />
         <TextField
-          label="Purchase Cost (Finance)"
+          label={item ? "Purchase Cost" : "Purchase Cost (Finance)"}
           type="number"
           value={purchaseCost}
           onChange={(value) => {
@@ -853,7 +907,9 @@ function StockItemDrawer({
         />
       </div>
       <div className="rounded-lg border border-border-soft bg-surface-muted px-3 py-2 text-xs text-ink-muted">
-        {Number(purchaseCost) > 0 ? (
+        {item ? (
+          <span>Editing purchase details does not create or change any Finance expense.</span>
+        ) : Number(purchaseCost) > 0 ? (
           <span>
             A Finance expense transaction will be recorded for{" "}
             <span className="font-semibold text-ink">{money(Number(purchaseCost))}</span>.
@@ -880,7 +936,7 @@ function StockItemDrawer({
           <span>Enter Purchase Cost only when money was paid for this stock.</span>
         )}
       </div>
-      {Number(purchaseCost) > 0 && (
+      {!item && Number(purchaseCost) > 0 && (
         <SelectField
           label="Payment Mode"
           value={purchasePaymentMode}

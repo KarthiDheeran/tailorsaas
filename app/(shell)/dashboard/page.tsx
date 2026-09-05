@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Printer, X } from "lucide-react";
+import { AlarmClock, Plus, Printer, X } from "lucide-react";
 import { getDashboardDataAction } from "@/app/(shell)/dashboard/actions";
 import type { DashboardData } from "@/lib/dashboard";
 import { TodaysDeliveries } from "@/components/dashboard/todays-deliveries";
@@ -13,6 +13,7 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { LoadingState } from "@/components/ui/loading-state";
+import { formatDateTime } from "@/components/orders/orders-table";
 
 const SUMMARY_ROW_LIMIT = 6;
 const DEFAULT_SUMMARY_STAGES = [
@@ -23,6 +24,63 @@ const DEFAULT_SUMMARY_STAGES = [
   "Delivered",
 ];
 const HIDDEN_SUMMARY_STAGES = new Set(["Finishing", "Trial / Alteration"]);
+
+function UrgentOrders({ orders }: { orders: DashboardData["urgentOrders"] }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-amber-300 bg-white shadow-soft">
+      <header className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-5 py-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-[17px] font-bold text-amber-950">
+            <AlarmClock className="h-5 w-5" /> Urgent Orders
+          </h2>
+          <p className="text-xs text-amber-800">Complete these orders first</p>
+        </div>
+        <span className="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold text-white">
+          {orders.length}
+        </span>
+      </header>
+      {orders.length === 0 ? (
+        <p className="px-5 py-5 text-sm text-ink-muted">No active urgent orders.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-surface-muted text-xs font-semibold text-ink-muted">
+              <tr>
+                <th className="px-4 py-2">Order</th>
+                <th className="px-4 py-2">Customer</th>
+                <th className="px-4 py-2">Items</th>
+                <th className="px-4 py-2">Complete by</th>
+                <th className="px-4 py-2">Reason</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-soft">
+              {orders.map((order) => (
+                <tr key={order.id} className="hover:bg-amber-50/60">
+                  <td className="px-4 py-2">
+                    <Link href={`/orders?view=${order.id}`} className="font-bold text-primary hover:underline">
+                      Ord {order.orderNumber}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="font-semibold text-ink">{order.customerSnapshot?.name ?? "Customer"}</div>
+                    <div className="text-xs text-ink-muted">{order.customerSnapshot?.phone ?? ""}</div>
+                  </td>
+                  <td className="px-4 py-2 text-ink-muted">
+                    {order.items.map((item) => `${item.particular} x${item.qty}`).join(", ")}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 font-bold text-amber-800">
+                    {formatDateTime(order.urgentDueAt) || "Not set"}
+                  </td>
+                  <td className="px-4 py-2 text-ink-muted">{order.urgentReason || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function displayStage(stage: string) {
   if (stage === "Trial" || stage === "Alteration") return "Trial / Alteration";
@@ -470,7 +528,7 @@ function DashboardContent() {
         {hasPermission("orders.create") && (
           <Link
             href="/orders/new"
-            className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-secondary px-5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2"
+            className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             <Plus className="h-4 w-4" />
             <span>New Order</span>
@@ -488,6 +546,8 @@ function DashboardContent() {
       )}
 
       <div className="space-y-5">
+        <UrgentOrders orders={data.urgentOrders} />
+
         <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.55fr)]">
           <GarmentProductionSummary
             rows={data.garmentSummary}

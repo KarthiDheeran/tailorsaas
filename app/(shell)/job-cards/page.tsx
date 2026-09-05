@@ -966,7 +966,7 @@ function MarkOrderReadyModal({
         </div>
         <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
           <button type="button" disabled={saving} onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-ink hover:bg-surface-muted">Cancel</button>
-          <button type="button" disabled={saving} onClick={() => void save()} className="h-10 rounded-lg bg-secondary px-4 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-60">{saving ? "Saving…" : "Mark Ready"}</button>
+          <button type="button" disabled={saving} onClick={() => void save()} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? "Saving…" : "Mark Ready"}</button>
         </div>
       </div>
     </div>

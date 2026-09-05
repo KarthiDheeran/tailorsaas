@@ -93,7 +93,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 
 const ORDER_COLUMNS = `
   id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-  delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+  delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
 `;
@@ -120,6 +120,9 @@ interface OrderRow {
   trial_date: string | null;
   delivery_date: string;
   delivery_promise_note?: string | null;
+  is_urgent?: boolean | null;
+  urgent_due_at?: string | null;
+  urgent_reason?: string | null;
   order_notes?: string | null;
   delivery_bin?: string | null;
   created_by_operator_name?: string | null;
@@ -155,6 +158,9 @@ function mapOrder(row: OrderRow): Order {
     deliveryPromiseNote: row.delivery_promise_note?.trim()
       ? row.delivery_promise_note
       : undefined,
+    isUrgent: row.is_urgent === true,
+    urgentDueAt: row.urgent_due_at ?? undefined,
+    urgentReason: row.urgent_reason?.trim() || undefined,
     orderNotes: row.order_notes?.trim() ? row.order_notes : undefined,
     deliveryBin: row.delivery_bin?.trim() ? row.delivery_bin : undefined,
     createdByOperatorName: row.created_by_operator_name?.trim() ? row.created_by_operator_name : undefined,
@@ -183,6 +189,9 @@ function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
     message.includes("scan_token") ||
     message.includes("invoice_number") ||
     message.includes("delivery_promise_note") ||
+    message.includes("is_urgent") ||
+    message.includes("urgent_due_at") ||
+    message.includes("urgent_reason") ||
     message.includes("order_notes") ||
     message.includes("delivery_bin") ||
     message.includes("created_by_operator_name") ||
@@ -302,7 +311,7 @@ export async function getOrdersForCustomer(
 export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -333,6 +342,7 @@ export interface OrderListPageFilters {
   orderDateTo?: string;
   balanceFilter?: "all" | "paid" | "due" | "overdue";
   statusFilter?: "all" | OrderStatus;
+  urgentFilter?: "all" | "urgent" | "normal";
   deliveryFilter?: "all" | "dueToday" | "dueTomorrow" | "dueWeek" | "overdue" | "custom";
   deliveryFrom?: string;
   deliveryTo?: string;
@@ -358,7 +368,7 @@ export async function getOrderListPageRows(
 ): Promise<OrderListPageResult> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -369,7 +379,7 @@ export async function getOrderListPageRows(
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
 
-  async function run(selectColumns: string) {
+  async function run(selectColumns: string, includeUrgency: boolean) {
     const { filters } = options;
     const sortField = options.sortKey === "deliveryDate" ? "delivery_date" : "order_date";
     const from = Math.max(0, (options.page - 1) * options.pageSize);
@@ -378,10 +388,17 @@ export async function getOrderListPageRows(
       .from("orders")
       .select(selectColumns, { count: "exact" });
 
+    if (includeUrgency) query = query.order("is_urgent", { ascending: false });
+
     if (filters.orderDateFrom) query = query.gte("order_date", filters.orderDateFrom);
     if (filters.orderDateTo) query = query.lte("order_date", filters.orderDateTo);
     if (filters.statusFilter && filters.statusFilter !== "all") {
       query = query.eq("status", filters.statusFilter);
+    }
+    if (includeUrgency && filters.urgentFilter === "urgent") {
+      query = query.eq("is_urgent", true);
+    } else if (includeUrgency && filters.urgentFilter === "normal") {
+      query = query.eq("is_urgent", false);
     }
 
     if (filters.balanceFilter === "paid") {
@@ -418,9 +435,9 @@ export async function getOrderListPageRows(
       .range(from, to);
   }
 
-  let { data, error, count } = await run(columns);
+  let { data, error, count } = await run(columns, true);
   if (error && isMissingInvoiceNumberSchemaError(error)) {
-    const fallback = await run(fallbackColumns);
+    const fallback = await run(fallbackColumns, false);
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
     count = fallback.count;
@@ -589,7 +606,7 @@ export async function getProductionPrintOrderRows(
 ): Promise<Order[]> {
   const columns = `
     id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
-    delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
@@ -612,6 +629,25 @@ export async function getProductionPrintOrderRows(
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
   }
+  if (error) throw error;
+  return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
+}
+
+export async function getActiveUrgentOrderListRows(
+  supabase: SupabaseClient
+): Promise<Order[]> {
+  const columns = `
+    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
+    payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
+    order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
+  `;
+  const { data, error } = await supabase
+    .from("orders")
+    .select(columns)
+    .eq("is_urgent", true)
+    .not("status", "in", '("Delivered","Cancelled")')
+    .order("urgent_due_at", { ascending: true, nullsFirst: false });
   if (error) throw error;
   return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
 }
@@ -899,6 +935,34 @@ export async function updateOrderStatus(
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw error;
+  return getOrderById(supabase, id);
+}
+
+export async function updateOrderUrgency(
+  supabase: SupabaseClient,
+  id: string,
+  input: { isUrgent: boolean; urgentDueAt?: string; urgentReason?: string }
+): Promise<Order | undefined> {
+  const { data: updated, error } = await supabase
+    .from("orders")
+    .update({
+      is_urgent: input.isUrgent,
+      urgent_due_at: input.isUrgent ? input.urgentDueAt ?? null : null,
+      urgent_reason: input.isUrgent ? input.urgentReason?.trim() || null : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("delivery_date")
+    .single();
+  if (error) throw error;
+  const dueDate = input.isUrgent ? input.urgentDueAt?.slice(0, 10) : updated.delivery_date;
+  const { error: cardsError } = await supabase
+    .from("job_cards")
+    .update({ priority: input.isUrgent ? "High" : "Normal", ...(dueDate ? { due_date: dueDate } : {}), updated_at: new Date().toISOString() })
+    .eq("order_id", id)
+    .is("completed_date", null)
+    .eq("cancelled", false);
+  if (cardsError) throw cardsError;
   return getOrderById(supabase, id);
 }
 

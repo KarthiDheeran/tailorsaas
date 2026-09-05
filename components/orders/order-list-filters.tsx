@@ -16,6 +16,7 @@ import type { TranslationKey } from "@/lib/i18n/translations";
 
 export type BalanceFilter = "all" | "paid" | "due" | "overdue";
 export type StatusFilter = "all" | OrderStatus;
+export type UrgentFilter = "all" | "urgent" | "normal";
 export type DeliveryFilter =
   | "all"
   | "dueToday"
@@ -66,6 +67,8 @@ export function OrderListFilters({
   onBalanceFilterChange,
   statusFilter,
   onStatusFilterChange,
+  urgentFilter,
+  onUrgentFilterChange,
   deliveryFilter,
   onDeliveryFilterChange,
   deliveryCustomRange,
@@ -82,6 +85,8 @@ export function OrderListFilters({
   onBalanceFilterChange: (filter: BalanceFilter) => void;
   statusFilter: StatusFilter;
   onStatusFilterChange: (filter: StatusFilter) => void;
+  urgentFilter: UrgentFilter;
+  onUrgentFilterChange: (filter: UrgentFilter) => void;
   deliveryFilter: DeliveryFilter;
   onDeliveryFilterChange: (filter: DeliveryFilter) => void;
   deliveryCustomRange: DeliveryCustomRange;
@@ -126,6 +131,7 @@ export function OrderListFilters({
   const hasActiveFilters =
     query.trim() !== "" ||
     statusFilter !== "all" ||
+    urgentFilter !== "all" ||
     balanceFilter !== "all" ||
     deliveryFilter !== "all" ||
     orderDateRange.from !== "" ||
@@ -172,6 +178,18 @@ export function OrderListFilters({
         options={statusOptions}
         onChange={onStatusFilterChange}
         minWidthClass="min-w-[140px]"
+      />
+
+      <FilterDropdown
+        prefix="Priority"
+        value={urgentFilter}
+        options={[
+          { value: "all", label: "All" },
+          { value: "urgent", label: "Urgent" },
+          { value: "normal", label: "Normal" },
+        ]}
+        onChange={onUrgentFilterChange}
+        minWidthClass="min-w-[135px]"
       />
 
       <FilterDropdown

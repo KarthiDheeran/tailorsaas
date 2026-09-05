@@ -535,6 +535,9 @@ export interface Order {
   trialDate: string;
   deliveryDate: string;
   deliveryPromiseNote?: string;
+  isUrgent?: boolean;
+  urgentDueAt?: string;
+  urgentReason?: string;
   orderNotes?: string;
   deliveryBin?: string;
   createdByOperatorName?: string;

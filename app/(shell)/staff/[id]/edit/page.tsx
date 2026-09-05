@@ -86,7 +86,7 @@ function EditStaffPageContent({ params }: { params: { id: string } }) {
             <label className="block flex-1 text-sm font-semibold text-ink">New PIN
               <input value={operatorPin} onChange={(event) => setOperatorPin(event.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" type="password" className="mt-1.5 h-11 w-full rounded-lg border border-border px-3" placeholder="4 to 8 digits" />
             </label>
-            <button type="button" onClick={() => void handleSaveOperatorPin()} disabled={savingOperatorPin || operatorPin.length < 4} className="h-11 rounded-lg bg-secondary px-4 text-sm font-semibold text-white hover:bg-secondary-hover disabled:opacity-50">{savingOperatorPin ? "Saving…" : "Save operator PIN"}</button>
+            <button type="button" onClick={() => void handleSaveOperatorPin()} disabled={savingOperatorPin || operatorPin.length < 4} className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50">{savingOperatorPin ? "Saving…" : "Save operator PIN"}</button>
           </div>
           {operatorPinMessage && <p className="mt-2 text-sm font-medium text-ink-muted">{operatorPinMessage}</p>}
         </section>
