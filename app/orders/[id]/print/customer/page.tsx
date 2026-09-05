@@ -95,7 +95,9 @@ function customerWorkDetails(item: Order["items"][number], garment: CatalogGarme
   const snapshotFields = Array.isArray((item.fieldSchemaSnapshot as { fields?: unknown } | undefined)?.fields)
     ? ((item.fieldSchemaSnapshot as { fields: Array<{ code?: string; name?: string }> }).fields)
     : [];
-  const workField = snapshotFields.find((field) => field.name?.trim().toLowerCase() === "work details");
+  const workField = snapshotFields.find((field) =>
+    field.name?.trim().toLowerCase().startsWith("work details")
+  );
   const candidateKeys = [workField?.code, "work_details", "workDetails"].filter((key): key is string => Boolean(key));
   const raw = candidateKeys.map((key) => measurements[key]).find(Array.isArray);
   if (!Array.isArray(raw)) return [];

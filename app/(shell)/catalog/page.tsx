@@ -287,70 +287,75 @@ function CatalogPageContent() {
   const workStageDrawerOpen = isAddingWorkStage || editingWorkStage !== null;
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-      <Link
-        href="/settings"
-        className="mb-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-soft bg-white px-3 text-sm font-semibold text-ink-muted shadow-soft transition-colors hover:border-primary hover:text-primary"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Settings
-      </Link>
-
-      <div className="mb-6 flex items-center justify-between">
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 pb-4 sm:px-3 sm:py-2 lg:px-4 [&_table_td]:!px-2 [&_table_td]:!py-1.5 [&_table_th]:!px-2 [&_table_th]:!py-1.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#c9d7ea] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(30,64,175,0.06)]">
         <div>
-          <h1 className="text-[26px] font-semibold text-ink">
-            {t("catalog.title")}
-          </h1>
-          <p className="text-sm text-ink-muted">{t("catalog.subtitle")}</p>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings"
+              title="Back to Settings"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <h1 className="text-lg font-bold text-ink">
+              {t("catalog.title")}
+            </h1>
+          </div>
+          <p className="ml-10 mt-0.5 text-xs text-ink-muted">{t("catalog.subtitle")}</p>
         </div>
-        {canManage &&
-          (tab === "garment-types" ? (
-            <button
-              type="button"
-              onClick={() => {
-                setGarmentConfiguration(null);
-                setIsAddingGarment(true);
-              }}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-            >
-              <Plus className="h-4 w-4" />
-              {t("catalog.addGarmentType")}
-            </button>
-          ) : tab === "addons" ? (
-            <button
-              type="button"
-              onClick={() => setIsAddingAddOn(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-            >
-              <Plus className="h-4 w-4" />
-              {t("catalog.addAddOn")}
-            </button>
-          ) : tab === "work-stages" ? (
-            <button
-              type="button"
-              onClick={() => setIsAddingWorkStage(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
-            >
-              <Plus className="h-4 w-4" />
-              Add Work Stage
-            </button>
-          ) : null)}
+        <div>
+          {canManage &&
+            (tab === "garment-types" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setGarmentConfiguration(null);
+                  setIsAddingGarment(true);
+                }}
+                className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" />
+                {t("catalog.addGarmentType")}
+              </button>
+            ) : tab === "addons" ? (
+              <button
+                type="button"
+                onClick={() => setIsAddingAddOn(true)}
+                className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" />
+                {t("catalog.addAddOn")}
+              </button>
+            ) : tab === "work-stages" ? (
+              <button
+                type="button"
+                onClick={() => setIsAddingWorkStage(true)}
+                className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" />
+                Add Work Stage
+              </button>
+            ) : null)}
+        </div>
       </div>
 
-      <CatalogTabs
-        active={tab}
-        onChange={(nextTab) => {
-          setTab(nextTab);
-          router.replace(`${pathname}?tab=${nextTab}`, { scroll: false });
-        }}
-      />
+      <div className="mb-2 bg-white px-2">
+        <CatalogTabs
+          active={tab}
+          onChange={(nextTab) => {
+            setTab(nextTab);
+            router.replace(`${pathname}?tab=${nextTab}`, { scroll: false });
+          }}
+        />
+      </div>
 
       {isLoadingCatalog ? (
         <LoadingState label="Loading catalog..." />
       ) : tab === "garment-types" ? (
         <>
           {!metadataAvailable && (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Dynamic Fields and Sections will be available after database migrations 0055 and 0056 are applied. Existing catalog management remains available.
             </div>
           )}
@@ -445,7 +450,7 @@ function CatalogPageContent() {
 
 function CatalogPageFallback() {
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+    <div className="w-full max-w-none bg-[#f5f8ff] p-2 sm:px-3 sm:py-2 lg:px-4">
       <LoadingState label="Opening catalog..." />
     </div>
   );

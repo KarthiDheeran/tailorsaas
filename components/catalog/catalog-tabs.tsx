@@ -23,14 +23,14 @@ export function CatalogTabs({
   const { t } = useLanguage();
 
   return (
-    <div className="mb-6 flex items-center gap-1 border-b border-border-soft">
+    <div className="flex items-center gap-1 overflow-x-auto border-b border-border-soft">
       {TABS.map((tab) => (
         <button
           key={tab.key}
           type="button"
           onClick={() => onChange(tab.key)}
           className={cn(
-            "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+            "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors",
             active === tab.key
               ? "border-primary text-primary"
               : "border-transparent text-ink-muted hover:text-ink"
