@@ -436,7 +436,7 @@ export type TaskType =
 
 export type TaskPriority = "Low" | "Normal" | "High";
 
-export interface Staff {
+  export interface Staff {
   id: string;
   staffNumber: string;
   tenantId?: string;
@@ -447,7 +447,10 @@ export interface Staff {
   joiningDate: string;
   address: string;
   emergencyContact: string;
-  status: StaffStatus;
+    status: StaffStatus;
+    canTakeMeasurements: boolean;
+    canCreateOrders: boolean;
+    canCollectPayments: boolean;
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;

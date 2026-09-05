@@ -34,14 +34,15 @@ import type {
 
 const STAFF_COLUMNS = `
   id, tenant_id, shop_id, staff_number, staff_code, name, phone, role, joining_date, address,
-  emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
+  emergency_contact, status, can_take_measurements, can_create_orders, can_collect_payments,
+  notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 const LEGACY_STAFF_COLUMNS = `
   id, staff_number, staff_code, name, phone, role, joining_date, address,
   emergency_contact, status, notes, payment_type, base_salary, piece_rates, garment_stage_rates
 `;
 
-const STAFF_OPTION_COLUMNS = "id, tenant_id, shop_id, staff_number, staff_code, name, role, status";
+const STAFF_OPTION_COLUMNS = "id, tenant_id, shop_id, staff_number, staff_code, name, role, status, can_take_measurements, can_create_orders, can_collect_payments";
 const LEGACY_STAFF_OPTION_COLUMNS = "id, staff_number, staff_code, name, role, status";
 
 interface StaffRow {
@@ -57,6 +58,9 @@ interface StaffRow {
   address: string | null;
   emergency_contact: string | null;
   status: StaffStatus;
+  can_take_measurements?: boolean;
+  can_create_orders?: boolean;
+  can_collect_payments?: boolean;
   notes: string | null;
   payment_type: StaffPaymentType;
   base_salary: number | null;
@@ -73,6 +77,9 @@ interface StaffOptionRow {
   name: string;
   role: StaffRole;
   status: StaffStatus;
+  can_take_measurements?: boolean;
+  can_create_orders?: boolean;
+  can_collect_payments?: boolean;
 }
 
 export interface StaffOption {
@@ -84,6 +91,9 @@ export interface StaffOption {
   name: string;
   role: StaffRole;
   status: StaffStatus;
+  canTakeMeasurements: boolean;
+  canCreateOrders: boolean;
+  canCollectPayments: boolean;
 }
 
 function mapStaff(row: StaffRow): Staff {
@@ -99,6 +109,9 @@ function mapStaff(row: StaffRow): Staff {
     address: row.address ?? "",
     emergencyContact: row.emergency_contact ?? "",
     status: row.status,
+    canTakeMeasurements: row.can_take_measurements ?? false,
+    canCreateOrders: row.can_create_orders ?? false,
+    canCollectPayments: row.can_collect_payments ?? false,
     notes: row.notes ?? undefined,
     paymentType: row.payment_type,
     baseSalary: row.base_salary ?? undefined,
@@ -117,6 +130,9 @@ function mapStaffOption(row: StaffOptionRow): StaffOption {
     name: row.name,
     role: row.role,
     status: row.status,
+    canTakeMeasurements: row.can_take_measurements ?? false,
+    canCreateOrders: row.can_create_orders ?? false,
+    canCollectPayments: row.can_collect_payments ?? false,
   };
 }
 
@@ -195,6 +211,9 @@ export interface StaffInput {
   address: string;
   emergencyContact: string;
   status: StaffStatus;
+  canTakeMeasurements: boolean;
+  canCreateOrders: boolean;
+  canCollectPayments: boolean;
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
@@ -222,6 +241,9 @@ export async function createStaff(
     address: data.address,
     emergency_contact: data.emergencyContact,
     status: data.status,
+    can_take_measurements: data.canTakeMeasurements,
+    can_create_orders: data.canCreateOrders,
+    can_collect_payments: data.canCollectPayments,
     notes: data.notes ?? null,
     payment_type: data.paymentType,
     base_salary: data.baseSalary ?? null,
@@ -237,6 +259,9 @@ export async function createStaff(
     const legacyPayload: Record<string, unknown> = { ...insertPayload };
     delete legacyPayload.tenant_id;
     delete legacyPayload.shop_id;
+    delete legacyPayload.can_take_measurements;
+    delete legacyPayload.can_create_orders;
+    delete legacyPayload.can_collect_payments;
     const retry = await supabase
       .from("staff")
       .insert(legacyPayload)
@@ -264,6 +289,9 @@ export async function updateStaff(
     address: data.address,
     emergency_contact: data.emergencyContact,
     status: data.status,
+    can_take_measurements: data.canTakeMeasurements,
+    can_create_orders: data.canCreateOrders,
+    can_collect_payments: data.canCollectPayments,
     notes: data.notes ?? null,
     payment_type: data.paymentType,
     base_salary: data.baseSalary ?? null,
@@ -281,6 +309,9 @@ export async function updateStaff(
     const legacyPayload: Record<string, unknown> = { ...updatePayload };
     delete legacyPayload.tenant_id;
     delete legacyPayload.shop_id;
+    delete legacyPayload.can_take_measurements;
+    delete legacyPayload.can_create_orders;
+    delete legacyPayload.can_collect_payments;
     const retry = await supabase
       .from("staff")
       .update(legacyPayload)
@@ -298,7 +329,9 @@ export function isMissingStaffShopColumnError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const code = candidate?.code ?? "";
   const message = `${candidate?.message ?? ""} ${candidate?.details ?? ""}`.toLowerCase();
-  return code === "PGRST204" || message.includes("tenant_id") || message.includes("shop_id");
+  return code === "PGRST204" || message.includes("tenant_id") || message.includes("shop_id") ||
+    message.includes("can_take_measurements") || message.includes("can_create_orders") ||
+    message.includes("can_collect_payments");
 }
 
 const WORK_ASSIGNMENT_COLUMNS = `

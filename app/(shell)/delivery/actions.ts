@@ -104,7 +104,7 @@ export async function getDeliveryCollectorsAction(): Promise<StaffOption[]> {
   const supabase = createServerClient();
   const guard = await requireServerPermission(supabase, "delivery.view");
   if (!guard.ok) return [];
-  return getStaffOptions(supabase, { activeOnly: true });
+  return (await getStaffOptions(supabase, { activeOnly: true })).filter((member) => member.canCollectPayments);
 }
 
 export async function deliverOrderItemsAction(data: {
@@ -128,7 +128,7 @@ export async function deliverOrderItemsAction(data: {
     return { success: false, error: "Enter a valid collected amount." };
   }
   const collector = data.amount > 0 ? await getStaffById(supabase, data.collectorStaffId?.trim() ?? "") : undefined;
-  if (data.amount > 0 && (!collector || collector.status !== "Active")) {
+  if (data.amount > 0 && (!collector || collector.status !== "Active" || !collector.canCollectPayments)) {
     return { success: false, error: "Select the active staff member who collected the amount." };
   }
   const existing = await getOrderById(supabase, data.orderId);
@@ -270,7 +270,7 @@ export async function quickCollectAndDeliverAction(data: {
   if (!data.orderId) return { success: false, error: "Order is required." };
   if (!Number.isFinite(data.amount) || data.amount < 0) return { success: false, error: "Enter a valid collected amount." };
   const collector = data.amount > 0 ? await getStaffById(supabase, data.collectorStaffId?.trim() ?? "") : undefined;
-  if (data.amount > 0 && (!collector || collector.status !== "Active")) {
+  if (data.amount > 0 && (!collector || collector.status !== "Active" || !collector.canCollectPayments)) {
     return { success: false, error: "Select the active staff member who collected the amount." };
   }
 

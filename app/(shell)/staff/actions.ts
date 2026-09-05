@@ -117,6 +117,9 @@ export interface StaffFormInput {
   address: string;
   emergencyContact: string;
   status: StaffStatus;
+  canTakeMeasurements: boolean;
+  canCreateOrders: boolean;
+  canCollectPayments: boolean;
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;

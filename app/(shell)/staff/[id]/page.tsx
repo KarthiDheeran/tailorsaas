@@ -96,6 +96,17 @@ function StaffViewPageContent({ params }: { params: { id: string } }) {
             {member.paymentType === "Salary" && <><dt className="text-ink-muted">Monthly salary</dt><dd className="font-semibold text-ink">{formatCurrency(member.baseSalary ?? 0)}</dd></>}
             <dt className="text-ink-muted">Address</dt><dd className="font-medium text-ink">{member.address || "-"}</dd>
             <dt className="text-ink-muted">Emergency contact</dt><dd className="font-medium text-ink">{member.emergencyContact || "-"}</dd>
+            <dt className="text-ink-muted">Responsibilities</dt>
+            <dd className="flex flex-wrap gap-1">
+              {[
+                member.canTakeMeasurements && "Measurements",
+                member.canCreateOrders && "Order creation",
+                member.canCollectPayments && "Payment collection",
+              ].filter(Boolean).map((responsibility) => (
+                <span key={String(responsibility)} className="rounded bg-primary-tint px-2 py-0.5 text-xs font-semibold text-primary-dark">{responsibility}</span>
+              ))}
+              {!member.canTakeMeasurements && !member.canCreateOrders && !member.canCollectPayments && <span className="text-ink-muted">Production only</span>}
+            </dd>
             <dt className="text-ink-muted">Notes</dt><dd className="font-medium text-ink">{member.notes || "-"}</dd>
           </dl>
         </section>

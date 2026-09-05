@@ -189,7 +189,9 @@ export async function getPaymentsPageInitialDataAction(
   let dailyClosing: DailyClosingSummary | null = null;
   let pendingDuesOrders: Order[] | null = null;
   let adjustments: FinancialAdjustmentLedgerRow[] | null = null;
-  const collectors = canViewPayments ? await getStaffOptions(supabase, { activeOnly: true }) : [];
+  const collectors = canViewPayments
+    ? (await getStaffOptions(supabase, { activeOnly: true })).filter((member) => member.canCollectPayments)
+    : [];
 
   if (canViewPayments) {
     const todaySource = await getPaymentsReportSourceData(admin, {

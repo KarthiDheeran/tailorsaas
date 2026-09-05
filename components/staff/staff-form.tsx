@@ -23,6 +23,9 @@ export interface StaffFormValues {
   address: string;
   emergencyContact: string;
   status: StaffStatus;
+  canTakeMeasurements: boolean;
+  canCreateOrders: boolean;
+  canCollectPayments: boolean;
   notes?: string;
   paymentType: StaffPaymentType;
   baseSalary?: number;
@@ -65,6 +68,9 @@ export function StaffForm({
     initialValues?.emergencyContact ?? ""
   );
   const [status, setStatus] = useState<StaffStatus>(initialValues?.status ?? "Active");
+  const [canTakeMeasurements, setCanTakeMeasurements] = useState(initialValues?.canTakeMeasurements ?? false);
+  const [canCreateOrders, setCanCreateOrders] = useState(initialValues?.canCreateOrders ?? false);
+  const [canCollectPayments, setCanCollectPayments] = useState(initialValues?.canCollectPayments ?? false);
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [paymentType, setPaymentType] = useState<StaffPaymentType>(
     initialValues?.paymentType ?? "Per Piece"
@@ -151,6 +157,9 @@ export function StaffForm({
       address: address.trim(),
       emergencyContact: emergencyContact.trim(),
       status,
+      canTakeMeasurements,
+      canCreateOrders,
+      canCollectPayments,
       notes: notes.trim() || undefined,
       paymentType,
       baseSalary: paymentType === "Salary" ? Number(baseSalary) || 0 : undefined,
@@ -281,6 +290,23 @@ export function StaffForm({
           </div>
         </div>
       </div>
+
+      <fieldset className="mt-4 rounded-lg border border-border-soft bg-surface-muted p-3">
+        <legend className="px-1 text-sm font-semibold text-ink">Operational Responsibilities</legend>
+        <p className="mb-3 text-xs text-ink-muted">Only selected staff will appear in these operational dropdowns.</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ["Take measurements", canTakeMeasurements, setCanTakeMeasurements],
+            ["Create orders", canCreateOrders, setCanCreateOrders],
+            ["Collect payments", canCollectPayments, setCanCollectPayments],
+          ].map(([label, checked, setter]) => (
+            <label key={String(label)} className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2.5 text-sm font-medium text-ink">
+              <input type="checkbox" checked={Boolean(checked)} onChange={(event) => (setter as (value: boolean) => void)(event.target.checked)} className="h-4 w-4 accent-primary" />
+              {String(label)}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       {paymentType === "Salary" ? (
         <label className="mt-4 flex max-w-xs flex-col gap-1.5">

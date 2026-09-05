@@ -185,17 +185,19 @@ async function timeOrderSaveStep<T>(
 
 async function resolveMeasurementTaker(
   staffId?: string,
+  responsibility: "can_take_measurements" | "can_create_orders" = "can_take_measurements",
 ): Promise<{ operator?: Pick<ActiveSharedDesktopOperator, "id" | "name">; error?: string }> {
   if (!staffId) return {};
   const { data, error } = await createAdminClient()
     .from("staff")
-    .select("id,name,status")
+    .select(`id,name,status,${responsibility}`)
     .eq("id", staffId)
     .maybeSingle();
-  if (error || !data || data.status !== "Active") {
-    return { error: "Choose an active staff member for measurements." };
+  const eligible = data as { id: string; name: string; status: string; can_take_measurements?: boolean; can_create_orders?: boolean } | null;
+  if (error || !eligible || eligible.status !== "Active" || eligible[responsibility] !== true) {
+    return { error: responsibility === "can_create_orders" ? "Choose a staff member allowed to create orders." : "Choose a staff member allowed to take measurements." };
   }
-  return { operator: { id: data.id, name: data.name } };
+  return { operator: { id: eligible.id, name: eligible.name } };
 }
 
 const ORDER_ATTACHMENT_TYPES: OrderAttachmentType[] = [
@@ -290,6 +292,8 @@ type MeasurementStaffOption = {
   name: string;
   staff_number: string;
   staff_code?: number;
+  can_take_measurements: boolean;
+  can_create_orders: boolean;
 };
 
 export interface NewOrderBootstrapData {
@@ -404,7 +408,7 @@ async function getOrderPreferencesForNewOrder(
 async function getActiveOperatorStaffForNewOrder(): Promise<MeasurementStaffOption[]> {
   const { data, error } = await createAdminClient()
     .from("staff")
-    .select("id,name,staff_number,staff_code")
+    .select("id,name,staff_number,staff_code,can_take_measurements,can_create_orders")
     .eq("status", "Active")
     .order("name");
   if (error) return [];
@@ -998,7 +1002,7 @@ export async function createOrderAction(data: {
   );
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
   const selectedCreator = await timeOrderSaveStep(workflow, "resolveCreatedByOperator", () =>
-    resolveMeasurementTaker(data.createdByOperatorId)
+    resolveMeasurementTaker(data.createdByOperatorId, "can_create_orders")
   );
   if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.orderSection)) {
@@ -1088,7 +1092,7 @@ export async function createOrderForNewCustomerAction(data: {
   );
   if (measurementTaker.error) return { success: false, error: measurementTaker.error };
   const selectedCreator = await timeOrderSaveStep(workflow, "resolveCreatedByOperator", () =>
-    resolveMeasurementTaker(data.order.createdByOperatorId)
+    resolveMeasurementTaker(data.order.createdByOperatorId, "can_create_orders")
   );
   if (selectedCreator.error) return { success: false, error: selectedCreator.error };
   if (!isGarmentSection(data.order.orderSection)) {
@@ -1660,8 +1664,8 @@ export async function recordPaymentAction(data: {
       const selectedCollector = data.collectorStaffId
         ? await getStaffById(supabase, data.collectorStaffId.trim())
         : undefined;
-      if (data.collectorStaffId && (!selectedCollector || selectedCollector.status !== "Active")) {
-        return { success: false, error: "Select an active staff member who collected the amount." };
+      if (data.collectorStaffId && (!selectedCollector || selectedCollector.status !== "Active" || !selectedCollector.canCollectPayments)) {
+        return { success: false, error: "Choose a staff member allowed to collect payments." };
       }
       const paymentId = await recordPayment(supabase, data);
       await recordPaymentOperatorAttribution(createAdminClient(), paymentId, selectedCollector ?? operatorGuard.operator);

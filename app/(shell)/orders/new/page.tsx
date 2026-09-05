@@ -122,7 +122,7 @@ const CUSTOMER_SEARCH_MIN_LENGTH = 2;
 const CUSTOMER_SEARCH_RESULT_LIMIT = 8;
 const ORDER_ENTRY_VIEW_KEY = "tailorsaas:new-order-entry-view";
 
-type MeasurementStaffOption = { id: string; name: string; staff_number: string; staff_code?: number };
+type MeasurementStaffOption = { id: string; name: string; staff_number: string; staff_code?: number; can_take_measurements: boolean; can_create_orders: boolean };
 type TodayItemSummaryRow = { garment: string; qty: number };
 
 function customerMatchesSearch(customer: Customer, query: string) {
@@ -491,8 +491,9 @@ function NewOrderPageContent() {
           setMeasurementStaff(data.measurementStaff);
           setTodayItemSummary(data.todayItemSummary);
           if (data.operatorMode.operator) {
-            setMeasurementTakenByOperatorId((current) => current || data.operatorMode.operator!.id);
-            setCreatedByOperatorId((current) => current || data.operatorMode.operator!.id);
+            const operatorStaff = data.measurementStaff.find((staff) => staff.id === data.operatorMode.operator!.id);
+            if (operatorStaff?.can_take_measurements) setMeasurementTakenByOperatorId((current) => current || operatorStaff.id);
+            if (operatorStaff?.can_create_orders) setCreatedByOperatorId((current) => current || operatorStaff.id);
           }
           writeNewOrderBillingSettings(currentUserId, data.billingSettings);
           writeNewOrderPreferences(currentUserId, data.orderPreferences);
@@ -2271,8 +2272,8 @@ function NewOrderPageContent() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-semibold text-ink">Order date<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
               <label className="text-sm font-semibold text-ink">Delivery date<input ref={deliveryDateInputRef} type="date" value={deliveryDate} onChange={(event) => { deliveryDateWasEditedRef.current = true; setDeliveryDate(event.target.value); }} className="mt-1 h-11 w-full rounded-lg border border-border px-3" /></label>
-              <label className="text-sm font-semibold text-ink">Measurements taken by <span className="text-chip-red-fg">*</span><select required value={measurementTakenByOperatorId} onChange={(event) => { setMeasurementTakenByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
-              <label className="text-sm font-semibold text-ink">Created by <span className="text-chip-red-fg">*</span><select required value={createdByOperatorId} onChange={(event) => { setCreatedByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Measurements taken by <span className="text-chip-red-fg">*</span><select required value={measurementTakenByOperatorId} onChange={(event) => { setMeasurementTakenByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.filter((staff) => staff.can_take_measurements).map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
+              <label className="text-sm font-semibold text-ink">Created by <span className="text-chip-red-fg">*</span><select required value={createdByOperatorId} onChange={(event) => { setCreatedByOperatorId(event.target.value); setFinalizeError(null); }} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3"><option value="">Select staff</option>{measurementStaff.filter((staff) => staff.can_create_orders).map((staff) => <option key={staff.id} value={staff.id}>{staff.staff_code ?? staff.staff_number} — {staff.name}</option>)}</select></label>
               <label className="text-sm font-semibold text-ink">Advance amount<input ref={advanceAmountRef} type="number" min={0} max={totalAmount} value={advancePaid} onChange={(event) => setAdvancePaid(Number(event.target.value))} className="mt-1 h-11 w-full rounded-lg border border-border px-3 text-right" /></label>
               <label className="text-sm font-semibold text-ink sm:col-span-2">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="mt-1 h-11 w-full rounded-lg border border-border bg-white px-3">{paymentModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
               <label className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900 sm:col-span-2"><input type="checkbox" checked={isUrgent} onChange={(event) => setIsUrgent(event.target.checked)} />Urgent order</label>

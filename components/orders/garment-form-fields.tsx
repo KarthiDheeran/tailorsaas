@@ -169,9 +169,14 @@ function TableFieldControl({
                         className={focusableCellClass(rowIndex, column.key)}
                       >
                         <option value="">Select...</option>
-                        {garmentTableColumnOptions(column, rowConfig).map((option) => (
-                          <option key={option}>{option}</option>
-                        ))}
+                        {garmentTableColumnOptions(column, rowConfig).map((option) => {
+                          const optionMetadata = garmentTableSelectedOptionMetadata(column, rowConfig, option);
+                          return (
+                            <option key={option} value={option}>
+                              {optionMetadata.labelTa || option}
+                            </option>
+                          );
+                        })}
                       </select>
                     ) : column.readonly ? (
                       <div className={readOnlyCellClass(rowIndex, column.key)}>

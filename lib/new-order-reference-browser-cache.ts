@@ -20,6 +20,8 @@ export type NewOrderOperatorStaff = {
   name: string;
   staff_number: string;
   staff_code?: number;
+  can_take_measurements: boolean;
+  can_create_orders: boolean;
 }[];
 
 export type NewOrderTodayItemSummary = {
@@ -141,18 +143,19 @@ export function clearNewOrderCustomers(scopeId?: string) {
 }
 
 export function readNewOrderOperatorStaff(scopeId: string | undefined) {
-  return read<NewOrderOperatorStaff>(scopeId, "operator-staff", STAFF_TTL_MS);
+  const staff = read<NewOrderOperatorStaff>(scopeId, "operator-staff-v2", STAFF_TTL_MS);
+  return staff?.every((member) => typeof member.can_take_measurements === "boolean" && typeof member.can_create_orders === "boolean") ? staff : null;
 }
 
 export function writeNewOrderOperatorStaff(
   scopeId: string | undefined,
   staff: NewOrderOperatorStaff
 ) {
-  write(scopeId, "operator-staff", staff);
+  write(scopeId, "operator-staff-v2", staff);
 }
 
 export function clearNewOrderOperatorStaff(scopeId?: string) {
-  clear(scopeId, "operator-staff");
+  clear(scopeId, "operator-staff-v2");
 }
 
 function todaySummaryCacheName(todayIso: string) {

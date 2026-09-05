@@ -39,6 +39,8 @@ export async function getActiveOperatorStaffAction() {
         name: member.name,
         staff_number: member.staffNumber,
         staff_code: member.staffCode,
+        can_take_measurements: member.canTakeMeasurements,
+        can_create_orders: member.canCreateOrders,
       })),
     };
   } catch {
