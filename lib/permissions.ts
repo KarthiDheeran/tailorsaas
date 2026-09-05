@@ -14,6 +14,7 @@
 export type Permission =
   | "dashboard.view"
   | "calendar.view"
+  | "shops.viewAll"
   | "orders.view"
   | "orders.create"
   | "orders.edit"
@@ -58,6 +59,8 @@ export interface PermissionDefinition {
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "dashboard.view", label: "View dashboard", group: "Dashboard" },
   { key: "calendar.view", label: "View calendar", group: "Calendar" },
+
+  { key: "shops.viewAll", label: "View all shop operations", group: "Shop Access" },
 
   { key: "orders.view", label: "View orders", group: "Orders" },
   { key: "orders.create", label: "Create orders", group: "Orders" },

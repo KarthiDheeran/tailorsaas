@@ -90,6 +90,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { profileDataFunction, withPerformanceContext } from "@/lib/performance/query-profiler";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
+import { getShops } from "@/lib/shops";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -166,9 +167,10 @@ async function requireStaffSameShopForOrder(
   staffId: string
 ): Promise<string | null> {
   const admin = createAdminClient();
-  const [order, staff] = await Promise.all([
+  const [order, staff, shops] = await Promise.all([
     getOrderById(admin, orderId),
     getStaffById(admin, staffId),
+    getShops(admin),
   ]);
   if (!order) return "Order not found.";
   if (!staff) return "Staff member not found.";
@@ -178,6 +180,21 @@ async function requireStaffSameShopForOrder(
     return `Set shop/location for ${staff.name} before assigning job cards.`;
   }
   if (staff.shopId !== order.shopId) {
+    const orderShop = shops.find((shop) => shop.id === order.shopId);
+    const staffShop = shops.find((shop) => shop.id === staff.shopId);
+    const orderWasCreatedCentrally =
+      orderShop != null &&
+      GARMENT_SECTIONS.every((section) => orderShop.allowedOrderSections.includes(section));
+    const staffShopHandlesOrderSection =
+      order.orderSection != null &&
+      staffShop?.allowedOrderSections.includes(order.orderSection) === true;
+
+    // Main/Admin locations create orders for every garment section, while
+    // production workers belong to the corresponding Men or Women shop.
+    // Keep strict location matching for branch-specific orders, but allow a
+    // centrally-created order to reach a shop configured for its section.
+    if (orderWasCreatedCentrally && staffShopHandlesOrderSection) return null;
+
     return `${staff.name} belongs to another shop/location and cannot be assigned to this order.`;
   }
   return null;
