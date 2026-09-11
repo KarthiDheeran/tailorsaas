@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { IndianRupee, Repeat, UserPlus, Wallet } from "lucide-react";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import { formatDate } from "@/components/orders/orders-table";
@@ -54,13 +56,16 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
   // comment for why this is an effect + state instead of useMemo. Areas are
   // independent of the report filters, so they only fetch once.
   const [areas, setAreas] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<CustomersReport>(EMPTY_REPORT);
 
   useEffect(() => {
     let cancelled = false;
     getReportCustomerAreasAction().then((result) => {
       if (!cancelled) setAreas(result);
-    });
+    }).catch(() => { /* Filter suggestions are optional. */ });
     return () => {
       cancelled = true;
     };
@@ -70,6 +75,7 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getCustomersReportAction(
       {
         range,
@@ -82,12 +88,16 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
       todayIso
     ).then((result) => {
       if (!cancelled && result) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, area, debouncedCustomerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]);
+  }, [retryTick, range.from, range.to, area, debouncedCustomerQuery, hasBalanceOnly, repeatOnly, inactiveOnly, todayIso]);
 
   function handleExport() {
     downloadCsv(
@@ -111,6 +121,9 @@ export function CustomersReportView({ todayIso }: { todayIso: string }) {
     { key: "repeat", label: t("reports.repeatCustomers"), value: repeatOnly, set: setRepeatOnly },
     { key: "inactive", label: t("reports.inactive"), value: inactiveOnly, set: setInactiveOnly },
   ];
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   return (
     <div>

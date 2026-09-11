@@ -138,8 +138,17 @@ export async function getDashboardData(
   const jobCardStats = dashboardCards
     ? getDashboardJobCardStats(dashboardCards)
     : null;
+  const [summaryOrders, stageSlips] = dashboardCards
+    ? await Promise.all([
+        getOrderListRowsByIds(supabase, dashboardCards.map((card) => card.orderId)),
+        getJobCardStageSlipsForOrders(supabase, dashboardCards
+          .filter((card) => card.stage !== "Cancelled" && card.orderStatus !== "Cancelled")
+          .map((card) => card.orderId)),
+      ])
+    : [[], []];
+  const ordersById = new Map(summaryOrders.map((order) => [order.id, order]));
   const stagePendingSummary = dashboardCards
-    ? await getStagePendingSummary(supabase, dashboardCards, todayIso)
+    ? getStagePendingSummary(dashboardCards, todayIso, ordersById, stageSlips)
     : [];
   const summaryFrom = filters?.from || todayIso;
   const summaryTo = filters?.to || todayIso;
@@ -147,11 +156,6 @@ export async function getDashboardData(
   let garmentStages: string[] = [];
   if (dashboardCards) {
     const cards = dashboardCards;
-    const summaryOrders = await getOrderListRowsByIds(
-      supabase,
-      cards.map((card) => card.orderId)
-    );
-    const ordersById = new Map(summaryOrders.map((order) => [order.id, order]));
     garmentStages = Array.from(new Set(cards.map((card) => card.stage))).sort();
     const grouped = new Map<string, DashboardData["garmentSummary"][number]>();
     for (const card of cards) {
@@ -308,23 +312,15 @@ function aggregateStagePendingDetails(
   };
 }
 
-async function getStagePendingSummary(
-  supabase: SupabaseClient,
+function getStagePendingSummary(
   cards: JobCard[],
-  todayIso: string
-): Promise<StagePendingSummary[]> {
+  todayIso: string,
+  ordersById: Map<string, Order>,
+  slips: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>
+): StagePendingSummary[] {
   const activeCards = cards.filter(
     (card) => card.stage !== "Cancelled" && card.orderStatus !== "Cancelled"
   );
-  const slips = await getJobCardStageSlipsForOrders(
-    supabase,
-    activeCards.map((card) => card.orderId)
-  );
-  const orders = await getOrderListRowsByIds(
-    supabase,
-    activeCards.map((card) => card.orderId)
-  );
-  const ordersById = new Map(orders.map((order) => [order.id, order]));
   const cuttingPending = activeCards.filter(
     (card) =>
       card.orderStatus !== "Delivered" &&

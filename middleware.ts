@@ -73,6 +73,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Resolve legacy aliases before rendering beneath the shell's async auth boundary.
+  const alias = path === "/accounts" ? "/payments" : path === "/calendar" ? "/orders" : null;
+  if (alias) {
+    const url = request.nextUrl.clone();
+    url.pathname = alias;
+    const redirectResponse = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
+  }
+
   if (diagnostics) {
     const totalMs = performance.now() - startedAt;
     response.headers.set("Server-Timing", `auth;dur=${authMs.toFixed(1)}, profile;dur=${profileMs.toFixed(1)}, middleware;dur=${totalMs.toFixed(1)}`);

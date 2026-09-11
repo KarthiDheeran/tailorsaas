@@ -591,7 +591,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
                 type="button"
                 disabled={deletingOrder}
                 onClick={async () => {
-                  if (!window.confirm("Delete this order? This is allowed only before any production or payment activity.")) return;
+                  if (!window.confirm("Delete this order? This is allowed only before any production or payment activity. If this is the shop's last issued order number, it will become available for reuse. Existing order numbers will stay the same.")) return;
                   setDeletingOrder(true);
                   const result = await deleteUntouchedOrderAction(order.id);
                   if (!result.success) {

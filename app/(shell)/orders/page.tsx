@@ -84,8 +84,7 @@ function OrdersPageContent() {
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [customersById, setCustomersById] = useState<Record<string, Customer>>({});
-  // Only gates the very first load — refreshTick-triggered refetches (status
-  // change, edit save, etc.) shouldn't re-blank the table with a spinner.
+  // Hide stale rows while filters, pagination, or saved changes are loading.
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -108,6 +107,7 @@ function OrdersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
     getOrdersListPageAction({
       page,
       pageSize: PAGE_SIZE,
@@ -279,7 +279,7 @@ function OrdersPageContent() {
   }
 
   async function handleDeleteOrder(order: Order) {
-    if (!window.confirm(`Delete order ${order.orderNumber}? This works only before production or payment activity starts.`)) return;
+    if (!window.confirm(`Delete order ${order.orderNumber}? This works only before production or payment activity starts. If this is the shop's last issued order number, it will become available for reuse. Existing order numbers will stay the same.`)) return;
     const result = await deleteUntouchedOrderAction(order.id);
     if (!result.success) {
       window.alert(result.error);

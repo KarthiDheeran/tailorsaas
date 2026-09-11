@@ -1,0 +1,16 @@
+import { createClient } from '@supabase/supabase-js';
+import { writeFileSync } from 'node:fs';
+process.loadEnvFile('.env.local');
+process.loadEnvFile('.env.test.local');
+const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+const shopKey = process.env.E2E_SHOP?.toUpperCase();
+const { data, error } = await client.auth.signInWithPassword({ email: shopKey ? process.env[`E2E_${shopKey}_EMAIL`] : process.env.E2E_EMAIL, password: shopKey ? process.env[`E2E_${shopKey}_PASSWORD`] : process.env.E2E_PASSWORD });
+if (error) throw new Error(error.message);
+const profile = await client.from('profiles').select('tenant_id,shop_id,role_id,allowed_order_sections').eq('id', data.user.id).single();
+if (profile.error) throw new Error(profile.error.message);
+const shops = await client.from('shops').select('id,name,tenant_id');
+if (shops.error) throw new Error(shops.error.message);
+const report = { createdAt: new Date().toISOString(), profile: profile.data, shops: shops.data, mutations: [] };
+writeFileSync(`test-results/live-access-review${shopKey ? '-' + shopKey.toLowerCase() : ''}.json`, JSON.stringify(report, null, 2));
+console.log(JSON.stringify(report));
+await client.auth.signOut({ scope: 'local' });

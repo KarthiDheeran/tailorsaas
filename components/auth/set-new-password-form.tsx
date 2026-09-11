@@ -30,6 +30,7 @@ export function SetNewPasswordForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
 
     if (password.length < 8) {
@@ -42,22 +43,25 @@ export function SetNewPasswordForm({
     }
 
     setLoading(true);
-    const supabase = createClient();
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    if (updateError) {
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
+        return;
+      }
+      const markResult = await markPasswordChangedAction();
+      if (!markResult.success) {
+        setError(markResult.error ?? "Could not complete the password update.");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch {
+      setError("Could not complete the password update. Please try again.");
+    } finally {
       setLoading(false);
-      setError(updateError.message);
-      return;
     }
-    const markResult = await markPasswordChangedAction();
-    if (!markResult.success) {
-      setLoading(false);
-      setError(markResult.error ?? "Could not complete the password update.");
-      return;
-    }
-    setLoading(false);
-    router.push("/");
-    router.refresh();
   }
 
   return (

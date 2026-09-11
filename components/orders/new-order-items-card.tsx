@@ -28,6 +28,7 @@ import {
   type RuntimeGarmentField,
 } from "@/lib/garment-form-runtime";
 import { GarmentFormFields } from "@/components/orders/garment-form-fields";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { handleEnterAsNextField } from "@/components/orders/enter-as-next-field";
 import type {
   AlterationChargeType,
@@ -502,6 +503,8 @@ function ConfigureItemModal({
     notes: string;
   } | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRetryTick, setHistoryRetryTick] = useState(0);
   const [selectedPreviousMeasurement, setSelectedPreviousMeasurement] = useState(
     draft.measurement ? "current-item" : ""
   );
@@ -597,7 +600,7 @@ function ConfigureItemModal({
       });
     });
     return options;
-  }, [defaultHasMeasurements, defaultSeed, draft.measurement, history]);
+  }, [defaultHasMeasurements, defaultSeed, draft.measurement, draft.addOnIds, history]);
   const selectedPreviousMeasurementLabel =
     previousMeasurementOptions.find(
       (option) => option.id === selectedPreviousMeasurement
@@ -776,10 +779,13 @@ function ConfigureItemModal({
     if (!customerId) {
       setHistory([]);
       setDefaultSeed(null);
+      setLoadingHistory(false);
+      setHistoryError(null);
       return;
     }
     let cancelled = false;
     setLoadingHistory(true);
+    setHistoryError(null);
     const cacheKey = measurementPickerCacheKey(customerId, garment.id, excludeOrderId);
     const cachedEntry = measurementPickerCache.get(cacheKey);
     const cached = cachedEntry && Date.now() - cachedEntry.cachedAt < MEASUREMENT_PICKER_CACHE_MS
@@ -809,7 +815,6 @@ function ConfigureItemModal({
       if (cancelled) return;
       setDefaultSeed(seed);
       setHistory(snapshots);
-      setLoadingHistory(false);
       if (!draft.measurement && !draft.typedFieldDraft && autoSnapshotDefaultMeasurements) {
         const latestSnapshot = snapshots[0];
         const latestHasMeasurements = latestSnapshot && Object.values(latestSnapshot.measurements).some(
@@ -863,6 +868,10 @@ function ConfigureItemModal({
           setSelectedPreviousMeasurement("customer-default");
         }
       }
+    }).catch((error) => {
+      if (!cancelled) setHistoryError(getErrorMessage(error, "Failed to load previous measurements."));
+    }).finally(() => {
+      if (!cancelled) setLoadingHistory(false);
     });
     return () => {
       cancelled = true;
@@ -871,6 +880,8 @@ function ConfigureItemModal({
     autoSnapshotDefaultMeasurements,
     customerId,
     draft.measurement,
+    draft.typedFieldDraft,
+    historyRetryTick,
     excludeOrderId,
     garment.id,
     garment.name,
@@ -1137,7 +1148,9 @@ function ConfigureItemModal({
                 <span className="w-20 shrink-0 text-sm font-medium text-ink-muted">
                   Load from:
                 </span>
-                {loadingHistory ? (
+                {historyError ? (
+                  <LoadError message={historyError} onRetry={() => setHistoryRetryTick((tick) => tick + 1)} />
+                ) : loadingHistory ? (
                   <p className="text-sm text-ink-muted sm:w-[340px]">
                     Loading previous measurements...
                   </p>

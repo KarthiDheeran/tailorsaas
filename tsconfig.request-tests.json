@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.garment-runtime-tests.json",
+  "compilerOptions": { "outDir": ".request-test-dist" },
+  "include": ["lib/request-activity.ts", "tests/request-activity.test.ts"]
+}

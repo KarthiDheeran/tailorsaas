@@ -5,6 +5,7 @@ import "./globals.css";
 import { CurrentUserProvider } from "@/components/auth/current-user-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { RequestActivityProvider } from "@/components/ui/request-activity-provider";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   DEFAULT_TEXT_SIZE,
@@ -43,35 +44,9 @@ export const viewport: Viewport = {
 // group specifically so they render with no app chrome at all, not just a
 // print:hidden shell. Every other route lives under (shell) and is
 // unaffected (route groups don't change URLs).
-async function getInitialTheme(): Promise<DisplayTheme> {
+async function getInitialAppearance(): Promise<{ initialTheme: DisplayTheme; initialTextSize: AppTextSize }> {
   const cookieTheme = cookies().get(THEME_COOKIE_NAME)?.value;
   let theme = isDisplayTheme(cookieTheme) ? cookieTheme : DEFAULT_THEME;
-
-  try {
-    const supabase = createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("preferred_theme")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (isDisplayTheme(data?.preferred_theme)) {
-        theme = data.preferred_theme;
-      }
-    }
-  } catch {
-    // Older local databases may not have the preferred_theme column until
-    // migration 0064 is applied. The cookie/default fallback keeps boot safe.
-  }
-
-  return theme;
-}
-
-async function getInitialTextSize(): Promise<AppTextSize> {
   const cookieTextSize = cookies().get(TEXT_SIZE_COOKIE_NAME)?.value;
   let textSize = isAppTextSize(cookieTextSize) ? cookieTextSize : DEFAULT_TEXT_SIZE;
 
@@ -84,18 +59,22 @@ async function getInitialTextSize(): Promise<AppTextSize> {
     if (user) {
       const { data } = await supabase
         .from("profiles")
-        .select("preferred_text_size")
+        .select("preferred_theme, preferred_text_size")
         .eq("id", user.id)
         .maybeSingle();
+      if (isDisplayTheme(data?.preferred_theme)) {
+        theme = data.preferred_theme;
+      }
       if (isAppTextSize(data?.preferred_text_size)) {
         textSize = data.preferred_text_size;
       }
     }
   } catch {
-    // Older local databases may not have the preferred_text_size column yet.
+    // Older local databases may not have the preferred_theme column until
+    // migration 0064 is applied. The cookie/default fallback keeps boot safe.
   }
 
-  return textSize;
+  return { initialTheme: theme, initialTextSize: textSize };
 }
 
 export default async function RootLayout({
@@ -103,20 +82,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [initialTheme, initialTextSize] = await Promise.all([
-    getInitialTheme(),
-    getInitialTextSize(),
-  ]);
+  const { initialTheme, initialTextSize } = await getInitialAppearance();
 
   return (
     <html lang="en" data-theme={initialTheme} data-text-size={initialTextSize} suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
-        <LanguageProvider>
-          <CurrentUserProvider>
-            {children}
-            <ServiceWorkerRegister />
-          </CurrentUserProvider>
-        </LanguageProvider>
+        <RequestActivityProvider>
+          <LanguageProvider>
+            <CurrentUserProvider>
+              {children}
+              <ServiceWorkerRegister />
+            </CurrentUserProvider>
+          </LanguageProvider>
+        </RequestActivityProvider>
       </body>
     </html>
   );

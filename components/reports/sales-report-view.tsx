@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { IndianRupee, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
 import { formatDate } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
@@ -47,18 +49,26 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
   // Phase 6E: fetched via a Server Action now — a useMemo can't await, so
   // this became an effect + state, same conversion every other client
   // component went through since Phase 5A.
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<SalesReport>(EMPTY_REPORT);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getSalesReportAction(range, paymentMode || undefined).then((result) => {
       if (!cancelled && result) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, paymentMode]);
+  }, [retryTick, range.from, range.to, paymentMode]);
 
   function handleExport() {
     downloadCsv(
@@ -73,6 +83,9 @@ export function SalesReportView({ todayIso }: { todayIso: string }) {
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   return (
     <div>

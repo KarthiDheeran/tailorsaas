@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { AlertTriangle, CheckCircle2, Users } from "lucide-react";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ReportActions } from "@/components/reports/report-actions";
@@ -26,6 +28,9 @@ export function StaffReportView({ todayIso }: { todayIso: string }) {
     from: todayIso,
     to: todayIso,
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<StaffReport | null>({
     summary: { staffWithActiveWork: 0, totalDelayedJobs: 0, totalCompletedInRange: 0 },
     rows: [],
@@ -35,14 +40,19 @@ export function StaffReportView({ todayIso }: { todayIso: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getStaffReportAction({ range }, todayIso).then((result) => {
       if (!cancelled) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, todayIso]);
+  }, [retryTick, range.from, range.to, todayIso]);
 
   function handleExport() {
     if (!report) return;
@@ -59,6 +69,9 @@ export function StaffReportView({ todayIso }: { todayIso: string }) {
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   if (report === null) {
     return (

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { AlertTriangle, IndianRupee, Package } from "lucide-react";
 import { ReportActions } from "@/components/reports/report-actions";
 import { ReportSelectShell, reportSelectClassName } from "@/components/reports/report-select";
@@ -40,6 +42,9 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<InventoryReport | null>({
     summary: { totalActiveItems: 0, lowStockCount: 0, totalStockValue: 0 },
     rows: [],
@@ -47,17 +52,22 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getInventoryReportAction({
       itemType: itemType || undefined,
       lowStockOnly,
       query: debouncedQuery,
     }).then((result) => {
       if (!cancelled) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [itemType, lowStockOnly, debouncedQuery]);
+  }, [retryTick, itemType, lowStockOnly, debouncedQuery]);
 
   function handleExport() {
     if (!report) return;
@@ -91,6 +101,9 @@ export function InventoryReportView({ canViewPayments }: { canViewPayments: bool
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   if (report === null) {
     return (

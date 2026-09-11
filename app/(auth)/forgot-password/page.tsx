@@ -11,18 +11,26 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const supabase = createClient();
-    // Generic outcome regardless of whether the email matches an account —
-    // no user enumeration, per the plan.
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
-    });
-    setLoading(false);
-    setSubmitted(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
+      });
+      if (resetError) throw resetError;
+      // Keep the success message independent of whether the account exists.
+      setSubmitted(true);
+    } catch {
+      setError("Could not send the request. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (submitted) {
@@ -63,6 +71,7 @@ export default function ForgotPasswordPage() {
         />
       </label>
 
+      {error && <p role="alert" className="text-sm text-chip-red-fg">{error}</p>}
       <button
         type="submit"
         disabled={loading}

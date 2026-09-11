@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { AlertTriangle, Ban, CalendarClock, Clock, Receipt, Wallet } from "lucide-react";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
@@ -53,13 +55,16 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
   // comment for why this is an effect + state instead of useMemo. Garment
   // types are independent of the report filters, so they only fetch once.
   const [garmentTypes, setGarmentTypes] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<OrdersReport>(EMPTY_REPORT);
 
   useEffect(() => {
     let cancelled = false;
     getReportGarmentTypesAction().then((result) => {
       if (!cancelled) setGarmentTypes(result);
-    });
+    }).catch(() => { /* Filter suggestions are optional. */ });
     return () => {
       cancelled = true;
     };
@@ -69,6 +74,7 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getOrdersReportAction(
       {
         range,
@@ -80,12 +86,16 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
       todayIso
     ).then((result) => {
       if (!cancelled && result) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, balanceStatus, deliveryStatus, garmentType, debouncedCustomerQuery, todayIso]);
+  }, [retryTick, range.from, range.to, balanceStatus, deliveryStatus, garmentType, debouncedCustomerQuery, todayIso]);
 
   function handleExport() {
     downloadCsv(
@@ -102,6 +112,9 @@ export function OrdersReportView({ todayIso }: { todayIso: string }) {
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   return (
     <div>

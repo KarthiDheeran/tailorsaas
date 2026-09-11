@@ -1,5 +1,8 @@
 "use client";
 
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
+import { LoadingState } from "@/components/ui/loading-state";
+
 import {
   Suspense,
   useEffect,
@@ -425,6 +428,9 @@ function NewOrderPageContent() {
   const [addOns, setAddOns] = useState<CatalogAddOn[]>([]);
   const [garmentConfigurations, setGarmentConfigurations] = useState<GarmentTypeConfiguration[]>([]);
   const [garmentConfigurationsLoaded, setGarmentConfigurationsLoaded] = useState(false);
+  const [bootstrapLoading, setBootstrapLoading] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapRetryTick, setBootstrapRetryTick] = useState(0);
   const allowedOrderSections = useMemo(
     () =>
       currentUser?.allowed_order_sections.length
@@ -443,6 +449,7 @@ function NewOrderPageContent() {
   useEffect(() => {
     if (isCurrentUserLoading) return;
     let cancelled = false;
+    setBootstrapError(null);
     const today = todayIso();
     const cachedBilling = readNewOrderBillingSettings(currentUserId);
     const cachedPreferences = readNewOrderPreferences(currentUserId);
@@ -478,6 +485,7 @@ function NewOrderPageContent() {
       (orderEntryView !== "classic" || cachedTodaySummary)
     );
     if (!cacheComplete) {
+      setBootstrapLoading(true);
       setTodayItemSummaryLoading(orderEntryView === "classic");
       getNewOrderBootstrapAction(today)
         .then((data) => {
@@ -505,20 +513,24 @@ function NewOrderPageContent() {
           writeNewOrderOperatorStaff(currentUserId, data.measurementStaff);
           writeNewOrderTodayItemSummary(currentUserId, today, data.todayItemSummary);
         })
-        .catch(() => {
-          if (!cancelled) setGarmentConfigurationsLoaded(true);
+        .catch((error) => {
+          if (!cancelled) setBootstrapError(getErrorMessage(error, "Failed to load order settings. Retry before saving an order."));
         })
         .finally(() => {
-          if (!cancelled) setTodayItemSummaryLoading(false);
+          if (!cancelled) {
+            setTodayItemSummaryLoading(false);
+            setBootstrapLoading(false);
+          }
         });
     } else {
+      setBootstrapLoading(false);
       setTodayItemSummaryLoading(false);
     }
 
     return () => {
       cancelled = true;
     };
-  }, [allowedOrderSectionKey, allowedOrderSections, currentUserId, isCurrentUserLoading, orderEntryView]);
+  }, [bootstrapRetryTick, allowedOrderSectionKey, allowedOrderSections, currentUserId, isCurrentUserLoading, orderEntryView]);
 
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
   const [activeCustomerResultIndex, setActiveCustomerResultIndex] = useState(0);
@@ -1214,6 +1226,11 @@ function NewOrderPageContent() {
   }
 
   async function handleSave() {
+    if (saving || savedOrder) return;
+    if (bootstrapLoading || bootstrapError) {
+      setFinalizeError(bootstrapError ?? "Please wait for order settings to finish loading.");
+      return;
+    }
     setSubmitAttempted(true);
     setFinalizeError(null);
     if (hasErrors) return;
@@ -1235,94 +1252,61 @@ function NewOrderPageContent() {
       return;
     }
     setSaving(true);
+    let confirmedOrder: Order | null = null;
+    try {
 
-    const validItems = computedItems.filter(
-      (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
-    );
-
-    const profileUpdateCounts = new Map<string, number>();
-    for (const it of items) {
-      if (!it.measurement?.updateCustomerMeasurements) continue;
-      if (countFilledFields(it.measurement) === 0) continue;
-      const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
-      if (!garment) continue;
-      profileUpdateCounts.set(
-        garment.name,
-        (profileUpdateCounts.get(garment.name) ?? 0) + 1
+      const validItems = computedItems.filter(
+        (it, i) => items[i].garmentTypeId && it.qty > 0 && it.rate >= 0
       );
-    }
-    const duplicateProfileUpdate = Array.from(profileUpdateCounts.entries()).find(
-      ([, count]) => count > 1
-    );
-    if (duplicateProfileUpdate) {
-      setSaving(false);
-      setSaveError(
-        `Choose only one ${duplicateProfileUpdate[0]} item to update the customer's saved measurements.`
-      );
-      return;
-    }
 
-    async function persistMeasurementEdits(customerId: string): Promise<string | null> {
+      const profileUpdateCounts = new Map<string, number>();
       for (const it of items) {
-        const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
-        if (!garment || !it.measurement) continue;
-        if (!it.measurement.updateCustomerMeasurements) continue;
+        if (!it.measurement?.updateCustomerMeasurements) continue;
         if (countFilledFields(it.measurement) === 0) continue;
-        const measurementValues = measurementValuesOnly(it.measurement.values);
-        const measurementResult = await saveGarmentMeasurementAction({
-          customerId,
-          garmentType: garment.name,
-          values: measurementValues,
-          fitNotes: "",
-          notes: it.measurement.notes,
-          source: "New order",
-        });
-        if (!measurementResult.success) {
-          return measurementResult.error;
-        }
+        const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
+        if (!garment) continue;
+        profileUpdateCounts.set(
+          garment.name,
+          (profileUpdateCounts.get(garment.name) ?? 0) + 1
+        );
       }
-      return null;
-    }
-
-    let created: Awaited<ReturnType<typeof createOrderAction>>;
-    if (matchedCustomer) {
-      created = await createOrderAction({
-        customerId: matchedCustomer.id,
-        orderSection: orderSection as GarmentSection,
-        orderDate,
-        trialDate,
-        deliveryDate,
-        deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
-        items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
-        advancePaid,
-        paymentMode,
-        measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
-        createdByOperatorId: createdByOperatorId || undefined,
-        isUrgent,
-        urgentDueAt: isUrgent && urgentDueAt ? new Date(urgentDueAt).toISOString() : undefined,
-        urgentReason: isUrgent ? urgentReason.trim() || undefined : undefined,
-      });
-    } else {
-      const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
-        trimmedNewName,
-        trimmedNewPhone
+      const duplicateProfileUpdate = Array.from(profileUpdateCounts.entries()).find(
+        ([, count]) => count > 1
       );
-      if (existingByNameAndPhone) {
+      if (duplicateProfileUpdate) {
         setSaving(false);
-        setDuplicateCustomer(existingByNameAndPhone);
-        setPhoneDuplicateCustomer(existingByNameAndPhone);
-        setSaveError("A customer with this name and phone number already exists.");
+        setSaveError(
+          `Choose only one ${duplicateProfileUpdate[0]} item to update the customer's saved measurements.`
+        );
         return;
       }
-      created = await createOrderForNewCustomerAction({
-        customer: {
-          name: trimmedNewName,
-          phone: trimmedNewPhone,
-          address: newCustomer.address.trim(),
-          area: newCustomer.area.trim(),
-          gender: newCustomer.gender,
-        },
-        order: {
+
+      const persistMeasurementEdits = async (customerId: string): Promise<string | null> => {
+        for (const it of items) {
+          const garment = visibleGarmentTypes.find((g) => g.id === it.garmentTypeId);
+          if (!garment || !it.measurement) continue;
+          if (!it.measurement.updateCustomerMeasurements) continue;
+          if (countFilledFields(it.measurement) === 0) continue;
+          const measurementValues = measurementValuesOnly(it.measurement.values);
+          const measurementResult = await saveGarmentMeasurementAction({
+            customerId,
+            garmentType: garment.name,
+            values: measurementValues,
+            fitNotes: "",
+            notes: it.measurement.notes,
+            source: "New order",
+          });
+          if (!measurementResult.success) {
+            return measurementResult.error;
+          }
+        }
+        return null;
+      };
+
+      let created: Awaited<ReturnType<typeof createOrderAction>>;
+      if (matchedCustomer) {
+        created = await createOrderAction({
+          customerId: matchedCustomer.id,
           orderSection: orderSection as GarmentSection,
           orderDate,
           trialDate,
@@ -1336,68 +1320,117 @@ function NewOrderPageContent() {
           isUrgent,
           urgentDueAt: isUrgent && urgentDueAt ? new Date(urgentDueAt).toISOString() : undefined,
           urgentReason: isUrgent ? urgentReason.trim() || undefined : undefined,
-        },
-      });
-    }
-    if (!created.success) {
-      setSaving(false);
-      if (created.error === "A customer with this name and phone number already exists.") {
+        });
+      } else {
         const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
           trimmedNewName,
           trimmedNewPhone
         );
         if (existingByNameAndPhone) {
-          setPhoneDuplicateCustomer(existingByNameAndPhone);
+          setSaving(false);
           setDuplicateCustomer(existingByNameAndPhone);
+          setPhoneDuplicateCustomer(existingByNameAndPhone);
+          setSaveError("A customer with this name and phone number already exists.");
+          return;
+        }
+        created = await createOrderForNewCustomerAction({
+          customer: {
+            name: trimmedNewName,
+            phone: trimmedNewPhone,
+            address: newCustomer.address.trim(),
+            area: newCustomer.area.trim(),
+            gender: newCustomer.gender,
+          },
+          order: {
+            orderSection: orderSection as GarmentSection,
+            orderDate,
+            trialDate,
+            deliveryDate,
+            deliveryPromiseNote: deliveryPromiseNote.trim() || undefined,
+            items: validItems.map((it, i) => ({ ...it, serialNo: i + 1 })),
+            advancePaid,
+            paymentMode,
+            measurementTakenByOperatorId: measurementTakenByOperatorId || undefined,
+            createdByOperatorId: createdByOperatorId || undefined,
+            isUrgent,
+            urgentDueAt: isUrgent && urgentDueAt ? new Date(urgentDueAt).toISOString() : undefined,
+            urgentReason: isUrgent ? urgentReason.trim() || undefined : undefined,
+          },
+        });
+      }
+      if (!created.success) {
+        setSaving(false);
+        if (created.error === "A customer with this name and phone number already exists.") {
+          const existingByNameAndPhone = await getCustomerByNameAndPhoneAction(
+            trimmedNewName,
+            trimmedNewPhone
+          );
+          if (existingByNameAndPhone) {
+            setPhoneDuplicateCustomer(existingByNameAndPhone);
+            setDuplicateCustomer(existingByNameAndPhone);
+          }
+        }
+        setSaveError(created.error);
+        return;
+      }
+      confirmedOrder = created.data;
+      const postSaveWarnings: string[] = [];
+      const measurementError = await persistMeasurementEdits(created.data.customerId);
+      if (measurementError) {
+        postSaveWarnings.push(
+          `Saved customer measurements were not updated: ${measurementError}`
+        );
+      }
+      if (queuedAttachments.length > 0) {
+        const savedAttachmentItemOptions = attachmentItemOptions.map((option) => {
+          const savedItem = option.serialNo
+            ? created.data.items.find((item) => item.serialNo === option.serialNo)
+            : undefined;
+          return {
+            ...option,
+            orderItemId: savedItem?.id,
+            serialNo: savedItem?.serialNo ?? option.serialNo,
+          };
+        });
+        const attachmentResult = await uploadQueuedOrderAttachmentsDetailed({
+          orderId: created.data.id,
+          queued: queuedAttachments,
+          itemOptions: savedAttachmentItemOptions,
+        });
+        setAttachmentUploadCount(attachmentResult.uploadedCount);
+        if (attachmentResult.failures.length > 0) {
+          setAttachmentUploadFailures(attachmentResult.failures);
+          setQueuedAttachments((current) =>
+            current.filter((attachment) =>
+              attachmentResult.failures.some((failure) => failure.id === attachment.id)
+            )
+          );
+        } else {
+          setAttachmentUploadFailures([]);
+          setQueuedAttachments([]);
         }
       }
-      setSaveError(created.error);
-      return;
-    }
-    const postSaveWarnings: string[] = [];
-    const measurementError = await persistMeasurementEdits(created.data.customerId);
-    if (measurementError) {
-      postSaveWarnings.push(
-        `Saved customer measurements were not updated: ${measurementError}`
-      );
-    }
-    if (queuedAttachments.length > 0) {
-      const savedAttachmentItemOptions = attachmentItemOptions.map((option) => {
-        const savedItem = option.serialNo
-          ? created.data.items.find((item) => item.serialNo === option.serialNo)
-          : undefined;
-        return {
-          ...option,
-          orderItemId: savedItem?.id,
-          serialNo: savedItem?.serialNo ?? option.serialNo,
-        };
-      });
-      const attachmentResult = await uploadQueuedOrderAttachmentsDetailed({
-        orderId: created.data.id,
-        queued: queuedAttachments,
-        itemOptions: savedAttachmentItemOptions,
-      });
-      setAttachmentUploadCount(attachmentResult.uploadedCount);
-      if (attachmentResult.failures.length > 0) {
-        setAttachmentUploadFailures(attachmentResult.failures);
-        setQueuedAttachments((current) =>
-          current.filter((attachment) =>
-            attachmentResult.failures.some((failure) => failure.id === attachment.id)
-          )
-        );
-      } else {
-        setAttachmentUploadFailures([]);
-        setQueuedAttachments([]);
-      }
-    }
-    setProfileUpdateWarning(postSaveWarnings.join(" "));
-    setSaving(false);
+      setProfileUpdateWarning(postSaveWarnings.join(" "));
+      setSaving(false);
 
-    // Show the success state with print options rather than redirecting
-    // immediately - the shopkeeper's very next step is usually printing the
-    // receipt/job card, so don't force them back to the list first.
-    clearMeasurementPickerCache(created.data.customerId);
-    setSavedOrder(created.data);
+      // Show the success state with print options rather than redirecting
+      // immediately - the shopkeeper's very next step is usually printing the
+      // receipt/job card, so don't force them back to the list first.
+      clearMeasurementPickerCache(created.data.customerId);
+      setSavedOrder(created.data);
+    } catch {
+      if (confirmedOrder) {
+        clearMeasurementPickerCache(confirmedOrder.customerId);
+        setSavedOrder(confirmedOrder);
+        setProfileUpdateWarning("The order was created, but some measurements or attachments could not be confirmed. Open the order to check them.");
+      } else {
+        const message = "Could not confirm the save. Check the orders list before trying again to avoid creating a duplicate.";
+        setSaveError(message);
+        setFinalizeError(message);
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   const handleSaveShortcutRef = useRef(handleSave);
@@ -1486,6 +1519,9 @@ function NewOrderPageContent() {
 
   return (
     <div className={cn("pb-24", isClassicEntry && "bg-[#f5f8ff]")}>
+      {bootstrapError ? (
+        <LoadError message={bootstrapError} onRetry={() => setBootstrapRetryTick((tick) => tick + 1)} />
+      ) : bootstrapLoading ? <LoadingState label="Loading order settings..." /> : null}
       <div className={cn(
         "mx-auto max-w-[1600px] p-4 sm:px-6 sm:py-3 lg:px-8 2xl:max-w-[1760px]",
         isClassicEntry && "max-w-none p-2 sm:px-3 sm:py-2 lg:px-4 2xl:max-w-none"
@@ -2244,7 +2280,7 @@ function NewOrderPageContent() {
             <button
               type="button"
               onClick={() => setFinalizeOpen(true)}
-              disabled={saving}
+              disabled={saving || bootstrapLoading || !!bootstrapError}
               aria-keyshortcuts="Alt+S Control+Enter"
               title="Save order (Alt+S or Ctrl+Enter)"
               className="h-12 min-w-[150px] rounded-lg bg-primary px-6 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-dark disabled:opacity-60"

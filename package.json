@@ -10,6 +10,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "npm run test:garment-runtime && npm run test:requests && npm run test:orders",
+    "test:orders": "node --test tests/order-deletion.test.mjs",
+    "test:database-workflows": "node --test tests/database-workflows.test.mjs",
+    "test:business-rules": "node --test tests/business-rules.test.mjs",
+    "test:report-audit": "node --test tests/report-audit.test.mjs",
+    "test:full": "node scripts/run-full-review.mjs",
+    "test:requests": "tsc -p tsconfig.request-tests.json && node --test .request-test-dist/tests/request-activity.test.js",
+    "test:e2e": "playwright test",
     "test:garment-runtime": "tsc -p tsconfig.garment-runtime-tests.json && node --test .runtime-test-dist/tests/garment-form-runtime.test.js",
     "audit:garment-metadata": "node --env-file=.env.local scripts/audit-garment-metadata.mjs"
   },
@@ -25,6 +33,8 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",

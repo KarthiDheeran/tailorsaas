@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { AlertTriangle, ClipboardList, Scissors, Shirt } from "lucide-react";
 import Link from "next/link";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
@@ -73,6 +75,9 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
   const [stage, setStage] = useState<ProductionStageFilter>("all");
   const [staffId, setStaffId] = useState("");
   const [staffList, setStaffList] = useState<StaffOption[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<ProductionReport | null>(EMPTY_REPORT);
 
   const range = getDateRangeForPreset(preset, todayIso, customRange);
@@ -81,7 +86,7 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
     let cancelled = false;
     getReportStaffListAction().then((result) => {
       if (!cancelled) setStaffList(result);
-    });
+    }).catch(() => { /* Filter suggestions are optional. */ });
     return () => {
       cancelled = true;
     };
@@ -89,16 +94,21 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getProductionReportAction({ range, stage, staffId: staffId || undefined }, todayIso).then(
       (result) => {
         if (!cancelled) setReport(result);
       }
-    );
+    ).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, stage, staffId, todayIso]);
+  }, [retryTick, range.from, range.to, stage, staffId, todayIso]);
 
   function handleExport() {
     if (!report) return;
@@ -116,6 +126,9 @@ export function ProductionReportView({ todayIso }: { todayIso: string }) {
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   if (report === null) {
     return (

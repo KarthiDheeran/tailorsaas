@@ -50,6 +50,7 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { clearNewOrderCatalogReference } from "@/lib/new-order-reference-browser-cache";
 
 function isCatalogTab(value: string | null): value is CatalogTab {
@@ -93,6 +94,7 @@ function CatalogPageContent() {
   const [catalogFields, setCatalogFields] = useState<CatalogField[]>([]);
   const [catalogSections, setCatalogSections] = useState<CatalogSection[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isCatalogTab(tabParam) && tabParam !== tab) {
@@ -103,6 +105,7 @@ function CatalogPageContent() {
   useEffect(() => {
     let cancelled = false;
     setIsLoadingCatalog(true);
+    setLoadError(null);
     getCatalogPageBootstrapAction().then((data) => {
       if (cancelled) return;
       setGarmentTypes(data.garmentTypes);
@@ -113,6 +116,8 @@ function CatalogPageContent() {
       setCatalogFields(data.catalogFields);
       setCatalogSections(data.catalogSections);
       setMetadataFieldCounts(data.metadataFieldCounts);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load catalog."));
     }).finally(() => {
       if (!cancelled) setIsLoadingCatalog(false);
     });
@@ -350,7 +355,9 @@ function CatalogPageContent() {
         />
       </div>
 
-      {isLoadingCatalog ? (
+      {loadError ? (
+        <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+      ) : isLoadingCatalog ? (
         <LoadingState label="Loading catalog..." />
       ) : tab === "garment-types" ? (
         <>

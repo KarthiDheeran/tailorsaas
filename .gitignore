@@ -9,9 +9,13 @@
 # testing
 /coverage
 /.runtime-test-dist/
+/.request-test-dist/
+/test-results/
+/playwright-report/
 
 # next.js
 /.next/
+/.next-verification/
 /out/
 
 # production

@@ -17,6 +17,7 @@ import { RequirePermission } from "@/components/auth/require-permission";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useDebouncedValue } from "@/components/ui/use-debounced-value";
 import { downloadCsv } from "@/lib/csv";
@@ -41,6 +42,8 @@ function CustomersPageContent() {
   const [totalCount, setTotalCount] = useState(0);
   const [allCount, setAllCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   // ISO (UTC) date string — consistent between server and client renders,
   // unlike locale-formatted dates (see orders-table.tsx's formatDate note).
@@ -50,7 +53,7 @@ function CustomersPageContent() {
     let cancelled = false;
     getCustomerAreasAction().then((result) => {
       if (!cancelled) setAreas(result);
-    });
+    }).catch(() => { /* Area suggestions are optional. */ });
     return () => {
       cancelled = true;
     };
@@ -58,6 +61,8 @@ function CustomersPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
     getCustomerListPageRowsAction({
       todayIso,
       page,
@@ -75,6 +80,9 @@ function CustomersPageContent() {
         setTotalCount(result.totalCount);
         setAllCount(result.allCount);
       })
+      .catch((error) => {
+        if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load customers."));
+      })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
       });
@@ -82,7 +90,7 @@ function CustomersPageContent() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayIso, page, debouncedQuery, filters.area, filters.balance, filters.activity]);
+  }, [retryTick, todayIso, page, debouncedQuery, filters.area, filters.balance, filters.activity]);
 
   function handleFiltersChange(next: CustomerFilterState) {
     setFilters(next);
@@ -180,7 +188,7 @@ function CustomersPageContent() {
 
       <CustomerFilters filters={filters} areas={areas} onChange={handleFiltersChange} />
 
-      {isLoading ? <LoadingState label="Loading customers..." /> : <CustomersTable rows={rows} />}
+      {loadError ? <LoadError message={loadError} onRetry={() => setRetryTick((tick) => tick + 1)} /> : isLoading ? <LoadingState label="Loading customers..." /> : <CustomersTable rows={rows} />}
       {!isLoading && totalCount > 0 && (
         <div className="mt-5 flex items-center justify-between text-sm">
           <span className="text-ink-muted">

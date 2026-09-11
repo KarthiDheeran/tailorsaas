@@ -46,12 +46,7 @@ import type { JobCard, JobCardStage } from "@/lib/job-cards";
 import { isActiveOrder, isReceivableOrder, orderBalance } from "@/lib/order-finance";
 
 // ---------------------------------------------------------------------------
-// Phase 6E: real, Supabase-backed report selectors — every function now
-// takes an already-constructed Supabase client first. Reports is a derived,
-// read-only summary view: the caller only ever needs reports.view (checked
-// once, in app/(shell)/reports/actions.ts), never orders.view/customers.view
-// separately — see that file for how the client is chosen (admin client,
-// bypassing orders/customers RLS, once reports.view is confirmed).
+// Report selectors retain the caller's RLS scope for every underlying read.
 //
 // Customer names/phones for Sales/Payments/Orders all come from each order's
 // own customerSnapshot (no live customers-table join needed for those three
@@ -167,9 +162,9 @@ export async function getSalesReport(
   range: DateRange,
   paymentMode?: PaymentMode
 ): Promise<SalesReport> {
-  const [placedRows, deliveredRows] = await Promise.all([
+  const [placedRows, payments] = await Promise.all([
     getOrderListRowsInDateRange(supabase, "order_date", range.from, range.to),
-    getOrderListRowsInDateRange(supabase, "delivery_date", range.from, range.to),
+    getPayments(supabase, { from: range.from, to: range.to, paymentMode }),
   ]);
   const ordersInRange = placedRows.filter(
     (o) => isActiveOrder(o) && (!paymentMode || o.paymentMode === paymentMode)
@@ -179,29 +174,11 @@ export async function getSalesReport(
   const totalOrders = ordersInRange.length;
   const avgOrderValue = totalOrders === 0 ? 0 : totalSales / totalOrders;
 
-  // "Revenue Collected" (money actually received) is distinct from "Sales"
-  // (order value created) per the Reports spec. There's no dated
-  // payment-transaction log (same limitation as lib/dashboard.ts's
-  // revenueToday), so it's approximated as: advances collected on orders
-  // placed in range, plus balances collected on orders delivered-and-settled
-  // in range (balance <= 0 means the delivery-time balance was paid).
-  const deliveredSettledInRange = deliveredRows.filter(
-    (o) =>
-      isActiveOrder(o) &&
-      o.balance <= 0 &&
-      (!paymentMode || o.paymentMode === paymentMode)
-  );
-  const revenueCollected =
-    ordersInRange.reduce((sum, o) => sum + o.advancePaid, 0) +
-    deliveredSettledInRange.reduce(
-      (sum, o) => sum + (o.totalAmount - o.advancePaid),
-      0
-    );
+  // Count receipts on their ledger date, including instalments for older orders.
+  // Voids are audit records, not receipts. Refunds remain in the Payments report.
+  const collectedPayments = payments.filter((payment) => !payment.voided);
+  const revenueCollected = collectedPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
-  // Table rows are grouped by order-placement date only (a per-order-placed
-  // view), so "Amount Collected" here is the advance collected that day —
-  // not the fuller revenueCollected figure above, which also folds in
-  // balances settled at delivery on other dates.
   const byDate = new Map<string, SalesRow>();
   for (const o of ordersInRange) {
     const row = byDate.get(o.orderDate) ?? {
@@ -213,9 +190,15 @@ export async function getSalesReport(
     };
     row.orders += 1;
     row.grossSales += o.totalAmount;
-    row.amountCollected += o.advancePaid;
     row.balancePending += o.balance;
     byDate.set(o.orderDate, row);
+  }
+  for (const payment of collectedPayments) {
+    const row = byDate.get(payment.paymentDate) ?? {
+      date: payment.paymentDate, orders: 0, grossSales: 0, amountCollected: 0, balancePending: 0,
+    };
+    row.amountCollected += payment.amount;
+    byDate.set(payment.paymentDate, row);
   }
   const rows = Array.from(byDate.values()).sort((a, b) =>
     a.date < b.date ? 1 : -1
@@ -232,18 +215,12 @@ export async function getSalesReport(
     };
     row.orders += 1;
     row.grossSales += o.totalAmount;
-    row.amountCollected += o.advancePaid;
     byMonth.set(month, row);
   }
-  for (const o of deliveredSettledInRange) {
-    const month = o.deliveryDate.slice(0, 7);
-    const row = byMonth.get(month) ?? {
-      month,
-      orders: 0,
-      grossSales: 0,
-      amountCollected: 0,
-    };
-    row.amountCollected += o.totalAmount - o.advancePaid;
+  for (const payment of collectedPayments) {
+    const month = payment.paymentDate.slice(0, 7);
+    const row = byMonth.get(month) ?? { month, orders: 0, grossSales: 0, amountCollected: 0 };
+    row.amountCollected += payment.amount;
     byMonth.set(month, row);
   }
   const monthlyRows = Array.from(byMonth.values()).sort((a, b) =>

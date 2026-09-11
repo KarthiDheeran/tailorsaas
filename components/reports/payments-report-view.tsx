@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getErrorMessage, LoadError } from "@/components/ui/load-error";
 import { AlertTriangle, IndianRupee, TrendingUp, Wallet } from "lucide-react";
 import { PaymentLedgerTable } from "@/components/payments/payment-ledger-table";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
@@ -65,15 +67,19 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
   const range = getDateRangeForPreset(preset, todayIso, customRange);
   // Phase 6E: fetched via a Server Action now — see sales-report-view.tsx's
   // comment for why this is an effect + state instead of useMemo.
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [report, setReport] = useState<PaymentsReport>(EMPTY_REPORT);
   // Profit stat: Collections (report.totalCollected) minus Expenses in the
   // same date range. null (not 0) means the expenses migration isn't
   // applied yet — the Profit card just doesn't render in that case, same
   // convention as lib/dashboard.ts's optional stat cards.
-  const [expensesTotal, setExpensesTotal] = useState<number | null>(0);
+  const [expensesTotal, setExpensesTotal] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     getPaymentsReportAction(
       {
         range,
@@ -86,12 +92,16 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
       todayIso
     ).then((result) => {
       if (!cancelled && result) setReport(result);
+    }).catch((error) => {
+      if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load report."));
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  }, [retryTick,
     range.from,
     range.to,
     paymentMode,
@@ -104,9 +114,10 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setExpensesTotal(null);
     getReportExpensesTotalAction(range).then((result) => {
       if (!cancelled) setExpensesTotal(result);
-    });
+    }).catch(() => { if (!cancelled) setExpensesTotal(null); });
     return () => {
       cancelled = true;
     };
@@ -142,6 +153,9 @@ export function PaymentsReportView({ todayIso }: { todayIso: string }) {
       ])
     );
   }
+
+  if (loadError) return <LoadError message={loadError} onRetry={() => { setIsLoading(true); setRetryTick((tick) => tick + 1); }} />;
+  if (isLoading) return <LoadingState label="Loading report..." />;
 
   return (
     <div>

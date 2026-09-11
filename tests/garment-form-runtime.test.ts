@@ -271,7 +271,10 @@ test("catalog configuration editor hydrates async mappings and list counts use m
   const drawer = source("components/catalog/garment-type-config-drawer.tsx");
   const table = source("components/catalog/catalog-table.tsx");
 
-  assert.match(catalogPage, /getGarmentTypeConfigurationsAction/);
+  const catalogActions = source("app/(shell)/catalog/actions.ts");
+  assert.match(catalogPage, /getCatalogPageBootstrapAction/);
+  assert.match(catalogActions, /getGarmentTypeConfigurations\(/);
+  assert.match(catalogPage, /setMetadataFieldCounts\(data\.metadataFieldCounts\)/);
   assert.match(catalogPage, /metadataFieldCounts/);
   assert.match(drawer, /useEffect\(\(\) => \{\s*if \(!configuration\) return;/);
   assert.match(drawer, /setSelected\(configured\)/);

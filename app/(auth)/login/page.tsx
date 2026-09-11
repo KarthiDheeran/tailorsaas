@@ -17,20 +17,23 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
     setLoading(true);
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-    if (signInError) {
-      setError("Incorrect email or password.");
-      return;
+    try {
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        setError(signInError.status === 400 ? "Incorrect email or password." : "Could not sign in. Please try again.");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch {
+      setError("Could not connect. Check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/");
-    router.refresh();
   }
 
   return (

@@ -2,7 +2,6 @@
 
 import { DesktopTopNav, MobileNav } from "@/components/layout/sidebar";
 import { OrderScanProvider } from "@/components/layout/order-scan";
-import { ReferenceDataWarmer } from "@/components/layout/reference-data-warmer";
 import { useCurrentUser } from "@/components/auth/current-user-provider";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useGlobalNewOrderShortcut } from "@/hooks/use-global-new-order-shortcut";
@@ -77,7 +76,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <MobileNav />
       <DesktopTopNav />
-      <ReferenceDataWarmer />
       <OrderScanProvider enabled={canScanOrders} />
       <main className="min-w-0">{children}</main>
     </div>
