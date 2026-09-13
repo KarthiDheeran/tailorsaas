@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { getSupabasePublicConfig } from "@/lib/supabase/public-config";
 import { createServerClient } from "@supabase/ssr";
 
 // Server Supabase client — used in Server Components and Route Handlers
@@ -6,10 +7,11 @@ import { createServerClient } from "@supabase/ssr";
 // the service-role key here.
 export function createClient() {
   const cookieStore = cookies();
+  const { url, key } = getSupabasePublicConfig();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {

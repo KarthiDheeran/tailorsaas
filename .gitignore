@@ -16,6 +16,9 @@
 # next.js
 /.next/
 /.next-verification/
+/.next-local/
+/.next-portable/
+/release/
 /out/
 
 # production
@@ -50,3 +53,4 @@ next-env.d.ts
 next-dev.err.log
 next-dev.out.log
 .dev-server*.log
+/docs/local-guide-preview.png

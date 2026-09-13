@@ -1,4 +1,5 @@
 import "server-only";
+import { getSupabasePublicConfig } from "@/lib/supabase/public-config";
 import { createClient } from "@supabase/supabase-js";
 
 // Service-role Supabase client — bypasses RLS entirely and can call the
@@ -25,7 +26,7 @@ import { createClient } from "@supabase/supabase-js";
 //    needs — never a raw, unrestricted Orders/Customers listing.
 export function createAdminClient() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    getSupabasePublicConfig().url,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: {

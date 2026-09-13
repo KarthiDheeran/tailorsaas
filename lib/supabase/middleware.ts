@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { getSupabasePublicConfig } from "@/lib/supabase/public-config";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Cookie-aware Supabase client + session refresh for middleware.ts. Returns
@@ -6,10 +7,11 @@ import { NextResponse, type NextRequest } from "next/server";
 // user so middleware.ts can make routing decisions without a second client.
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { url, key } = getSupabasePublicConfig();
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {

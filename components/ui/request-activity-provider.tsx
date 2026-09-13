@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { getSupabasePublicConfig } from "@/lib/supabase/public-config";
 import { createTrackedFetch, isVisibleRequest, requestActivity } from "@/lib/request-activity";
 
 // Install before descendant effects run, including auth and initial page reads.
@@ -8,7 +9,7 @@ import { createTrackedFetch, isVisibleRequest, requestActivity } from "@/lib/req
 const installed = Symbol.for("tailorsaas.request-activity");
 if (typeof window !== "undefined" && !Reflect.get(window, installed)) {
   window.fetch = createTrackedFetch(window.fetch.bind(window), requestActivity, (input, init) =>
-    isVisibleRequest(input, init, window.location.origin, process.env.NEXT_PUBLIC_SUPABASE_URL)
+    isVisibleRequest(input, init, window.location.origin, getSupabasePublicConfig().url)
   );
   Reflect.set(window, installed, true);
 }

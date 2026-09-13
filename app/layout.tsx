@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
+import { getSupabasePublicConfig } from "@/lib/supabase/public-config";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { CurrentUserProvider } from "@/components/auth/current-user-provider";
@@ -86,6 +87,10 @@ export default async function RootLayout({
 
   return (
     <html lang="en" data-theme={initialTheme} data-text-size={initialTextSize} suppressHydrationWarning>
+      <head>
+        <script id="supabase-public-config" type="application/json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(getSupabasePublicConfig()).replace(/</g, "\\u003c") }} />
+      </head>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <RequestActivityProvider>
           <LanguageProvider>
