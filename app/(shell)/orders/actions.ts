@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/require-server-permission";
 import {
   createOrder,
+  AmbiguousOrderNumberError,
   findOrderByOrderNumber,
   findOrderByScanToken,
   getOrderById,
@@ -92,6 +93,7 @@ import {
 import { orderStatuses } from "@/lib/constants";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import {
+  GARMENT_SECTIONS,
   isGarmentSection,
   type CatalogAddOn,
   type CatalogGarmentType,
@@ -502,7 +504,17 @@ export async function getNewOrderBootstrapAction(todayIso: string): Promise<NewO
   });
 }
 
+export async function getOrderSectionFilterOptionsAction(): Promise<string[]> {
+  const supabase = createServerClient();
+  const caller = await getServerCallerContext(supabase);
+  if (!caller || !hasPermission(caller.permissions, "orders.view")) return [];
+  return GARMENT_SECTIONS.filter((section) =>
+    !caller.allowedOrderSections.length || caller.allowedOrderSections.includes(section)
+  );
+}
+
 export async function getOrdersListPageAction(input: {
+  orderSection?: string;
   page: number;
   pageSize: number;
   sortKey: "orderDate" | "deliveryDate";
@@ -535,6 +547,7 @@ export async function getOrdersListPageAction(input: {
           sortKey: input.sortKey,
           sortDir: input.sortDir,
           filters: {
+            orderSection: input.orderSection,
             searchQuery: input.searchQuery,
             orderDateFrom: input.orderDateFrom,
             orderDateTo: input.orderDateTo,
@@ -712,7 +725,7 @@ function parseOrderScanCode(rawCode: string):
     const token = code.slice(tokenPrefix.length).trim();
     return token ? { kind: "scan-token", value: token } : undefined;
   }
-  if (/^(?:ORD-\d{4}-\d{3,}|[MCB]-\d+|\d+)$/.test(code)) {
+  if (/^(?:ORD-\d{4}-\d{3,}|[MCB]-\d{4}-\d+|[MCB]-\d+|\d+)$/.test(code)) {
     return { kind: "order-number", value: code };
   }
   return undefined;
@@ -728,10 +741,15 @@ export async function resolveOrderScanAction(
   const parsed = parseOrderScanCode(code);
   if (!parsed) return { success: false, error: "Order not found" };
 
-  const order =
-    parsed.kind === "scan-token"
+  let order;
+  try {
+    order = parsed.kind === "scan-token"
       ? await findOrderByScanToken(supabase, parsed.value)
       : await findOrderByOrderNumber(supabase, parsed.value);
+  } catch (error) {
+    if (error instanceof AmbiguousOrderNumberError) return { success: false, error: error.message };
+    throw error;
+  }
 
   if (!order) return { success: false, error: "Order not found" };
   return { success: true, data: { orderId: order.id, orderNumber: order.orderNumber } };

@@ -13,6 +13,8 @@
     "test": "npm run test:garment-runtime && npm run test:requests && npm run test:orders",
     "test:orders": "node --test tests/order-deletion.test.mjs",
     "test:database-workflows": "node --test tests/database-workflows.test.mjs",
+    "test:order-numbering": "node --test tests/database-workflows.test.mjs tests/order-numbering-upgrade.test.mjs tests/order-numbering-lookup.test.mjs",
+    "test:production-layout": "node --test tests/production-print-layout.test.mjs",
     "test:business-rules": "node --test tests/business-rules.test.mjs",
     "test:report-audit": "node --test tests/report-audit.test.mjs",
     "test:full": "node scripts/run-full-review.mjs",

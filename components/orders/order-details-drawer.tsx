@@ -257,6 +257,7 @@ export function OrderDetailsDrawer({
               <div>
                 <p className="text-[17px] font-semibold text-ink">
                   {order.orderNumber}
+                  <span className="ml-2 text-xs font-normal text-ink-muted">{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</span>
                 </p>
                 <div className="mt-1.5">
                   <OrderStatusEditor

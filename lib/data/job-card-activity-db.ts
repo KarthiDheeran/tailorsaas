@@ -54,6 +54,24 @@ export async function getJobCardActivityLogs(
   return ((data as unknown as JobCardActivityRow[]) ?? []).map(mapJobCardActivity);
 }
 
+export async function getJobCardActivityLogsForCards(
+  supabase: SupabaseClient,
+  jobCardIds: string[],
+): Promise<JobCardActivityLog[]> {
+  const ids = Array.from(new Set(jobCardIds.filter(Boolean)));
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from("job_card_activity_logs")
+    .select(JOB_CARD_ACTIVITY_COLUMNS)
+    .in("job_card_id", ids)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingJobCardActivitySchemaError(error)) return [];
+    throw error;
+  }
+  return ((data as unknown as JobCardActivityRow[]) ?? []).map(mapJobCardActivity);
+}
+
 export async function logJobCardActivity(
   supabase: SupabaseClient,
   input: JobCardActivityInput

@@ -15,6 +15,7 @@ import {
   getOrderByIdAction,
   getOrdersForCustomerListAction,
   getOrdersListPageAction,
+  getOrderSectionFilterOptionsAction,
 } from "@/app/(shell)/orders/actions";
 import type { Customer, Order } from "@/lib/types";
 
@@ -56,6 +57,8 @@ function OrdersPageContent() {
     null
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [orderSection, setOrderSection] = useState("");
+  const [orderSectionOptions, setOrderSectionOptions] = useState<string[]>([]);
   const debouncedSearchQuery = useDebouncedValue(searchQuery);
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -88,6 +91,14 @@ function OrdersPageContent() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    getOrderSectionFilterOptionsAction()
+      .then((options) => { if (!cancelled) setOrderSectionOptions(options); })
+      .catch((error) => { if (!cancelled) setLoadError(getErrorMessage(error, "Failed to load order details filters.")); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     try {
       const saved = window.localStorage.getItem(ORDERS_VIEW_KEY);
       if (saved === "classic" || saved === "modern") setOrdersView(saved);
@@ -109,6 +120,7 @@ function OrdersPageContent() {
     let cancelled = false;
     setIsLoading(true);
     getOrdersListPageAction({
+      orderSection: orderSection || undefined,
       page,
       pageSize: PAGE_SIZE,
       sortKey,
@@ -148,6 +160,7 @@ function OrdersPageContent() {
     sortKey,
     sortDir,
     debouncedSearchQuery,
+    orderSection,
     orderDateRange.from,
     orderDateRange.to,
     balanceFilter,
@@ -349,6 +362,7 @@ function OrdersPageContent() {
   }
 
   function handleClearFilters() {
+    setOrderSection("");
     setSearchQuery("");
     setBalanceFilter("all");
     setStatusFilter("all");
@@ -375,6 +389,7 @@ function OrdersPageContent() {
       ? customerOrders
       : (
           await getOrdersListPageAction({
+            orderSection: orderSection || undefined,
             page: 1,
             pageSize: 10000,
             sortKey,
@@ -393,6 +408,8 @@ function OrdersPageContent() {
         ).orders;
     const headers = [
       "Order No",
+      "Order Details",
+      "Numbering Year",
       "Customer",
       "Phone",
       "Order Date",
@@ -405,6 +422,8 @@ function OrdersPageContent() {
       const customer = customersById[order.customerId] ?? order.customerSnapshot;
       const base = [
         order.orderNumber,
+        order.orderSection ?? "",
+        order.orderNumberYear ?? "",
         customer?.name ?? "Unknown",
         customer?.phone ?? "",
         order.orderDate,
@@ -435,6 +454,7 @@ function OrdersPageContent() {
   }
 
   function clearSelection() {
+    setOrderSection("");
     setSelectedCustomer(null);
     setSearchQuery("");
     setBalanceFilter("all");
@@ -537,6 +557,9 @@ function OrdersPageContent() {
 
       {!selectedCustomer && (
         <><OrderListFilters
+          orderSection={orderSection}
+          orderSectionOptions={orderSectionOptions}
+          onOrderSectionChange={(value) => { setOrderSection(value); setPage(1); }}
           query={searchQuery}
           onQueryChange={handleQueryChange}
           balanceFilter={balanceFilter}

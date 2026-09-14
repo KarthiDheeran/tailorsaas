@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   Receipt,
   Settings,
+  Printer,
   UserCog,
 } from "lucide-react";
 import { RequirePermission } from "@/components/auth/require-permission";
@@ -36,10 +37,18 @@ const SETTINGS_SECTIONS = [
     permission: "settings.manageShop",
   },
   {
-    title: "Order Delivery Defaults",
-    description: "Set the default promised delivery window for new orders.",
+    title: "Order Preferences",
+    description: "Set delivery defaults and reset yearly numbering for each Order Details category.",
     href: "/settings/order-preferences",
     icon: CalendarDays,
+    status: "Available",
+    permission: "settings.view",
+  },
+  {
+    title: "Production Print Layout",
+    description: "Configure columns, field order, combined values, and box sizes for each Order Details category.",
+    href: "/settings/production-print-layout",
+    icon: Printer,
     status: "Available",
     permission: "settings.view",
   },

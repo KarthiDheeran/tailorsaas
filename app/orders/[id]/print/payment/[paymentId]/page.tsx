@@ -115,7 +115,7 @@ function PaymentReceiptPrintPageContent({
       <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
         <div>
           <p className="text-gray-500">Order No</p>
-          <p className="font-semibold">{order.orderNumber}</p>
+          <p className="font-semibold">{order.orderNumber} <small>{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</small></p>
         </div>
         <div>
           <p className="text-gray-500">Invoice No</p>

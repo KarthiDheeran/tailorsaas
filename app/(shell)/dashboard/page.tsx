@@ -173,7 +173,7 @@ function GarmentProductionSummary({
             Garment Production Summary
           </h2>
           <p className="text-[13px] text-ink-faint">
-            Item quantities by current production status
+            Item quantities by current production status · Date range uses order date
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -178,7 +178,7 @@ function TableFieldControl({
                           );
                         })}
                       </select>
-                    ) : column.readonly ? (
+                    ) : column.readonly && column.key !== "tailorAmount" && column.key !== "itemPrice" ? (
                       <div className={readOnlyCellClass(rowIndex, column.key)}>
                         {cellValue === null || cellValue === undefined || cellValue === "" ? "—" : String(cellValue)}
                       </div>
@@ -189,7 +189,13 @@ function TableFieldControl({
                         value={cellValue === null ? "" : String(cellValue)}
                         onFocus={() => markActive(rowIndex, column.key)}
                         onBlur={() => clearActive(rowIndex, column.key)}
-                        data-enter-next-skip={column.key === "qty" ? "true" : undefined}
+                        data-enter-next-skip={
+                          column.key === "qty" ||
+                          column.key === "tailorAmount" ||
+                          column.key === "itemPrice"
+                            ? "true"
+                            : undefined
+                        }
                         data-work-entry-row={column.key === "qty" ? rowIndex : undefined}
                         data-work-entry-role={column.key === "qty" ? "qty" : undefined}
                         onKeyDown={column.key === "qty" ? (event) => handleWorkEntryEnter(event, rowIndex, "qty") : undefined}

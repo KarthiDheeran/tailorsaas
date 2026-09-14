@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, Printer, X } from "lucide-react";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -15,16 +16,54 @@ export function PrintPageFrame({
   backHref,
   backLabel,
   showClose = false,
+  printOnEnter = false,
   contentClassName,
   children,
 }: {
   backHref?: string;
   backLabel?: string;
   showClose?: boolean;
+  printOnEnter?: boolean;
   contentClassName?: string;
   children: React.ReactNode;
 }) {
   const { t } = useLanguage();
+
+  useEffect(() => {
+    if (!printOnEnter) return;
+
+    function handleEnter(event: KeyboardEvent) {
+      if (
+        event.key !== "Enter" ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLButtonElement ||
+        target instanceof HTMLAnchorElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      window.print();
+    }
+
+    window.addEventListener("keydown", handleEnter);
+    return () => window.removeEventListener("keydown", handleEnter);
+  }, [printOnEnter]);
+
   return (
     <div className="min-h-screen bg-[#e5e5e5] print:bg-white">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 print:hidden">

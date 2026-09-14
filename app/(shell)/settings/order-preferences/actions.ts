@@ -9,8 +9,36 @@ import {
   type ShopOrderPreferences,
 } from "@/lib/data/shop-order-preferences-db";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { isGarmentSection } from "@/lib/catalog";
+import type { OrderNumberSequence } from "@/lib/order-numbering";
 
 type ActionResult<T> = { success: true; data: T } | { success: false; error: string };
+
+export async function getOrderNumberSequencesAction(): Promise<ActionResult<OrderNumberSequence[]>> {
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "settings.view");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const { data, error } = await supabase.rpc("get_order_number_sequences");
+  if (error) return { success: false, error: "Order numbering is unavailable. Apply the section/year numbering migration first." };
+  return { success: true, data: data as OrderNumberSequence[] };
+}
+
+export async function resetOrderNumberSequenceAction(input: {
+  section: string; expectedYear: number; newYear: number;
+}): Promise<ActionResult<null>> {
+  if (!isGarmentSection(input.section) || !Number.isInteger(input.expectedYear) ||
+      !Number.isInteger(input.newYear) || input.newYear <= input.expectedYear || input.newYear > 9999) {
+    return { success: false, error: "Choose a year later than the current numbering year." };
+  }
+  const supabase = createServerClient();
+  const guard = await requireServerPermission(supabase, "settings.manageShop");
+  if (!guard.ok) return { success: false, error: guard.error };
+  const { error } = await supabase.rpc("reset_order_number_sequence", {
+    p_order_section: input.section, p_expected_year: input.expectedYear, p_new_year: input.newYear,
+  });
+  if (error) return { success: false, error: error.message };
+  return { success: true, data: null };
+}
 
 export async function getOrderPreferencesAction(): Promise<{
   preferences: ShopOrderPreferences;

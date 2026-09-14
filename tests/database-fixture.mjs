@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 
 // Supabase-managed objects only. All application tables, functions, triggers,
 // and RLS policies come from the real, unmodified migration files.
-export async function createMigratedDatabase() {
+export async function createMigratedDatabase({ through } = {}) {
   const db = new PGlite({ extensions: { pgcrypto, pg_trgm } });
   const applied = [];
   try {
@@ -24,6 +24,7 @@ export async function createMigratedDatabase() {
     `);
     const directory = new URL("../supabase/migrations/", import.meta.url);
     for (const file of readdirSync(directory).filter((name) => name.endsWith(".sql")).sort()) {
+      if (through && file > through) continue;
       try {
         await db.exec(readFileSync(new URL(file, directory), "utf8"));
         applied.push(file);

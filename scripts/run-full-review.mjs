@@ -13,6 +13,9 @@ const files = [
   ".request-test-dist/tests/request-activity.test.js",
   "tests/order-deletion.test.mjs",
   "tests/database-workflows.test.mjs",
+  "tests/order-numbering-upgrade.test.mjs",
+  "tests/order-numbering-lookup.test.mjs",
+  "tests/production-print-layout.test.mjs",
   "tests/business-rules.test.mjs",
   "tests/report-audit.test.mjs",
 ];

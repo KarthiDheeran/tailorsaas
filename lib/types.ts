@@ -521,6 +521,7 @@ export interface Order {
   tenantId?: string;
   shopId?: string;
   orderNumber: string;
+  orderNumberYear?: number;
   orderSequence?: number;
   orderSection?: import("@/lib/catalog").GarmentSection;
   scanToken?: string;

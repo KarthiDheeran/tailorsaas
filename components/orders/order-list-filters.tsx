@@ -61,6 +61,9 @@ const DELIVERY_FILTER_LABEL_KEYS: Record<DeliveryFilter, TranslationKey> = {
 };
 
 export function OrderListFilters({
+  orderSection,
+  orderSectionOptions,
+  onOrderSectionChange,
   query,
   onQueryChange,
   balanceFilter,
@@ -79,6 +82,9 @@ export function OrderListFilters({
   onSelectCustomer,
   compact = false,
 }: {
+  orderSection: string;
+  orderSectionOptions: string[];
+  onOrderSectionChange: (value: string) => void;
   query: string;
   onQueryChange: (query: string) => void;
   balanceFilter: BalanceFilter;
@@ -129,6 +135,7 @@ export function OrderListFilters({
   }, [debouncedQuery]);
 
   const hasActiveFilters =
+    orderSection !== "" ||
     query.trim() !== "" ||
     statusFilter !== "all" ||
     urgentFilter !== "all" ||
@@ -171,6 +178,14 @@ export function OrderListFilters({
           </ul>
         )}
       </div>
+
+      <FilterDropdown
+        prefix="Order Details"
+        value={orderSection}
+        options={[{ value: "", label: t("common.all") }, ...orderSectionOptions.map((name) => ({ value: name, label: name }))]}
+        onChange={onOrderSectionChange}
+        minWidthClass="min-w-[165px]"
+      />
 
       <FilterDropdown
         prefix={t("orders.filterStatus")}

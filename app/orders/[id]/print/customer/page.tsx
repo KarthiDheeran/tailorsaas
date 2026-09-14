@@ -1,4 +1,5 @@
 "use client";
+import { orderScanReference } from "@/lib/order-numbering";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -242,7 +243,7 @@ function ReceiptPage({
             <dl className="receipt-details">
               <div>
                 <dt>Order No</dt>
-                <dd>{order.orderNumber}</dd>
+                <dd>{order.orderNumber} <small>{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</small></dd>
               </div>
               <div>
                 <dt>Order Date</dt>
@@ -418,10 +419,10 @@ function CustomerReceiptPrintPageContent({
   if (order === undefined) return null;
   if (order === null) notFound();
 
-  const scanPayload = order.orderNumber;
+  const scanPayload = orderScanReference(order);
 
   return (
-    <PrintPageFrame showClose contentClassName="receipt-preview-frame">
+    <PrintPageFrame showClose printOnEnter contentClassName="receipt-preview-frame">
       <style jsx global>{`
         @page {
           size: A4 portrait;
@@ -601,15 +602,15 @@ function CustomerReceiptPrintPageContent({
           max-width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          font-size: 12.5px;
-          line-height: 1.2;
+          font-size: 10.5px;
+          line-height: 1.05;
         }
 
         .receipt-items th {
           border-bottom: 1px solid #111827;
-          padding: 2px 2px;
+          padding: 1.5px 2px;
           text-align: left;
-          font-size: 11.5px;
+          font-size: 10.5px;
           font-weight: 800;
           overflow: hidden;
         }
@@ -628,7 +629,8 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td {
-          padding: 2.4px 2px;
+          padding: 1.2px 2px;
+          line-height: 1.05;
           vertical-align: top;
           border-bottom: 1px solid #e5e7eb;
           break-inside: avoid;
@@ -637,20 +639,21 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-items td:first-child {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 650;
           white-space: normal;
         }
 
         .receipt-items .receipt-work-detail-row td {
           color: #374151;
-          font-size: 11.5px;
+          font-size: 9.5px;
+          line-height: 1.05;
           font-weight: 600;
         }
 
         .receipt-items .receipt-work-detail-row td:first-child {
-          padding-left: 4mm;
-          font-size: 11.5px;
+          padding-left: 3mm;
+          font-size: 9.5px;
         }
 
         .receipt-items .addon-row td {
@@ -677,18 +680,18 @@ function CustomerReceiptPrintPageContent({
           max-width: var(--customer-receipt-content-width);
           margin-left: auto;
           margin-right: auto;
-          grid-template-columns: minmax(42mm, 1fr) auto 34mm;
-          column-gap: 4mm;
+          grid-template-columns: minmax(38mm, 1fr) auto 39mm;
+          column-gap: 2mm;
           align-items: end;
           border-top: 1px solid #111827;
-          padding-top: 1mm;
+          padding-top: 0.6mm;
           min-height: 0;
           overflow: hidden;
         }
 
         .receipt-preprinted-reserved {
-          min-width: 42mm;
-          min-height: 20mm;
+          min-width: 38mm;
+          min-height: 15mm;
         }
 
         .receipt-page-number {
@@ -697,19 +700,20 @@ function CustomerReceiptPrintPageContent({
         }
 
         .receipt-amount-summary {
-          width: 34mm;
+          width: 39mm;
           justify-self: end;
-          font-size: 9px;
-          line-height: 1.08;
+          font-size: 8px;
+          line-height: 1.05;
           text-align: right;
           overflow: hidden;
         }
 
         .receipt-amount-summary div {
           display: grid;
-          grid-template-columns: 1fr;
-          justify-items: end;
-          padding: 0.5px 0;
+          grid-template-columns: 1fr auto;
+          gap: 1.5mm;
+          align-items: baseline;
+          padding: 0.6px 0;
         }
 
         .receipt-amount-summary span {
@@ -729,7 +733,7 @@ function CustomerReceiptPrintPageContent({
           margin-top: 1px;
           border-top: 1px solid #111827;
           padding-top: 1px;
-          font-size: 10px;
+          font-size: 9px;
         }
 
         @media screen {

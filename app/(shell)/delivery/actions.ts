@@ -7,6 +7,7 @@ import { requireServerPermission } from "@/lib/auth/require-server-permission";
 import { getCustomerById } from "@/lib/data/customers-db";
 import {
   findOrderByOrderNumber,
+  AmbiguousOrderNumberError,
   findOrderByScanToken,
   getDeliveryDeskOrderRows,
   getOrderById,
@@ -242,9 +243,15 @@ export async function getQuickDeliveryOrderAction(
   if (!guard.ok) return { success: false, error: guard.error };
 
   const isReceiptToken = code.startsWith("TS|ORD|");
-  const lookup = isReceiptToken
-    ? await findOrderByScanToken(supabase, code.slice("TS|ORD|".length))
-    : await findOrderByOrderNumber(supabase, code);
+  let lookup;
+  try {
+    lookup = isReceiptToken
+      ? await findOrderByScanToken(supabase, code.slice("TS|ORD|".length))
+      : await findOrderByOrderNumber(supabase, code);
+  } catch (error) {
+    if (error instanceof AmbiguousOrderNumberError) return { success: false, error: error.message };
+    throw error;
+  }
   if (!lookup) return { success: false, error: "Order receipt was not found." };
   const order = await getOrderById(supabase, lookup.id);
   if (!order) return { success: false, error: "Order was not found." };

@@ -16,6 +16,7 @@ import {
   type ShopOrderPreferences,
 } from "@/lib/data/shop-order-preferences-db";
 import { clearNewOrderPreferences } from "@/lib/new-order-reference-browser-cache";
+import { OrderNumberSettings } from "@/components/orders/order-number-settings";
 
 function OrderPreferencesContent() {
   const { hasPermission, currentUserId } = useCurrentUser();
@@ -67,7 +68,7 @@ function OrderPreferencesContent() {
       </Link>
       <div className="mb-6 flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-tint text-primary"><CalendarDays className="h-5 w-5" /></span>
-        <div><h1 className="text-[26px] font-semibold text-ink">Order Delivery Defaults</h1><p className="text-sm text-ink-muted">Set the promised delivery date automatically for every new order.</p></div>
+        <div><h1 className="text-[26px] font-semibold text-ink">Order Preferences</h1><p className="text-sm text-ink-muted">Manage delivery defaults and numbering by Order Details.</p></div>
       </div>
       {error && <div className="mb-5"><LoadError message={error} /></div>}
       {!enabled && <div className="mb-5 rounded-lg border border-chip-peach bg-chip-peach px-4 py-3 text-sm font-medium text-chip-peach-fg">Order preferences migration is pending. New orders are currently using the default 21-day promise.</div>}
@@ -96,6 +97,7 @@ function OrderPreferencesContent() {
         </label>
         <div className="mt-6 flex items-center justify-between border-t border-border-soft pt-4"><p className="text-sm text-ink-muted">{saved ? "Saved. New orders will use this promise window." : "This never changes existing orders."}</p><button type="submit" disabled={!enabled || !canManage || saving} className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving..." : "Save Delivery Default"}</button></div>
       </form>
+      <OrderNumberSettings canManage={canManage} />
     </div>
   );
 }

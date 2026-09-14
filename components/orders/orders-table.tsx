@@ -410,6 +410,7 @@ export function OrdersTable({
                 <td className={`whitespace-nowrap px-5 py-3 font-semibold text-primary ${compact ? "border border-[#aeb8c8] px-2 py-0.5" : ""}`}>
                   <span className="inline-flex items-center gap-1.5">
                     {order.orderNumber}
+                    <span className="text-[10px] font-normal text-ink-muted">{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</span>
                     {order.isUrgent && order.status !== "Delivered" && order.status !== "Cancelled" && (
                       <span className={`${compact ? "px-1 py-0 text-[9px]" : "px-2 py-0.5 text-[10px]"} rounded bg-amber-100 font-extrabold text-amber-900`}>
                         URGENT

@@ -4,6 +4,8 @@ import { getOrderById } from "@/lib/data/orders-db";
 import { getStaffById } from "@/lib/data/staff-db";
 import { staffGarmentStageRate } from "@/lib/staff-rates";
 import type { CustomerSnapshot, Order, OrderItemAddOn, Staff, TaskType } from "@/lib/types";
+import { getEffectiveProductionPrintLayout, getEffectiveProductionPrintLayoutForOrder } from "@/lib/data/production-print-layouts-db";
+import type { ProductionPrintLayoutDefinition } from "@/lib/production-print-layout";
 
 export interface JobCardStageSlip {
   id: string;
@@ -30,6 +32,7 @@ export interface JobCardStageSlip {
   tallyNotes?: string;
   measurementsSnapshot?: Record<string, unknown>;
   fieldSchemaSnapshot?: Record<string, unknown>;
+  productionLayoutSnapshot?: ProductionPrintLayoutDefinition;
   addOnsSnapshot?: OrderItemAddOn[];
   labourAddOnsSnapshot?: OrderItemAddOn[];
   notes?: string;
@@ -54,7 +57,7 @@ const JOB_CARD_STAGE_SLIP_COLUMNS = `
   id, scan_token, slip_code, order_id, order_item_serial_no, unit_no, order_number, customer_id,
   customer_snapshot, garment_type, quantity, delivery_date, stage, staff_id, staff_name, wage_rate,
   wage_amount, tallied_quantity, tally_wage_amount, tally_extra_amount, tally_notes, last_tallied_at,
-  measurements_snapshot, field_schema_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
+  measurements_snapshot, field_schema_snapshot, production_layout_snapshot, add_ons_snapshot, labour_add_ons_snapshot, notes,
   printed_at, tallied_at, created_at
 `;
 
@@ -83,6 +86,7 @@ interface JobCardStageSlipRow {
   last_tallied_at?: string | null;
   measurements_snapshot: Record<string, unknown> | null;
   field_schema_snapshot: Record<string, unknown> | null;
+  production_layout_snapshot: unknown;
   add_ons_snapshot: OrderItemAddOn[] | null;
   labour_add_ons_snapshot: OrderItemAddOn[] | null;
   notes: string | null;
@@ -120,6 +124,9 @@ function mapSlip(row: JobCardStageSlipRow): JobCardStageSlip {
     tallyNotes: row.tally_notes?.trim() ? row.tally_notes : undefined,
     measurementsSnapshot: row.measurements_snapshot ?? undefined,
     fieldSchemaSnapshot: row.field_schema_snapshot ?? undefined,
+    productionLayoutSnapshot: row.production_layout_snapshot && typeof row.production_layout_snapshot === "object"
+      ? row.production_layout_snapshot as ProductionPrintLayoutDefinition
+      : undefined,
     addOnsSnapshot: row.add_ons_snapshot ?? undefined,
     labourAddOnsSnapshot: row.labour_add_ons_snapshot ?? undefined,
     notes: row.notes?.trim() ? row.notes : undefined,
@@ -143,6 +150,32 @@ export function isMissingJobCardStageSlipsSchemaError(error: unknown): boolean {
     message.includes("tally_extra_amount") ||
     message.includes("last_tallied_at")
   );
+}
+
+/** Resolve the current category/garment layout whenever a stitching slip is printed. */
+export async function resolveProductionPrintLayoutsForSlips(
+  supabase: SupabaseClient,
+  slips: JobCardStageSlip[],
+  orders: Order[],
+): Promise<JobCardStageSlip[]> {
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const pendingLayouts = new Map<string, Promise<ProductionPrintLayoutDefinition | undefined>>();
+
+  return Promise.all(slips.map(async (slip) => {
+    if (slip.stage !== "Stitching") return slip;
+    const order = ordersById.get(slip.orderId);
+    const item = order?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
+    if (!order || !item) return slip;
+
+    const key = `${order.orderSection ?? ""}:${item.garmentTypeId ?? ""}`;
+    let pending = pendingLayouts.get(key);
+    if (!pending) {
+      pending = getEffectiveProductionPrintLayoutForOrder(supabase, order.orderSection, item.garmentTypeId, order.tenantId);
+      pendingLayouts.set(key, pending);
+    }
+    const layout = await pending;
+    return { ...slip, productionLayoutSnapshot: layout };
+  }));
 }
 
 function meaningfulMeasurements(value: unknown): Record<string, unknown> | null {
@@ -206,6 +239,9 @@ async function insertJobCardStageSlip(
   const quantity = Math.min(requestedQuantity, availableQuantity);
   const labourAddOns = labourAddOnsForStage(item.addOns, input.stage);
   const labourAddOnsTotal = labourAddOns.reduce((sum, addOn) => sum + addOn.amount, 0);
+  const productionLayoutSnapshot = input.stage === "Stitching"
+    ? await getEffectiveProductionPrintLayout(supabase, order.orderSection, item.garmentTypeId)
+    : undefined;
 
   const { data, error } = await supabase
     .from("job_card_stage_slips")
@@ -231,6 +267,7 @@ async function insertJobCardStageSlip(
       last_tallied_at: null,
       measurements_snapshot: meaningfulMeasurements(item.measurements),
       field_schema_snapshot: item.fieldSchemaSnapshot ?? null,
+      production_layout_snapshot: productionLayoutSnapshot ?? null,
       add_ons_snapshot: item.addOns ?? null,
       labour_add_ons_snapshot: labourAddOns.length > 0 ? labourAddOns : null,
       notes: input.notes?.trim() || null,

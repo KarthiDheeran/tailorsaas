@@ -630,6 +630,7 @@ function DeliveryDeskContent() {
                           className="font-semibold text-primary hover:underline"
                         >
                           {order.orderNumber}
+                          <span className="ml-2 text-xs font-normal text-ink-muted">{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</span>
                         </Link>
                         <div className="mt-1 text-xs text-ink-faint">
                           Ordered {formatDate(order.orderDate)}

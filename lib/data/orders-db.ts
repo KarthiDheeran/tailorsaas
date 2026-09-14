@@ -92,7 +92,7 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
 }
 
 const ORDER_COLUMNS = `
-  id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+  id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
   delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
   payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
   order_items!order_items_order_id_fkey ( ${ORDER_ITEM_COLUMNS} )
@@ -112,6 +112,7 @@ interface OrderRow {
   order_number: string;
   order_section?: GarmentSection | null;
   order_sequence?: number | null;
+  order_number_year?: number | null;
   scan_token?: string | null;
   invoice_number?: string | null;
   customer_id: string;
@@ -147,6 +148,7 @@ function mapOrder(row: OrderRow): Order {
     shopId: row.shop_id ?? undefined,
     orderNumber: row.order_number,
     orderSection: row.order_section ?? undefined,
+    orderNumberYear: row.order_number_year ?? undefined,
     orderSequence: row.order_sequence ?? undefined,
     scanToken: row.scan_token ?? undefined,
     invoiceNumber: row.invoice_number ?? undefined,
@@ -181,12 +183,24 @@ function mapOrder(row: OrderRow): Order {
   };
 }
 
+function isMissingNumberingYear(error: unknown): boolean {
+  const candidate = error as { message?: string; details?: string };
+  return `${candidate.message ?? ""} ${candidate.details ?? ""}`.includes("order_number_year");
+}
+
+function orderFallbackColumns(columns: string, legacy: string, error: unknown): string {
+  // During rollout only the numbering-year column may be missing. Retain
+  // section, urgency and receipt tokens instead of falling back to old fields.
+  return isMissingNumberingYear(error) ? columns.replace("order_number_year, ", "") : legacy;
+}
+
 function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string; details?: string };
   const message = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
   return (
     candidate.code === "PGRST204" ||
     message.includes("scan_token") ||
+    message.includes("order_number_year") ||
     message.includes("invoice_number") ||
     message.includes("delivery_promise_note") ||
     message.includes("is_urgent") ||
@@ -204,6 +218,12 @@ function isMissingInvoiceNumberSchemaError(error: unknown): boolean {
 export interface OrderScanLookupResult {
   id: string;
   orderNumber: string;
+}
+
+export class AmbiguousOrderNumberError extends Error {
+  constructor() {
+    super("This number belongs to more than one order. Scan the receipt barcode, or open the order from the Orders list using its category and year.");
+  }
 }
 
 export async function findOrderByScanToken(
@@ -229,14 +249,22 @@ export async function findOrderByOrderNumber(
   supabase: SupabaseClient,
   orderNumber: string
 ): Promise<OrderScanLookupResult | undefined> {
-  const { data, error } = await supabase
+  const reference = /^([MCB])-(\d{4})-(\d+)$/.exec(orderNumber);
+  let query = supabase
     .from("orders")
     .select("id, order_number")
-    .eq("order_number", orderNumber)
+    .eq("order_number", reference ? reference[3] : orderNumber);
+  if (reference) {
+    const section = { M: "Men", C: "Chudidar", B: "Blouse" }[reference[1]];
+    query = query.eq("order_section", section).eq("order_number_year", Number(reference[2]));
+  }
+  const { data, error } = await query
     .order("created_at", { ascending: false })
-    .limit(1);
+    .limit(2);
   if (error) throw error;
-  const row = ((data as { id: string; order_number: string }[] | null) ?? [])[0];
+  const rows = (data as { id: string; order_number: string }[] | null) ?? [];
+  if (rows.length > 1) throw new AmbiguousOrderNumberError();
+  const row = rows[0];
   return row ? { id: row.id, orderNumber: row.order_number } : undefined;
 }
 
@@ -252,7 +280,7 @@ export async function getOrderById(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(LEGACY_ORDER_COLUMNS)
+      .select(orderFallbackColumns(ORDER_COLUMNS, LEGACY_ORDER_COLUMNS, error))
       .eq("id", id)
       .maybeSingle();
     data = fallback.data as unknown as typeof data;
@@ -276,7 +304,7 @@ export async function getOrdersByIds(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(LEGACY_ORDER_COLUMNS)
+      .select(orderFallbackColumns(ORDER_COLUMNS, LEGACY_ORDER_COLUMNS, error))
       .in("id", uniqueIds)
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
@@ -298,7 +326,7 @@ export async function getOrdersForCustomer(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(LEGACY_ORDER_COLUMNS)
+      .select(orderFallbackColumns(ORDER_COLUMNS, LEGACY_ORDER_COLUMNS, error))
       .eq("customer_id", customerId)
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
@@ -310,7 +338,7 @@ export async function getOrdersForCustomer(
 
 export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -322,12 +350,12 @@ export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
@@ -337,6 +365,7 @@ export async function getOrderListRows(supabase: SupabaseClient): Promise<Order[
 }
 
 export interface OrderListPageFilters {
+  orderSection?: string;
   searchQuery?: string;
   orderDateFrom?: string;
   orderDateTo?: string;
@@ -367,7 +396,7 @@ export async function getOrderListPageRows(
   options: OrderListPageOptions
 ): Promise<OrderListPageResult> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -387,6 +416,10 @@ export async function getOrderListPageRows(
     let query = supabase
       .from("orders")
       .select(selectColumns, { count: "exact" });
+
+    if (filters.orderSection) {
+      query = query.eq("order_section", filters.orderSection);
+    }
 
     if (includeUrgency) query = query.order("is_urgent", { ascending: false });
 
@@ -437,7 +470,7 @@ export async function getOrderListPageRows(
 
   let { data, error, count } = await run(columns, true);
   if (error && isMissingInvoiceNumberSchemaError(error)) {
-    const fallback = await run(fallbackColumns, false);
+    const fallback = await run(orderFallbackColumns(columns, fallbackColumns, error), isMissingNumberingYear(error));
     data = fallback.data as unknown as typeof data;
     error = fallback.error;
     count = fallback.count;
@@ -464,7 +497,7 @@ export async function getOrderListRowsInDateRange(
   options: { customerQuery?: string } = {}
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -484,12 +517,12 @@ export async function getOrderListRowsInDateRange(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     let fallback = supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .gte(field, fromIso)
       .lte(field, toIso)
       .order(field, { ascending: false });
@@ -511,7 +544,7 @@ export async function getOrderListRowsInTrialDateRange(
   toIso: string
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -525,12 +558,12 @@ export async function getOrderListRowsInTrialDateRange(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .gte("trial_date", fromIso)
       .lte("trial_date", toIso)
       .order("trial_date", { ascending: true });
@@ -562,7 +595,7 @@ export async function getOrderListRowsByIds(
   const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
   if (uniqueIds.length === 0) return [];
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -575,12 +608,12 @@ export async function getOrderListRowsByIds(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .in("id", uniqueIds)
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
@@ -605,7 +638,7 @@ export async function getProductionPrintOrderRows(
   supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -618,12 +651,12 @@ export async function getProductionPrintOrderRows(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .not("status", "in", '("Delivered","Cancelled")')
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
@@ -637,17 +670,21 @@ export async function getActiveUrgentOrderListRows(
   supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, is_urgent, urgent_due_at, urgent_reason, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
   `;
-  const { data, error } = await supabase
+  const read = (selectColumns: string) => supabase
     .from("orders")
-    .select(columns)
+    .select(selectColumns)
     .eq("is_urgent", true)
     .not("status", "in", '("Delivered","Cancelled")')
     .order("urgent_due_at", { ascending: true, nullsFirst: false });
+  let { data, error } = await read(columns);
+  if (error && isMissingInvoiceNumberSchemaError(error)) {
+    ({ data, error } = await read(columns.replace("order_number_year, ", "")));
+  }
   if (error) throw error;
   return ((data as unknown as OrderRow[]) ?? []).map(mapOrder);
 }
@@ -656,7 +693,7 @@ export async function getReceivableOrderRows(
   supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at
   `;
@@ -669,11 +706,11 @@ export async function getReceivableOrderRows(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at
-      `)
+      `, error))
       .gt("balance", 0)
       .neq("status", "Cancelled")
       .order("delivery_date", { ascending: true });
@@ -689,7 +726,7 @@ export async function getReceivableOrderListRows(
   supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -703,12 +740,12 @@ export async function getReceivableOrderListRows(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .gt("balance", 0)
       .neq("status", "Cancelled")
       .order("delivery_date", { ascending: true });
@@ -742,7 +779,7 @@ export async function getDeliveryDeskOrderRows(
   supabase: SupabaseClient
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -756,12 +793,12 @@ export async function getDeliveryDeskOrderRows(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .eq("status", "Ready")
       .order("delivery_date", { ascending: true })
       .order("order_number", { ascending: true });
@@ -777,7 +814,7 @@ export async function getOrderListRowsForCustomer(
   customerId: string
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
@@ -790,12 +827,12 @@ export async function getOrderListRowsForCustomer(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_SUMMARY_COLUMNS} )
-      `)
+      `, error))
       .eq("customer_id", customerId)
       .order("order_date", { ascending: false });
     data = fallback.data as unknown as typeof data;
@@ -811,7 +848,7 @@ export async function getRepeatableOrdersForCustomer(
   limit = 12
 ): Promise<Order[]> {
   const columns = `
-    id, tenant_id, shop_id, order_number, order_section, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
+    id, tenant_id, shop_id, order_number, order_section, order_number_year, order_sequence, scan_token, invoice_number, customer_id, customer_snapshot, order_date, trial_date,
     delivery_date, delivery_promise_note, order_notes, delivery_bin, total_amount, advance_paid, balance, payment_mode, status,
     payment_status, created_by_operator_name, measurement_taken_by_operator_name, delivered_by_operator_name, delivered_at, created_at, updated_at,
     order_items!order_items_order_id_fkey ( ${ORDER_ITEM_REPEAT_COLUMNS} )
@@ -825,12 +862,12 @@ export async function getRepeatableOrdersForCustomer(
   if (error && isMissingInvoiceNumberSchemaError(error)) {
     const fallback = await supabase
       .from("orders")
-      .select(`
+      .select(orderFallbackColumns(columns, `
         id, order_number, customer_id, customer_snapshot, order_date, trial_date,
         delivery_date, total_amount, advance_paid, balance, payment_mode, status,
         payment_status, created_at, updated_at,
         order_items!order_items_order_id_fkey ( ${ORDER_ITEM_REPEAT_COLUMNS} )
-      `)
+      `, error))
       .eq("customer_id", customerId)
       .order("order_date", { ascending: false })
       .limit(limit);

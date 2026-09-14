@@ -40,6 +40,7 @@ import {
   isMissingJobCardStageSlipsSchemaError,
   markJobCardStageSlipPartiallyTallied,
   markJobCardStageSlipTallied,
+  resolveProductionPrintLayoutsForSlips,
   type CreateJobCardStageSlipInput,
   type JobCardStageSlip,
 } from "@/lib/data/job-card-stage-slips-db";
@@ -1001,13 +1002,14 @@ export async function getProductionPrintBundleAction(ids: string[]): Promise<Job
   const orderIds = Array.from(new Set(slips.map((slip) => slip.orderId)));
   const orders = await getOrdersByIds(supabase, orderIds);
   const ordersById = new Map(orders.map((order) => [order.id, order]));
-  return slips.map((slip) => {
+  const displaySlips = slips.map((slip) => {
     const item = ordersById
       .get(slip.orderId)
       ?.items.find((candidate) => candidate.serialNo === slip.orderItemSerialNo);
     const color = item?.size?.trim();
     return color ? { ...slip, garmentType: `${item!.particular} · ${color}` } : slip;
   });
+  return resolveProductionPrintLayoutsForSlips(createAdminClient(), displaySlips, orders);
 }
 
 export interface ProductionPrintBatchSummary {

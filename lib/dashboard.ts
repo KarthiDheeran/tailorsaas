@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Order } from "@/lib/types";
+import type { JobCardActivityLog, Order } from "@/lib/types";
 import {
   getExpenses,
   isMissingExpensesSchemaError,
@@ -9,6 +9,7 @@ import {
   isMissingJobCardsSchemaError,
 } from "@/lib/data/job-cards-db";
 import { getJobCardStageSlipsForOrders } from "@/lib/data/job-card-stage-slips-db";
+import { getJobCardActivityLogsForCards } from "@/lib/data/job-card-activity-db";
 import {
   getActiveUrgentOrderListRows,
   getOrderListRowsByIds,
@@ -138,24 +139,33 @@ export async function getDashboardData(
   const jobCardStats = dashboardCards
     ? getDashboardJobCardStats(dashboardCards)
     : null;
-  const [summaryOrders, stageSlips] = dashboardCards
+  const [summaryOrders, stageSlips, activityLogs] = dashboardCards
     ? await Promise.all([
         getOrderListRowsByIds(supabase, dashboardCards.map((card) => card.orderId)),
         getJobCardStageSlipsForOrders(supabase, dashboardCards
           .filter((card) => card.stage !== "Cancelled" && card.orderStatus !== "Cancelled")
           .map((card) => card.orderId)),
+        getJobCardActivityLogsForCards(supabase, dashboardCards.map((card) => card.id)),
       ])
-    : [[], []];
+    : [[], [], []];
   const ordersById = new Map(summaryOrders.map((order) => [order.id, order]));
   const stagePendingSummary = dashboardCards
-    ? getStagePendingSummary(dashboardCards, todayIso, ordersById, stageSlips)
+    ? getStagePendingSummary(dashboardCards, todayIso, ordersById, stageSlips, activityLogs)
     : [];
   const summaryFrom = filters?.from || todayIso;
   const summaryTo = filters?.to || todayIso;
   let garmentSummary: DashboardData["garmentSummary"] = [];
   let garmentStages: string[] = [];
   if (dashboardCards) {
-    const cards = dashboardCards;
+    // Assignment is cleared after cutting. Use the completed unit tally to
+    // retain production progress while the piece awaits a stitching worker.
+    const cards = dashboardCards.map((card) => ({
+      ...card,
+      stage: card.stage === "Unassigned" &&
+        hasCompletedCuttingProgress(card, stageSlips, activityLogs)
+          ? "Stitching" as const
+          : card.stage,
+    }));
     garmentStages = Array.from(new Set(cards.map((card) => card.stage))).sort();
     const grouped = new Map<string, DashboardData["garmentSummary"][number]>();
     for (const card of cards) {
@@ -257,6 +267,27 @@ export async function getDashboardData(
   };
 }
 
+function hasCompletedCuttingProgress(
+  card: JobCard,
+  slips: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>,
+  activityLogs: JobCardActivityLog[],
+) {
+  return card.orderStatus !== "Cancelled" && card.orderStatus !== "Delivered" &&
+    hasCompletedStageProgress(card, "Cutting", slips, activityLogs) &&
+    !hasCompletedStageProgress(card, "Stitching", slips, activityLogs);
+}
+
+function hasCompletedStageProgress(
+  card: JobCard,
+  stage: TaskType,
+  slips: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>,
+  activityLogs: JobCardActivityLog[],
+) {
+  return slips.some((slip) => slipTalliedCoversUnit(slip, card, stage)) ||
+    activityLogs.some((log) => log.jobCardId === card.id && log.fromStage === stage &&
+      (log.actionType === "Stage Moved" || log.actionType === "Completed"));
+}
+
 function slipTalliedCoversUnit(
   slip: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>[number],
   card: JobCard,
@@ -316,7 +347,8 @@ function getStagePendingSummary(
   cards: JobCard[],
   todayIso: string,
   ordersById: Map<string, Order>,
-  slips: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>
+  slips: Awaited<ReturnType<typeof getJobCardStageSlipsForOrders>>,
+  activityLogs: JobCardActivityLog[],
 ): StagePendingSummary[] {
   const activeCards = cards.filter(
     (card) => card.stage !== "Cancelled" && card.orderStatus !== "Cancelled"
@@ -324,12 +356,12 @@ function getStagePendingSummary(
   const cuttingPending = activeCards.filter(
     (card) =>
       card.orderStatus !== "Delivered" &&
-      !slips.some((slip) => slipTalliedCoversUnit(slip, card, "Cutting"))
+      !hasCompletedStageProgress(card, "Cutting", slips, activityLogs)
   );
   const stitchingPending = activeCards.filter(
     (card) =>
       card.orderStatus !== "Delivered" &&
-      !slips.some((slip) => slipTalliedCoversUnit(slip, card, "Stitching"))
+      !hasCompletedStageProgress(card, "Stitching", slips, activityLogs)
   );
   const deliveryPending = activeCards.filter((card) => card.orderStatus !== "Delivered");
 

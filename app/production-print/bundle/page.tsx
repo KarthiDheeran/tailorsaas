@@ -14,6 +14,7 @@ import {
 } from "@/lib/garment-form-runtime";
 import type { JobCardStageSlip } from "@/lib/data/job-card-stage-slips-db";
 import type { OrderItemAddOn } from "@/lib/types";
+import { parseProductionPrintWorkDetailRowCode, productionPrintWorkDetailRows, PRODUCTION_PRINT_BLANK_SPACE_CODE, PRODUCTION_PRINT_EMPTY_BOX_CODE, type ProductionPrintLayoutCell, type ProductionPrintLayoutDefinition } from "@/lib/production-print-layout";
 
 const PRODUCTION_BARCODE_OPTIONS = {
   height: 30,
@@ -34,17 +35,7 @@ function orderHeading(slip: JobCardStageSlip) {
 }
 
 function tableWorkDetailLines(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((row) => {
-    if (!row || typeof row !== "object" || Array.isArray(row)) return [];
-    const record = row as Record<string, unknown>;
-    const itemTa = typeof record.itemTa === "string" ? record.itemTa.trim() : "";
-    const item = itemTa || (typeof record.item === "string" ? record.item.trim() : "");
-    if (!item) return [];
-    const qty = typeof record.qty === "number" ? record.qty : Number(record.qty);
-    if (!Number.isFinite(qty) || qty <= 0) return [item];
-    return [`${item} - ${qty}`];
-  });
+  return productionPrintWorkDetailRows(value).filter(Boolean);
 }
 
 function productionFieldText(value: unknown, uiMetadata?: Record<string, unknown>) {
@@ -56,6 +47,20 @@ function productionFieldText(value: unknown, uiMetadata?: Record<string, unknown
 type ProductionValueCell =
   | { kind: "field"; field: HistoricalGarmentDisplayField }
   | { kind: "text"; key: string; label: string; value: string };
+
+type RenderedProductionCell = {
+  key: string;
+  label: string;
+  text: string;
+  columnSpan: number;
+  height: "normal" | "tall";
+  textSize: "normal" | "small";
+  style: NonNullable<ProductionPrintLayoutCell["style"]>;
+  blankSpace: boolean;
+  contentColumns: 1 | 2 | 3;
+  items: string[];
+  collection: boolean;
+};
 
 function normalizedProductionKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -152,6 +157,52 @@ function productionValueCellText(cell: ProductionValueCell) {
   return productionFieldText(cell.field.value, cell.field.uiMetadata);
 }
 
+function configuredProductionCells(
+  layout: ProductionPrintLayoutDefinition,
+  fields: HistoricalGarmentDisplayField[],
+  addOns: OrderItemAddOn[] | undefined,
+): RenderedProductionCell[] {
+  const fieldsByCode = new Map(fields.map((field) => [normalizedProductionKey(field.code), field]));
+  const addOnCells = productionAddOnCells(addOns).filter(
+    (cell): cell is Extract<ProductionValueCell, { kind: "text" }> => cell.kind === "text",
+  );
+  return layout.cells.flatMap((cell: ProductionPrintLayoutCell) => {
+    const values = cell.fieldCodes.flatMap((code) => {
+      if (code === PRODUCTION_PRINT_EMPTY_BOX_CODE) return [{ label: "Empty box", text: "" }];
+      if (code === PRODUCTION_PRINT_BLANK_SPACE_CODE) return [{ label: "Blank space", text: "" }];
+      if (code === "__addons__") return addOnCells.map((addOn) => ({ label: addOn.label, text: addOn.value }));
+      const workDetailRow = parseProductionPrintWorkDetailRowCode(code);
+      const fieldCode = workDetailRow?.fieldCode ?? code;
+      const field = fieldsByCode.get(normalizedProductionKey(fieldCode));
+      if (!field) return [];
+      if (workDetailRow) {
+        const text = productionPrintWorkDetailRows(field.value)[workDetailRow.rowNumber - 1];
+        return text ? [{ label: `${field.label} ${workDetailRow.rowNumber}`, text }] : [];
+      }
+      const detailLines = tableWorkDetailLines(field.value);
+      return detailLines.length > 0
+        ? detailLines.map((text) => ({ label: field.label, text }))
+        : [{ label: field.label, text: productionFieldText(field.value, field.uiMetadata) }];
+    });
+    if (values.length === 0 && cell.fieldCodes.some((code) => parseProductionPrintWorkDetailRowCode(code))) return [];
+    const collection = values.length > cell.fieldCodes.length;
+    const legacyCollection = collection && cell.contentColumns === undefined;
+    return [{
+      key: cell.id,
+      label: collection ? (values[0]?.label ?? cell.fieldCodes.join(" / ")) : values.map((value) => value.label).join(" / ") || cell.fieldCodes.join(" / "),
+      text: values.map((value) => value.text).join(cell.separator === "slash" ? " / " : "\n"),
+      columnSpan: legacyCollection ? layout.columnsPerRow : cell.columnSpan,
+      height: cell.height,
+      textSize: cell.textSize,
+      style: cell.style ?? "normal",
+      blankSpace: cell.fieldCodes.length === 1 && cell.fieldCodes[0] === PRODUCTION_PRINT_BLANK_SPACE_CODE,
+      contentColumns: cell.contentColumns ?? (collection ? 3 : 1),
+      items: values.map((value) => value.text),
+      collection,
+    }];
+  });
+}
+
 function SlipBarcode({ slip }: { slip: JobCardStageSlip }) {
   const value = toBarcodeValue(slip.slipCode);
   const metrics = barcodeSvgMetrics(value, PRODUCTION_BARCODE_OPTIONS);
@@ -200,6 +251,10 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
       field.value !== "" &&
       (!Array.isArray(field.value) || field.value.length > 0),
   );
+  const configuredLayout = slip.productionLayoutSnapshot;
+  const configuredCells = configuredLayout
+    ? configuredProductionCells(configuredLayout, visible, slip.addOnsSnapshot)
+    : null;
   return (
     <section className="production-ticket production-stitching">
       <div className="production-grid">
@@ -210,8 +265,27 @@ function StitchingTicket({ slip }: { slip: JobCardStageSlip }) {
         <strong>{slip.garmentType} - {slip.quantity}</strong>
       </div>
 
-      <div className="production-fields production-fixed-value-grid">
-        {visible.length ? (
+      <div
+        className={`production-fields ${configuredLayout ? "production-configured-value-grid" : "production-fixed-value-grid"}`}
+        style={configuredLayout ? { gridTemplateColumns: `repeat(${configuredLayout.columnsPerRow}, minmax(0, 1fr))` } : undefined}
+      >
+        {configuredLayout ? configuredCells!.map((cell) => (
+          <div
+            key={cell.key}
+            title={cell.label}
+            aria-label={cell.label}
+            className={`${cell.height === "tall" ? "production-cell-tall" : ""} ${cell.textSize === "small" ? "production-cell-small" : ""} ${cell.collection ? "production-cell-collection" : ""} ${cell.blankSpace ? "production-cell-blank-space" : `production-cell-style-${cell.style}`}`}
+            style={{ gridColumn: `span ${cell.columnSpan} / span ${cell.columnSpan}` }}
+          >
+            {cell.collection && <small className="production-cell-heading">{cell.label}</small>}
+            <strong
+              className={cell.collection ? "production-cell-items" : undefined}
+              style={cell.collection ? { gridTemplateColumns: `repeat(${cell.contentColumns}, minmax(0, 1fr))` } : undefined}
+            >
+              {cell.collection ? cell.items.map((item, index) => <span key={`${cell.key}-${index}`}>{item}</span>) : cell.text}
+            </strong>
+          </div>
+        )) : visible.length ? (
           buildProductionValueCells(visible, slip.addOnsSnapshot).map((cell, index) => (
             <div
               key={cell ? `${cell.kind}-${cell.kind === "field" ? cell.field.code : cell.key}-${index}` : `empty-${index}`}
@@ -273,6 +347,7 @@ function ProductionPrintBundleContent() {
   return (
     <PrintPageFrame
       showClose
+      printOnEnter
       contentClassName="production-print-preview"
     >
       {slips === null ? (
@@ -365,12 +440,87 @@ function ProductionPrintBundleContent() {
           justify-content: center;
           padding: 5px 6px;
           text-align: center;
+          min-width: 0;
+          overflow: hidden;
         }
 
         .production-fields strong {
           font-size: 17px;
           line-height: 1.25;
           white-space: pre-line;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+        }
+
+        .production-fields .production-cell-heading {
+          display: block;
+          width: 100%;
+          margin-bottom: 3px;
+          border-bottom: 1px solid #999;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .production-fields .production-cell-collection {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .production-fields .production-cell-items {
+          display: grid;
+          width: 100%;
+          align-items: stretch;
+          white-space: normal;
+        }
+
+        .production-fields .production-cell-items span {
+          display: flex;
+          min-width: 0;
+          align-items: center;
+          justify-content: center;
+          padding: 3px 4px;
+          border-bottom: 1px dotted #aaa;
+          overflow-wrap: anywhere;
+        }
+
+        .production-fields .production-cell-tall {
+          min-height: 54px;
+        }
+
+        .production-fields .production-cell-small strong {
+          font-size: 14px;
+        }
+
+        .production-fields .production-cell-style-emphasis {
+          border: 3px solid #111;
+        }
+
+        .production-fields .production-cell-style-emphasis strong,
+        .production-fields .production-cell-style-shaded strong {
+          font-weight: 900;
+        }
+
+        .production-fields .production-cell-style-double-border {
+          border: 4px double #111;
+        }
+
+        .production-fields .production-cell-style-shaded {
+          background: #e5e7eb;
+          border-color: #111;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+
+        .production-fields .production-cell-style-dashed {
+          border: 2px dashed #111;
+        }
+
+        .production-fields .production-cell-blank-space {
+          border-color: transparent;
+          background: transparent;
         }
 
         .production-barcode {

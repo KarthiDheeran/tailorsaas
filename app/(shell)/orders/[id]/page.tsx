@@ -560,6 +560,7 @@ function OrderDetailsPageContent({ params }: { params: { id: string } }) {
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-[26px] font-semibold text-ink">
                 {order.orderNumber}
+                <span className="ml-2 text-sm font-normal text-ink-muted">{order.orderSection}{order.orderNumberYear ? ` · ${order.orderNumberYear}` : ""}</span>
               </h1>
               <OrderStatusEditor order={order} onStatusChange={refreshOrder} />
               {order.isUrgent && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-extrabold text-amber-900">URGENT</span>}

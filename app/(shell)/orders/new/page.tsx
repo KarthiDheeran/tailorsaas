@@ -297,6 +297,8 @@ function NewOrderPageContent() {
   const customerSearchRef = useRef<HTMLDivElement>(null);
   const customerSearchInputRef = useRef<HTMLInputElement>(null);
   const newCustomerNameInputRef = useRef<HTMLInputElement>(null);
+  const newCustomerFieldsRef = useRef<HTMLDivElement>(null);
+  const newCustomerContinueButtonRef = useRef<HTMLButtonElement>(null);
   const orderSectionRef = useRef<HTMLInputElement>(null);
   const customerResultButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const deliveryDateWasEditedRef = useRef(false);
@@ -1764,7 +1766,17 @@ function NewOrderPageContent() {
                 )}
                 {customerMode === "new" && (
                   <>
-                  <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", isClassicEntry && "grid-cols-2 gap-2")}>
+                  <div
+                    ref={newCustomerFieldsRef}
+                    onKeyDown={(event) => {
+                      if (event.defaultPrevented) return;
+                      handleEnterAsNextField(event, {
+                        rootRef: newCustomerFieldsRef,
+                        finalButtonRef: newCustomerContinueButtonRef,
+                      });
+                    }}
+                    className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", isClassicEntry && "grid-cols-2 gap-2")}
+                  >
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium text-ink-muted">
                     Customer Name
@@ -1905,6 +1917,7 @@ function NewOrderPageContent() {
                         )}
                       </div>
                       <button
+                        ref={newCustomerContinueButtonRef}
                         type="button"
                         onClick={() => void handleSaveCustomerAndContinue()}
                         disabled={creatingCustomer || exactDuplicateCustomer}
